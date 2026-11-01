@@ -91,7 +91,7 @@ jobs:
           # Assemble native macOS Anti-Pet.app bundle
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
             chmod +x scripts/build_macos_app.sh
-            ./scripts/build_macos_app.sh
+            ./scripts/build_macos_app.sh desktop/target/${{ matrix.target }}/release/anti-pet-desktop
             cp -r dist/Anti-Pet.app bundle/${{ matrix.pkg_name }}/
           fi
 

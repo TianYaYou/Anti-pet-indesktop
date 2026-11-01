@@ -12,7 +12,22 @@ mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
 # 1. Copy binary
-cp desktop/target/release/anti-pet-desktop "$APP_DIR/Contents/MacOS/"
+BIN_PATH="${1:-desktop/target/release/anti-pet-desktop}"
+if [ ! -f "$BIN_PATH" ]; then
+    if [ -f "desktop/target/aarch64-apple-darwin/release/anti-pet-desktop" ]; then
+        BIN_PATH="desktop/target/aarch64-apple-darwin/release/anti-pet-desktop"
+    elif [ -f "desktop/target/x86_64-apple-darwin/release/anti-pet-desktop" ]; then
+        BIN_PATH="desktop/target/x86_64-apple-darwin/release/anti-pet-desktop"
+    fi
+fi
+
+if [ ! -f "$BIN_PATH" ]; then
+    echo "Error: Binary not found at $BIN_PATH"
+    exit 1
+fi
+
+echo "Using binary: $BIN_PATH"
+cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/anti-pet-desktop"
 
 # 2. Copy Resources
 cp assets/icon.icns "$APP_DIR/Contents/Resources/"
