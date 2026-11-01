@@ -1,14 +1,15 @@
 /**
  * Anti-Pet Core Engine
- * - Pure Idle Sprite (All extra facial expressions, floating icons, and emojis removed)
- * - Dual-Ledge Gravity Physics: Lands on Mac Dock bar on desktop, drops to 0px bottom in Fullscreen
- * - Flush Left/Right Mac Screen Edge Bar Snapping (0px gap)
- * - Offscreen Canvas Pixel-Level Alpha Hit-Testing & Dynamic Click-Through
+ * - Cloud Thought Bubble ("小猫挂件在想的东西") with Dynamic Screen-Edge Clamping
+ * - Cursor-Anchored Right-Click Context Menu
+ * - Auto-Hide Thought Bubble when Cursor Leaves, Window Blurs, or User Types
+ * - Dual-Ledge Gravity Physics (Mac Dock Bar & 0px Fullscreen Bottom) + Side Edges
  */
 (function () {
   const container = document.getElementById('pet-container');
   const petFrame = document.getElementById('pet-frame');
   const speechBubble = document.getElementById('speech-bubble');
+  const bubbleCloud = document.getElementById('bubble-cloud');
   const bubbleText = document.getElementById('bubble-text');
   const quotaSection = document.getElementById('quota-section');
   const quota5hBar = document.getElementById('quota-5h');
@@ -27,7 +28,6 @@
 
   const ipc = window.DesktopIPC;
 
-  // Offscreen Canvas for Pixel-Level Alpha Hit-Testing
   const hitCanvas = document.createElement('canvas');
   const hitCtx = hitCanvas.getContext('2d', { willReadFrequently: true });
   let hitCanvasReady = false;
@@ -43,15 +43,16 @@
     dndPassthrough: false,
     ideOnlyMode: false,
     gravityEnabled: true,
-    // 'auto' (Dock on desktop, 0px bottom in fullscreen) | 'dock' (Mac Dock bar) | 'bottom' (0px screen bottom)
     floorMode: 'auto',
     dockBottom: 0,
     dockLeft: 0,
     dockRight: 0,
     hasReceivedDockInfo: false,
+    isHoveringPet: false,
+    isUserTyping: false,
     lastIdeActiveAt: Date.now(),
     facing: 'left',
-    dockedEdge: null, // 'left' | 'right' | null
+    dockedEdge: null,
     isDragging: false,
     dragStartX: 0,
     dragStartY: 0,
@@ -62,15 +63,14 @@
     gravityRaf: null,
     vy: 0,
     vx: 0,
-    // Petting / Head-rubbing gesture tracking
     rubLastX: null,
     rubLastDir: 0,
     rubCount: 0,
     rubResetTimer: null,
     lastPettingAt: 0,
-    // Timers & Audio
     stateTimer: null,
     bubbleHideTimer: null,
+    leaveHideTimer: null,
     audioContext: null,
     audioBuffers: {}
   };
@@ -100,6 +100,7 @@
     if (!state.hasMoved && !state.isDragging) {
       snapToCurrentFloor();
     }
+    adjustBubblePosition();
     syncHitRectsToDesktop();
   });
 
@@ -151,7 +152,7 @@
       return false;
     }
     if (isPointInElement(clientX, clientY, contextMenu)) return true;
-    if (isPointInElement(clientX, clientY, speechBubble)) return true;
+    if (isPointInElement(clientX, clientY, bubbleCloud || speechBubble)) return true;
     return isOpaquePixelOnCat(clientX, clientY);
   }
 
@@ -179,7 +180,7 @@
       });
 
       if (!speechBubble.classList.contains('hidden')) {
-        const bRect = speechBubble.getBoundingClientRect();
+        const bRect = (bubbleCloud || speechBubble).getBoundingClientRect();
         rects.push({
           x: bRect.left - 6,
           y: bRect.top - 6,
@@ -202,22 +203,101 @@
     ipc.updateHitRects(rects);
   }
 
-  [container, speechBubble, contextMenu, dndWakePill].forEach((el) => {
-    if (!el) return;
-    el.addEventListener('mouseenter', () => {
-      if (!state.dndPassthrough || el === dndWakePill) {
-        ipc.setIgnoreCursorEvents(false);
+  // =========================================================================
+  // 2. Dynamic Screen-Edge Clamping for Thought Bubble & Context Menu
+  // =========================================================================
+
+  /**
+   * Automatically shifts the cloud thought bubble horizontally & vertically
+   * when the cat is close to the left, right, or top edges of the screen.
+   */
+  function adjustBubblePosition() {
+    if (!speechBubble || speechBubble.classList.contains('hidden')) return;
+
+    const catRect = container.getBoundingClientRect();
+    const bubbleW = speechBubble.offsetWidth || 204;
+    const bubbleH = (bubbleCloud || speechBubble).offsetHeight || 96;
+    const screenMargin = 10;
+    const minLeft = state.dockLeft + screenMargin;
+    const maxRight = window.innerWidth - state.dockRight - screenMargin;
+
+    // Centered bubble left & right in viewport coordinates
+    const catCenterX = catRect.left + catRect.width * 0.5;
+    const idealLeft = catCenterX - bubbleW * 0.5;
+    const idealRight = catCenterX + bubbleW * 0.5;
+
+    let shiftX = 0;
+    if (idealRight > maxRight) {
+      shiftX = maxRight - idealRight;
+    } else if (idealLeft < minLeft) {
+      shiftX = minLeft - idealLeft;
+    }
+    document.documentElement.style.setProperty('--bubble-shift-x', `${Math.round(shiftX)}px`);
+
+    // Flip thought bubble below the cat if the cat is dragged too close to the top of the screen
+    if (catRect.top < bubbleH + 28) {
+      speechBubble.classList.add('flip-below');
+    } else {
+      speechBubble.classList.remove('flip-below');
+    }
+  }
+
+  function hideBubbleImmediately() {
+    if (state.bubbleHideTimer) {
+      clearTimeout(state.bubbleHideTimer);
+      state.bubbleHideTimer = null;
+    }
+    if (state.leaveHideTimer) {
+      clearTimeout(state.leaveHideTimer);
+      state.leaveHideTimer = null;
+    }
+    if (!speechBubble.classList.contains('hidden')) {
+      speechBubble.classList.add('hidden');
+      syncHitRectsToDesktop();
+    }
+  }
+
+  function closeContextMenu() {
+    if (!contextMenu.classList.contains('hidden')) {
+      contextMenu.classList.add('hidden');
+      syncHitRectsToDesktop();
+    }
+  }
+
+  function handleHoverChange(isHovering) {
+    if (state.isHoveringPet === isHovering) return;
+    state.isHoveringPet = isHovering;
+
+    if (isHovering) {
+      if (state.leaveHideTimer) {
+        clearTimeout(state.leaveHideTimer);
+        state.leaveHideTimer = null;
       }
-    });
-    el.addEventListener('mouseleave', (e) => {
-      if (state.isDragging) return;
-      const stillOver = evaluateInteractiveHit(e.clientX, e.clientY);
-      ipc.setIgnoreCursorEvents(!stillOver);
-    });
+    } else {
+      // Cursor left the pet & bubble: close context menu and fade out thought bubble shortly after
+      if (state.leaveHideTimer) clearTimeout(state.leaveHideTimer);
+      state.leaveHideTimer = setTimeout(() => {
+        if (!state.isHoveringPet && !state.isDragging) {
+          closeContextMenu();
+          hideBubbleImmediately();
+        }
+      }, 950);
+    }
+  }
+
+  // Window blur (user clicked into IDE / browser / another app)
+  window.__antiPetOnWindowBlur = function () {
+    closeContextMenu();
+    hideBubbleImmediately();
+  };
+
+  window.addEventListener('blur', () => {
+    closeContextMenu();
+    hideBubbleImmediately();
   });
 
   // =========================================================================
-  // 2. Cursor Gaze Tracking & Head-Rubbing Petting Gesture
+  // 3. Cursor Gaze Tracking & Petting Gesture
   // =========================================================================
 
   function updateCursorGaze(clientX, clientY) {
@@ -293,8 +373,23 @@
     setState('petting', petLine, 2400);
   }
 
-  // Global hook called by Rust 40Hz cursor & Mac Dock tracker
-  window.__antiPetOnGlobalCursor = function (localX, localY, dockBottom, dockLeft, dockRight) {
+  // Global hook called by Rust 40Hz cursor, Mac Dock & typing tracker
+  window.__antiPetOnGlobalCursor = function (
+    localX,
+    localY,
+    dockBottom,
+    dockLeft,
+    dockRight,
+    isTyping
+  ) {
+    if (typeof isTyping === 'boolean') {
+      state.isUserTyping = isTyping;
+      if (isTyping && !state.isHoveringPet && !state.isDragging) {
+        closeContextMenu();
+        hideBubbleImmediately();
+      }
+    }
+
     if (typeof dockBottom === 'number') {
       const prevBottom = state.dockBottom;
       const prevLeft = state.dockLeft;
@@ -303,8 +398,6 @@
       state.dockLeft = Math.max(0, dockLeft || 0);
       state.dockRight = Math.max(0, dockRight || 0);
 
-      // When transitioning between Desktop (Dock visible) and Fullscreen (dockBottom == 0),
-      // automatically drop or adjust the pet to the new floor!
       if (
         !state.isDragging &&
         !state.dockedEdge &&
@@ -321,13 +414,24 @@
 
     updateCursorGaze(localX, localY);
     const shouldIntercept = evaluateInteractiveHit(localX, localY);
+    handleHoverChange(shouldIntercept);
     ipc.setIgnoreCursorEvents(!shouldIntercept);
+
+    // If context menu is open and cursor moved far away from both menu and cat, close it
+    if (
+      !contextMenu.classList.contains('hidden') &&
+      !isPointInElement(localX, localY, contextMenu) &&
+      !isOpaquePixelOnCat(localX, localY)
+    ) {
+      closeContextMenu();
+    }
   };
 
   window.addEventListener('pointermove', (e) => {
     updateCursorGaze(e.clientX, e.clientY);
     if (!state.isDragging) {
       const shouldIntercept = evaluateInteractiveHit(e.clientX, e.clientY);
+      handleHoverChange(shouldIntercept);
       ipc.setIgnoreCursorEvents(!shouldIntercept);
       if (shouldIntercept) {
         detectHeadRubGesture(e.clientX, e.clientY);
@@ -336,7 +440,7 @@
   });
 
   // =========================================================================
-  // 3. Audio System
+  // 4. Audio System
   // =========================================================================
 
   function initAudio() {
@@ -442,7 +546,7 @@
   }
 
   // =========================================================================
-  // 4. Skin Loading, Pure Idle Frame State Machine & Dialogue System
+  // 5. Skin Loading, State Machine & Thought Cloud Bubble
   // =========================================================================
 
   async function fetchAvailableSkins() {
@@ -477,12 +581,11 @@
         }
       }
 
-      // Always keep the single clean idle.png sprite (no expression frame switching)
       const idlePath = state.skinConfig.frames?.idle || 'frames/idle.png';
       petFrame.src = `/skins/${state.skinId}/${idlePath}`;
 
       setState('idle');
-      showBubble(getRandomDialogue('idle'), 4500);
+      showBubble(getRandomDialogue('idle'), 3200);
     } catch (err) {
       console.error('[Pet] Error loading skin:', err);
     }
@@ -510,8 +613,9 @@
     container.className = classes.join(' ');
 
     const displayMsg = text || cfg.bubbleText;
-    if (displayMsg) {
-      showBubble(displayMsg, durationMs || 4200);
+    // Do not interrupt with ambient bubbles if the user is actively typing
+    if (displayMsg && (!state.isUserTyping || state.isHoveringPet || newState === 'error')) {
+      showBubble(displayMsg, durationMs || 3200);
     }
 
     const autoRevertTime = durationMs || cfg.durationMs;
@@ -533,9 +637,10 @@
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
-  function showBubble(text, ttlMs = 4200) {
+  function showBubble(text, ttlMs = 3200) {
     bubbleText.textContent = text;
     speechBubble.classList.remove('hidden');
+    adjustBubblePosition();
     syncHitRectsToDesktop();
 
     if (state.bubbleHideTimer) {
@@ -545,7 +650,7 @@
 
     if (ttlMs > 0) {
       state.bubbleHideTimer = setTimeout(() => {
-        if (state.currentState === 'idle' && quotaSection.style.display === 'none') {
+        if (!state.isHoveringPet && !state.isDragging) {
           speechBubble.classList.add('hidden');
           syncHitRectsToDesktop();
         }
@@ -554,7 +659,7 @@
   }
 
   // =========================================================================
-  // 5. Dual-Ledge Gravity Drop (Mac Dock Bar & 0px Fullscreen Bottom) + Side Edges
+  // 6. Dual-Ledge Gravity Drop & Adaptive Screen-Edge Snapping
   // =========================================================================
 
   function cancelGravityAnimation() {
@@ -564,18 +669,10 @@
     }
   }
 
-  /**
-   * Compute exact target floor Y coordinate (top of container):
-   * - In Fullscreen (dockBottom == 0) or 'bottom' mode: exact 0px bottom (`window.innerHeight - container.offsetHeight`)
-   * - On Desktop with Mac Dock visible (`dockBottom > 0`):
-   *   - In 'dock' mode: lands on top of Mac Dock (`window.innerHeight - container.offsetHeight - dockBottom`)
-   *   - In 'auto' mode: if dropped above the Dock top edge, lands on top of the Mac Dock bar;
-   *     if dragged below the Dock top line (into the bottom strip), drops all the way to 0px screen bottom!
-   */
   function computeTargetFloorY(currentRect = null) {
     const winH = window.innerHeight;
     const petH = container.offsetHeight || 136;
-    const trueBottomY = winH - petH; // 0px from bottom of screen
+    const trueBottomY = winH - petH;
     const dockLedgeY = Math.max(0, winH - petH - state.dockBottom);
 
     if (state.floorMode === 'bottom' || state.dockBottom <= 1.5) {
@@ -584,8 +681,6 @@
     if (state.floorMode === 'dock') {
       return dockLedgeY;
     }
-    // 'auto' mode: if user dragged the pet below the Dock top line, let it drop to 0px screen bottom;
-    // otherwise land cleanly on the Mac Dock bar!
     if (currentRect && currentRect.top > dockLedgeY + 18) {
       return trueBottomY;
     }
@@ -603,6 +698,7 @@
     container.style.top = `${targetY}px`;
     container.style.bottom = 'auto';
     container.style.right = 'auto';
+    adjustBubblePosition();
     syncHitRectsToDesktop();
   }
 
@@ -617,19 +713,19 @@
     const edgeSnapThreshold = 36;
     const targetFloor = computeTargetFloorY(rect);
 
-    // 1. Check Left / Right Mac Screen Edge Bar Cling (if released near left/right side above floor)
     if (!silent && rect.left <= leftBound + edgeSnapThreshold && rect.top < targetFloor - 28) {
       state.dockedEdge = 'left';
       state.facing = 'right';
       container.style.left = `${leftBound}px`;
-      container.style.top = `${Math.max(0, Math.min(rect.top, targetFloor))}px`;
+      container.style.top = `${Math.max(8, Math.min(rect.top, targetFloor))}px`;
       container.style.bottom = 'auto';
       container.style.right = 'auto';
       container.classList.remove('facing-left', 'docked-right');
       container.classList.add('facing-right', 'docked-left');
       playSoftBumpSound();
       setState('idle');
-      showBubble('贴在左边栏观察你写代码~', 3200);
+      showBubble('贴在左边栏观察你写代码~', 2800);
+      adjustBubblePosition();
       syncHitRectsToDesktop();
       return;
     }
@@ -638,14 +734,15 @@
       state.dockedEdge = 'right';
       state.facing = 'left';
       container.style.left = `${rightBound}px`;
-      container.style.top = `${Math.max(0, Math.min(rect.top, targetFloor))}px`;
+      container.style.top = `${Math.max(8, Math.min(rect.top, targetFloor))}px`;
       container.style.bottom = 'auto';
       container.style.right = 'auto';
       container.classList.remove('facing-right', 'docked-left');
       container.classList.add('facing-left', 'docked-right');
       playSoftBumpSound();
       setState('idle');
-      showBubble('贴在右边栏偷看你，不许写 Bug 哦！', 3200);
+      showBubble('贴在右边栏偷看你，不许写 Bug 哦！', 2800);
+      adjustBubblePosition();
       syncHitRectsToDesktop();
       return;
     }
@@ -653,7 +750,7 @@
     state.dockedEdge = null;
     container.classList.remove('docked-left', 'docked-right');
 
-    // Snap X flush to left/right edge if dropped near the bottom corners
+    // Automatically adjust X near screen edges so pet & bubble sit cleanly inside bounds
     let curX = rect.left;
     if (curX <= leftBound + edgeSnapThreshold) {
       curX = leftBound;
@@ -663,7 +760,6 @@
       curX = Math.max(leftBound, Math.min(curX, rightBound));
     }
 
-    // 2. If Gravity Snapping is disabled, stay in place
     if (!state.gravityEnabled) {
       const clampedY = Math.max(0, Math.min(rect.top, window.innerHeight - container.offsetHeight));
       container.style.left = `${curX}px`;
@@ -674,11 +770,11 @@
         playSound('release');
         setState('rebound', getRandomDialogue('release'), 500);
       }
+      adjustBubblePosition();
       syncHitRectsToDesktop();
       return;
     }
 
-    // If already at or below target floor, snap flush immediately
     if (rect.top >= targetFloor - 2) {
       container.style.left = `${curX}px`;
       container.style.top = `${targetFloor}px`;
@@ -688,11 +784,11 @@
         playSound('release');
         setState('rebound', getRandomDialogue('release'), 500);
       }
+      adjustBubblePosition();
       syncHitRectsToDesktop();
       return;
     }
 
-    // 3. Gravity Drop & Elastic Bounce onto Target Floor (Mac Dock Bar or 0px Screen Bottom)
     let curY = rect.top;
     let vy = 0;
     let vx = silent ? 0 : state.vx * 0.35;
@@ -726,6 +822,7 @@
           container.style.right = 'auto';
           state.gravityRaf = null;
           if (!silent) playSound('release');
+          adjustBubblePosition();
           syncHitRectsToDesktop();
           return;
         }
@@ -735,6 +832,7 @@
       container.style.top = `${curY}px`;
       container.style.bottom = 'auto';
       container.style.right = 'auto';
+      adjustBubblePosition();
       state.gravityRaf = requestAnimationFrame(stepGravity);
     }
 
@@ -745,6 +843,7 @@
     if (e.button === 2 || state.dndPassthrough) return;
     if (e.target.closest('#speech-bubble')) return;
 
+    closeContextMenu();
     initAudio();
     cancelGravityAnimation();
 
@@ -806,7 +905,6 @@
       }
     }
 
-    // Zero-gap viewport clamping (0px on all edges so it can touch bottom and side edges flush)
     let newX = state.petInitialX + dx;
     let newY = state.petInitialY + dy;
 
@@ -819,6 +917,7 @@
     container.style.top = `${newY}px`;
     container.style.bottom = 'auto';
     container.style.right = 'auto';
+    adjustBubblePosition();
   });
 
   window.addEventListener('pointerup', () => {
@@ -831,7 +930,7 @@
     if (!state.hasMoved) {
       playSound('clickRelease');
       setState('rebound', null, 500);
-      showBubble(getRandomDialogue('idle'), 4200);
+      showBubble(getRandomDialogue('idle'), 3200);
       syncHitRectsToDesktop();
     } else {
       startReleasePhysics(false);
@@ -842,11 +941,11 @@
     e.stopPropagation();
     initAudio();
     playSound('clickPress');
-    showBubble(getRandomDialogue('idle'), 4200);
+    showBubble(getRandomDialogue('idle'), 3200);
   });
 
   // =========================================================================
-  // 6. Quota Updater & Mode Controls
+  // 7. Quota Updater, Cursor-Anchored Context Menu & Mode Controls
   // =========================================================================
 
   function updateQuota(fiveHourPct, weekPct, metaText = null) {
@@ -864,6 +963,7 @@
     if (metaText && quotaMeta) {
       quotaMeta.textContent = metaText;
     }
+    adjustBubblePosition();
   }
 
   function cycleFloorMode() {
@@ -884,12 +984,12 @@
     if (dndStatus) dndStatus.textContent = state.dndPassthrough ? '开启' : '关闭';
     container.classList.toggle('dnd-ghost', state.dndPassthrough);
     dndWakePill.classList.toggle('hidden', !state.dndPassthrough);
-    contextMenu.classList.add('hidden');
+    closeContextMenu();
 
     if (state.dndPassthrough) {
-      showBubble('已开启完全穿透免打扰，点击右下角唤醒按钮恢复~', 2600);
+      showBubble('已开启完全穿透免打扰，点击右下角按钮即可唤醒~', 2200);
     } else {
-      showBubble('本喵回来啦！', 3000);
+      showBubble('本喵回来啦！', 2600);
     }
     setTimeout(syncHitRectsToDesktop, 50);
   }
@@ -901,7 +1001,7 @@
     container.classList.remove('ide-hidden');
     showBubble(
       state.ideOnlyMode ? '已开启仅 IDE 活跃时显示~' : '已恢复常驻桌面陪伴~',
-      3000
+      2600
     );
     syncHitRectsToDesktop();
   }
@@ -914,9 +1014,9 @@
       const idx = state.availableSkins.findIndex((s) => s.id === state.skinId);
       const nextSkin = state.availableSkins[(idx + 1) % state.availableSkins.length];
       await loadSkin(nextSkin.id);
-      showBubble(`已切换至皮肤：${nextSkin.name || nextSkin.id}`, 3200);
+      showBubble(`已切换至皮肤：${nextSkin.name || nextSkin.id}`, 2800);
     } else {
-      showBubble('当前皮肤：大肥猫', 3000);
+      showBubble('当前皮肤：大肥猫', 2600);
     }
   }
 
@@ -931,25 +1031,54 @@
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
       e.preventDefault();
       toggleDndPassthrough();
+      return;
     }
+    // Hide bubble & menu immediately when user presses Escape or types
+    closeContextMenu();
+    hideBubbleImmediately();
   });
 
+  /**
+   * Open the right-click context menu anchored directly at the mouse cursor (e.clientX, e.clientY).
+   * Automatically flips upward/leftward when near screen edges or Mac Dock so it is never cut off.
+   */
   container.addEventListener('contextmenu', (e) => {
     e.preventDefault();
+    e.stopPropagation();
     if (state.dndPassthrough) return;
-    const menuW = 200;
-    const menuH = 290;
-    contextMenu.style.left = `${Math.max(8, Math.min(window.innerWidth - menuW, e.clientX))}px`;
-    contextMenu.style.top = `${Math.max(8, Math.min(window.innerHeight - menuH, e.clientY))}px`;
+
+    // Make visible first so offsetWidth and offsetHeight are accurately measured
     contextMenu.classList.remove('hidden');
+    const menuW = contextMenu.offsetWidth || 196;
+    const menuH = contextMenu.offsetHeight || 275;
+
+    const minX = state.dockLeft + 8;
+    const maxX = window.innerWidth - state.dockRight - menuW - 8;
+    const minY = 8;
+    const maxY = window.innerHeight - state.dockBottom - menuH - 8;
+
+    // Anchor at cursor; flip left if overflowing right edge, flip up if overflowing bottom/Dock edge
+    let x = e.clientX;
+    let y = e.clientY;
+    if (x + menuW > window.innerWidth - state.dockRight - 8) {
+      x = e.clientX - menuW;
+    }
+    if (y + menuH > window.innerHeight - state.dockBottom - 8) {
+      y = e.clientY - menuH;
+    }
+
+    x = Math.max(minX, Math.min(x, maxX));
+    y = Math.max(minY, Math.min(y, maxY));
+
+    contextMenu.style.left = `${Math.round(x)}px`;
+    contextMenu.style.top = `${Math.round(y)}px`;
     ipc.setIgnoreCursorEvents(false);
     syncHitRectsToDesktop();
   });
 
-  document.addEventListener('click', (e) => {
+  document.addEventListener('pointerdown', (e) => {
     if (!contextMenu.classList.contains('hidden') && !contextMenu.contains(e.target)) {
-      contextMenu.classList.add('hidden');
-      syncHitRectsToDesktop();
+      closeContextMenu();
     }
   });
 
@@ -961,11 +1090,11 @@
     switch (action) {
       case 'toggle-quota':
         quotaSection.style.display = quotaSection.style.display === 'none' ? 'flex' : 'none';
-        speechBubble.classList.remove('hidden');
+        showBubble(bubbleText.textContent || getRandomDialogue('idle'), 3500);
         break;
       case 'random-dialogue':
         playSound('clickPress');
-        showBubble(getRandomDialogue('idle'), 4200);
+        showBubble(getRandomDialogue('idle'), 3200);
         break;
       case 'pet-action':
         triggerPettingAction();
@@ -994,12 +1123,11 @@
       case 'close-menu':
         break;
     }
-    contextMenu.classList.add('hidden');
-    syncHitRectsToDesktop();
+    closeContextMenu();
   });
 
   // =========================================================================
-  // 7. Connect to Antigravity IDE Telemetry
+  // 8. Connect to Antigravity IDE Telemetry
   // =========================================================================
 
   const bridge = new window.PetBridge({
@@ -1017,7 +1145,7 @@
             : null;
         const msg =
           event.bubbleText || (linePoolKey ? getRandomDialogue(linePoolKey) : null);
-        setState(event.state, msg, event.durationMs);
+        setState(event.state, msg, event.durationMs || 3000);
       }
       if (event.quota) {
         updateQuota(event.quota.fiveHour, event.quota.weekly, event.quota.meta);
@@ -1041,14 +1169,21 @@
   });
   bridge.start();
 
+  // Periodic check for IDE-only visibility; only show idle thought bubble if user is hovering the pet
   setInterval(() => {
     if (state.ideOnlyMode && Date.now() - state.lastIdeActiveAt > 120000) {
       container.classList.add('ide-hidden');
       syncHitRectsToDesktop();
       return;
     }
-    if (state.currentState === 'idle' && !state.isDragging && !state.dndPassthrough) {
-      showBubble(getRandomDialogue('idle'), 4500);
+    if (
+      state.currentState === 'idle' &&
+      state.isHoveringPet &&
+      !state.isDragging &&
+      !state.dndPassthrough &&
+      !state.isUserTyping
+    ) {
+      showBubble(getRandomDialogue('idle'), 3500);
     }
   }, 45000);
 
@@ -1056,6 +1191,7 @@
     if (!state.isDragging && !state.dockedEdge) {
       snapToCurrentFloor();
     } else {
+      adjustBubblePosition();
       syncHitRectsToDesktop();
     }
   });

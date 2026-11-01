@@ -83,6 +83,19 @@ mod macos_native {
         fn objc_msgSend();
         #[cfg(target_arch = "x86_64")]
         fn objc_msgSend_stret();
+        // CoreGraphics global keyboard idle timer (no Accessibility permission required)
+        fn CGEventSourceSecondsSinceLastEventType(state_id: i32, event_type: u32) -> f64;
+    }
+
+    /// Returns true if the user pressed or released a key anywhere in macOS within the last 1.2s
+    pub fn is_user_typing_globally() -> bool {
+        unsafe {
+            // state_id = 0 (kCGEventSourceStateCombinedSessionState)
+            // event_type = 10 (kCGEventKeyDown), 11 (kCGEventKeyUp)
+            let down_secs = CGEventSourceSecondsSinceLastEventType(0, 10);
+            let up_secs = CGEventSourceSecondsSinceLastEventType(0, 11);
+            (down_secs >= 0.0 && down_secs < 1.2) || (up_secs >= 0.0 && up_secs < 1.2)
+        }
     }
 
     unsafe fn sel(name: &[u8]) -> *mut c_void {
@@ -115,19 +128,15 @@ mod macos_native {
             return DockInsets::default();
         }
         unsafe {
-            // 1. Set window level to NSStatusWindowLevel (25) so it floats above Dock (20) and fullscreen apps
             let set_level: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) =
                 std::mem::transmute(objc_msgSend as *const ());
             set_level(ns_window, sel(b"setLevel:\0"), 25);
 
-            // 2. Set collectionBehavior:
-            // CanJoinAllSpaces (1<<0) | Stationary (1<<4) | IgnoresCycle (1<<6) | FullScreenAuxiliary (1<<8)
             let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
             let set_behavior: unsafe extern "C" fn(*mut c_void, *mut c_void, usize) =
                 std::mem::transmute(objc_msgSend as *const ());
             set_behavior(ns_window, sel(b"setCollectionBehavior:\0"), behavior);
 
-            // 3. Get the NSScreen for this window (fallback to [NSScreen mainScreen])
             let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
                 std::mem::transmute(objc_msgSend as *const ());
             let mut screen = msg_ptr(ns_window, sel(b"screen\0"));
@@ -144,7 +153,6 @@ mod macos_native {
             let full_frame = msg_send_rect(screen, sel(b"frame\0"));
             let vis_frame = msg_send_rect(screen, sel(b"visibleFrame\0"));
 
-            // 4. Force the NSWindow frame to cover the exact full screen (including y = 0 bottom edge)
             if enforce_frame && full_frame.size.width > 100.0 && full_frame.size.height > 100.0 {
                 let cur_frame = msg_send_rect(ns_window, sel(b"frame\0"));
                 if (cur_frame.origin.x - full_frame.origin.x).abs() > 0.5
@@ -158,7 +166,6 @@ mod macos_native {
                 }
             }
 
-            // 5. Check if macOS presentation options indicate FullScreen or hidden Dock
             let app_cls = objc_getClass(b"NSApplication\0".as_ptr());
             let mut is_fullscreen_space = false;
             if !app_cls.is_null() {
@@ -168,14 +175,12 @@ mod macos_native {
                         std::mem::transmute(objc_msgSend as *const ());
                     let pres_opts =
                         msg_usize(shared_app, sel(b"currentSystemPresentationOptions\0"));
-                    // AutoHideDock (1<<0) | HideDock (1<<1) | FullScreen (1<<10)
                     if (pres_opts & ((1 << 0) | (1 << 1) | (1 << 10))) != 0 {
                         is_fullscreen_space = true;
                     }
                 }
             }
 
-            // Also detect if menu bar is hidden (vis_frame top equals full_frame top), which happens in Fullscreen Spaces
             let top_menu_inset = (full_frame.origin.y + full_frame.size.height)
                 - (vis_frame.origin.y + vis_frame.size.height);
             if top_menu_inset < 1.0 {
@@ -338,6 +343,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut last_cursor_phys = PhysicalPosition::new(-1.0, -1.0);
     let mut tick_counter: u32 = 0;
     let mut last_dock_sig = (-1.0_f64, -1.0_f64, -1.0_f64);
+    let mut last_typing_state = false;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -353,6 +359,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         true,
                     );
                 }
+            }
+            Event::WindowEvent {
+                event: WindowEvent::Focused(false),
+                ..
+            } => {
+                let _ = webview.evaluate_script(
+                    "if(window.__antiPetOnWindowBlur)window.__antiPetOnWindowBlur();",
+                );
             }
             Event::UserEvent(user_evt) => match user_evt {
                 UserEvent::SetIgnoreCursorEvents(ignore) => {
@@ -407,8 +421,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         window.ns_window(),
                         tick_counter % 20 == 0,
                     );
+                    #[cfg(target_os = "macos")]
+                    let is_typing = macos_native::is_user_typing_globally();
+
                     #[cfg(not(target_os = "macos"))]
                     let dock = (0.0_f64, 0.0_f64, 0.0_f64);
+                    #[cfg(not(target_os = "macos"))]
+                    let is_typing = false;
 
                     #[cfg(target_os = "macos")]
                     let dock_tuple = (dock.bottom, dock.left, dock.right);
@@ -459,13 +478,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let dock_changed = (dock_tuple.0 - last_dock_sig.0).abs() > 0.5
                             || (dock_tuple.1 - last_dock_sig.1).abs() > 0.5
                             || (dock_tuple.2 - last_dock_sig.2).abs() > 0.5;
+                        let typing_changed = is_typing != last_typing_state;
 
-                        if cursor_moved || dock_changed {
+                        if cursor_moved || dock_changed || typing_changed {
                             last_cursor_phys = cursor_phys;
                             last_dock_sig = dock_tuple;
+                            last_typing_state = is_typing;
                             let js = format!(
-                                "if(window.__antiPetOnGlobalCursor)window.__antiPetOnGlobalCursor({:.1},{:.1},{:.1},{:.1},{:.1});",
-                                local_x, local_y, dock_tuple.0, dock_tuple.1, dock_tuple.2
+                                "if(window.__antiPetOnGlobalCursor)window.__antiPetOnGlobalCursor({:.1},{:.1},{:.1},{:.1},{:.1},{});",
+                                local_x,
+                                local_y,
+                                dock_tuple.0,
+                                dock_tuple.1,
+                                dock_tuple.2,
+                                if is_typing { "true" } else { "false" }
                             );
                             let _ = webview.evaluate_script(&js);
                         }
