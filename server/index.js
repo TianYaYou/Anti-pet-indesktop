@@ -306,6 +306,15 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify(quota));
   }
 
+  
+  // 8. Shutdown: /api/shutdown
+  if (pathname === '/api/shutdown') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, message: 'Server shutting down' }));
+    setTimeout(() => process.exit(0), 100);
+    return;
+  }
+
   // 7. List Skins: /api/skins
   if (pathname === '/api/skins') {
     const skinsDir = path.join(ROOT_DIR, 'skins');
@@ -365,6 +374,17 @@ const server = http.createServer(async (req, res) => {
 
     fs.createReadStream(filePath).pipe(res);
   });
+});
+
+
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.log('[Anti-Pet] 端口 ' + PORT + ' 已有运行中的旧服务实例在监听');
+    process.exit(0);
+  } else {
+    console.error('[Anti-Pet] 服务异常:', err);
+    process.exit(1);
+  }
 });
 
 server.listen(PORT, '127.0.0.1', () => {
