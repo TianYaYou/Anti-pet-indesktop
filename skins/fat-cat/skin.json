@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "id": "fat-cat",
+  "name": "大肥猫 · 星语伴侣",
+  "version": "1.0.0",
+  "author": "Antigravity Pet Studio",
+  "description": "可爱傲娇的半身大肥猫桌宠，支持按压回弹、状态表情联动、额度监控与互动台词",
+  "render": {
+    "defaultWidth": 200,
+    "minWidth": 120,
+    "maxWidth": 340,
+    "motionPaddingPx": 16,
+    "facingTransitionMs": 240
+  },
+  "frames": {
+    "idle": "frames/idle.png",
+    "blink": "frames/blink.png",
+    "proud": "frames/proud.png",
+    "sad": "frames/sad.png"
+  },
+  "states": {
+    "idle": {
+      "frame": "idle",
+      "motion": "breath",
+      "loop": true
+    },
+    "thinking": {
+      "frame": "idle",
+      "motion": "ponder",
+      "effect": "ui/thinking-dots.svg",
+      "bubbleText": "本喵正在高速运转脑回路...",
+      "loop": true
+    },
+    "working": {
+      "frame": "proud",
+      "motion": "working",
+      "effect": "ui/sparkle.svg",
+      "bubbleText": "正在执行工具任务，瞧好吧！",
+      "loop": true
+    },
+    "success": {
+      "frame": "proud",
+      "motion": "duang",
+      "effect": "ui/sparkle.svg",
+      "bubbleText": "搞定啦！本喵厉害吧~",
+      "durationMs": 3500,
+      "loop": false
+    },
+    "error": {
+      "frame": "sad",
+      "motion": "worry",
+      "effect": "ui/teardrop.svg",
+      "bubbleText": "呜... 好像遇到报错了...",
+      "durationMs": 4000,
+      "loop": false
+    },
+    "pressed": {
+      "frame": "idle",
+      "motion": "compress",
+      "loop": false
+    },
+    "dragging": {
+      "frame": "idle",
+      "motion": "held",
+      "loop": false
+    },
+    "petting": {
+      "frame": "proud",
+      "motion": "nuzzle",
+      "effect": "ui/heart.svg",
+      "bubbleText": "哼，勉为其难让你摸摸耳朵~",
+      "durationMs": 2000,
+      "loop": false
+    }
+  },
+  "audio": {
+    "press": "audio/pop-press.wav",
+    "release": "audio/pop-release.wav",
+    "clickPress": "audio/click-press.wav",
+    "clickRelease": "audio/click-release.wav"
+  },
+  "dialogue": "dialogue.json",
+  "ui": {
+    "thoughtSpeech": "ui/thought-speech.svg",
+    "thoughtQuota": "ui/thought-quota.svg",
+    "thoughtCost": "ui/thought-cost.svg"
+  }
+}

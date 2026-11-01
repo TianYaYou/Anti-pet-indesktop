@@ -1,0 +1,51 @@
+{
+  "anti-pet-monitor": {
+    "enabled": true,
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node server/hook-handler.js SessionStart"
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node server/hook-handler.js PreInvocation"
+      }
+    ],
+    "PostInvocation": [
+      {
+        "type": "command",
+        "command": "node server/hook-handler.js PostInvocation"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node server/hook-handler.js PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node server/hook-handler.js PostToolUse"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "node server/hook-handler.js Stop"
+      }
+    ]
+  }
+}

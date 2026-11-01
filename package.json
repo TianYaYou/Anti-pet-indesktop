@@ -1,0 +1,23 @@
+{
+  "name": "anti-pet-indesktop",
+  "version": "0.1.0",
+  "description": "Cross-platform lightweight desktop & in-IDE pet companion for Antigravity (Mac & Windows)",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js --dev",
+    "desktop": "cargo run --manifest-path desktop/Cargo.toml",
+    "desktop:build": "cargo build --release --manifest-path desktop/Cargo.toml"
+  },
+  "keywords": [
+    "antigravity",
+    "desktop-pet",
+    "shimeji",
+    "companion",
+    "gemini",
+    "mac",
+    "windows"
+  ],
+  "author": "Antigravity Pet Team",
+  "license": "MIT"
+}
