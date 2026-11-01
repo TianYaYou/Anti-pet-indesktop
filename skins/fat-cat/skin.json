@@ -1,22 +1,19 @@
 {
   "schemaVersion": 1,
   "id": "fat-cat",
-  "name": "大肥猫 · 星语伴侣",
-  "version": "1.1.0",
+  "name": "大肥猫",
+  "version": "1.3.0",
   "author": "Antigravity Pet Studio",
-  "description": "可爱傲娇的半身大肥猫桌宠，支持透明穿透、像素级碰撞、按压回弹、摸头呼噜、重力吸附、状态表情联动与双周期额度监控",
+  "description": "简洁半身大肥猫桌宠，支持透明穿透、按压回弹、物理重力落底、Mac边栏贴合与双周期额度监控",
   "render": {
-    "defaultWidth": 200,
-    "minWidth": 120,
-    "maxWidth": 340,
-    "motionPaddingPx": 16,
-    "facingTransitionMs": 240
+    "defaultWidth": 136,
+    "minWidth": 100,
+    "maxWidth": 200,
+    "motionPaddingPx": 0,
+    "facingTransitionMs": 220
   },
   "frames": {
-    "idle": "frames/idle.png",
-    "blink": "frames/blink.png",
-    "proud": "frames/proud.png",
-    "sad": "frames/sad.png"
+    "idle": "frames/idle.png"
   },
   "states": {
     "idle": {
@@ -27,55 +24,50 @@
     "thinking": {
       "frame": "idle",
       "motion": "ponder",
-      "effect": "ui/thinking-dots.svg",
       "bubbleText": "本喵正在高速运转脑回路...",
       "loop": true
     },
     "working": {
-      "frame": "proud",
+      "frame": "idle",
       "motion": "working",
-      "effect": "ui/sparkle.svg",
       "bubbleText": "正在执行工具任务，瞧好吧！",
       "loop": true
     },
     "success": {
-      "frame": "proud",
+      "frame": "idle",
       "motion": "duang",
-      "effect": "ui/sparkle.svg",
       "bubbleText": "搞定啦！本喵厉害吧~",
-      "durationMs": 3500,
+      "durationMs": 3200,
       "loop": false
     },
     "error": {
-      "frame": "sad",
+      "frame": "idle",
       "motion": "worry",
-      "effect": "ui/teardrop.svg",
-      "bubbleText": "呜... 好像遇到报错了...",
-      "durationMs": 4000,
+      "bubbleText": "好像遇到报错了，陪你一起排查。",
+      "durationMs": 3800,
       "loop": false
     },
     "pressed": {
-      "frame": "blink",
+      "frame": "idle",
       "motion": "compress",
       "loop": false
     },
     "rebound": {
-      "frame": "proud",
+      "frame": "idle",
       "motion": "duang",
-      "durationMs": 520,
+      "durationMs": 500,
       "loop": false
     },
     "dragging": {
-      "frame": "blink",
+      "frame": "idle",
       "motion": "held",
       "loop": false
     },
     "petting": {
-      "frame": "blink",
+      "frame": "idle",
       "motion": "nuzzle",
-      "effect": "ui/heart.svg",
       "bubbleText": "哼，勉为其难让你摸摸耳朵~",
-      "durationMs": 2600,
+      "durationMs": 2400,
       "loop": false
     }
   },

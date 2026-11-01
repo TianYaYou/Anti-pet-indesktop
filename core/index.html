@@ -3,30 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>大肥猫 · Antigravity 伴侣桌宠</title>
-  <link rel="stylesheet" href="pet.css">
+  <title>大肥猫 · Antigravity 桌宠</title>
+  <link rel="stylesheet" href="/core/pet.css">
 </head>
 <body class="pet-body">
-  <!-- Floating DND Wake Pill (Shown when full passthrough DND mode is active) -->
+  <!-- Floating DND Wake Pill -->
   <div id="dnd-wake-pill" class="dnd-wake-pill hidden" title="点击或按 Cmd/Ctrl+Shift+P 唤醒大肥猫">
-    <span class="wake-icon">🐾</span>
     <span class="wake-text">穿透免打扰中 · 点击唤醒</span>
   </div>
 
   <div id="pet-container" class="pet-container facing-left state-idle">
-    <!-- Floating Effects (Sparkles / Hearts / Tears / Thinking Dots / Wrench) -->
-    <div id="effect-layer" class="effect-layer"></div>
-
-    <!-- Particle Burst Layer (Petting Hearts / Celebration Stars) -->
-    <div id="particle-layer" class="particle-layer"></div>
-
     <!-- Speech / Quota Bubble -->
     <div id="speech-bubble" class="speech-bubble hidden">
       <div class="bubble-content">
         <div id="bubble-text" class="bubble-text">喵~ 今天也要认真写代码哦！</div>
 
         <!-- Quota Section (Toggleable) -->
-        <div id="quota-section" class="quota-section">
+        <div id="quota-section" class="quota-section" style="display: none;">
           <div class="quota-bar-row">
             <span class="quota-label">5h 额度</span>
             <div class="quota-bar-track">
@@ -47,40 +40,41 @@
       <div class="bubble-tail"></div>
     </div>
 
-    <!-- Pet Sprite Presentation -->
+    <!-- Pet Sprite Presentation (Zero bottom padding/badge so it sits 100% flush with screen/Dock edge) -->
     <div id="sprite-wrapper" class="sprite-wrapper">
-      <img id="pet-frame" class="pet-frame" src="../skins/fat-cat/frames/idle.png" alt="大肥猫" draggable="false" crossorigin="anonymous">
-      <!-- Tool Wrench Overlay for IDE PreToolUse -->
-      <div id="tool-wrench" class="tool-wrench hidden" aria-hidden="true">🔧</div>
-      <div id="pet-shadow" class="pet-shadow"></div>
-    </div>
-
-    <!-- Status Badge (Thinking / Working / Done / Error indicator) -->
-    <div id="status-badge" class="status-badge idle">
-      <span class="badge-dot"></span>
-      <span id="badge-label" class="badge-label">待命中</span>
+      <img
+        id="pet-frame"
+        class="pet-frame"
+        src="/skins/fat-cat/frames/idle.png"
+        alt="大肥猫"
+        width="136"
+        style="width: 136px; max-width: 136px; height: auto;"
+        draggable="false"
+        crossorigin="anonymous"
+      >
     </div>
   </div>
 
-  <!-- Right-Click / Tray Shortcut Context Menu -->
+  <!-- Right-Click Context Menu (Clean text, no emojis) -->
   <div id="context-menu" class="context-menu hidden">
     <div class="menu-header">大肥猫 · 伴侣控制台</div>
-    <div class="menu-item" data-action="toggle-quota">📊 切换额度卡片</div>
-    <div class="menu-item" data-action="random-dialogue">💬 换一句傲娇台词</div>
-    <div class="menu-item" data-action="pet-action">💖 揉头摸摸大肥猫</div>
+    <div class="menu-item" data-action="toggle-quota">切换额度卡片</div>
+    <div class="menu-item" data-action="random-dialogue">换一句傲娇台词</div>
+    <div class="menu-item" data-action="pet-action">揉头摸摸大肥猫</div>
     <div class="menu-divider"></div>
-    <div class="menu-item" data-action="toggle-dnd">🛡️ 完全穿透 (免打扰): <span id="dnd-status">关闭</span></div>
-    <div class="menu-item" data-action="toggle-ide-only">🖥️ 仅 IDE 活跃时显示: <span id="ide-only-status">关闭</span></div>
-    <div class="menu-item" data-action="toggle-gravity">🧲 重力吸附底栏: <span id="gravity-status">开启</span></div>
+    <div class="menu-item" data-action="toggle-floor-mode">落点模式: <span id="floor-mode-status">自动贴合</span></div>
+    <div class="menu-item" data-action="toggle-dnd">完全穿透 (免打扰): <span id="dnd-status">关闭</span></div>
+    <div class="menu-item" data-action="toggle-ide-only">仅 IDE 活跃时显示: <span id="ide-only-status">关闭</span></div>
+    <div class="menu-item" data-action="toggle-gravity">重力下落吸附: <span id="gravity-status">开启</span></div>
     <div class="menu-divider"></div>
-    <div class="menu-item" data-action="switch-skin">👗 切换皮肤 (<span id="skin-status">大肥猫</span>)</div>
-    <div class="menu-item" data-action="toggle-sound">🔊 音效: <span id="sound-status">开启</span></div>
+    <div class="menu-item" data-action="switch-skin">切换皮肤 (<span id="skin-status">大肥猫</span>)</div>
+    <div class="menu-item" data-action="toggle-sound">音效: <span id="sound-status">开启</span></div>
     <div class="menu-divider"></div>
-    <div class="menu-item close" data-action="close-menu">关闭菜单 (快捷键 ⌘/Ctrl+⇧+P)</div>
+    <div class="menu-item close" data-action="close-menu">关闭菜单 (Cmd/Ctrl+Shift+P)</div>
   </div>
 
   <!-- Core Scripts -->
-  <script src="bridge.js"></script>
-  <script src="pet.js"></script>
+  <script src="/core/bridge.js"></script>
+  <script src="/core/pet.js"></script>
 </body>
 </html>
