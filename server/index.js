@@ -160,7 +160,7 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // 3. Post Control Command (Toggle DND, Visibility, Skin): /api/control
+  // 3. Post Control Command: /api/control
   if (pathname === '/api/control' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
@@ -211,15 +211,25 @@ const server = http.createServer((req, res) => {
     }
   }
 
-  // 6. Static File Serving
+  // 6. Static File Serving (Support both root `/pet.css` and `/core/pet.css`)
   if (pathname === '/' || pathname === '/index.html') {
     pathname = '/core/index.html';
+  } else if (pathname === '/pet.css' || pathname === '/pet.js' || pathname === '/bridge.js') {
+    pathname = `/core${pathname}`;
   }
 
-  const filePath = path.join(ROOT_DIR, pathname);
+  let filePath = path.join(ROOT_DIR, pathname);
   if (!filePath.startsWith(ROOT_DIR)) {
     res.writeHead(403);
     return res.end('Access denied');
+  }
+
+  // Fallback check inside /core if a top-level path wasn't found
+  if (!fs.existsSync(filePath)) {
+    const coreFallback = path.join(ROOT_DIR, 'core', pathname);
+    if (coreFallback.startsWith(ROOT_DIR) && fs.existsSync(coreFallback)) {
+      filePath = coreFallback;
+    }
   }
 
   fs.stat(filePath, (err, stats) => {
@@ -243,9 +253,9 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`\n======================================================`);
-  console.log(`🐾 大肥猫 · Antigravity 伴侣服务已就绪！`);
-  console.log(`🔗 预览地址: http://127.0.0.1:${PORT}`);
-  console.log(`📡 状态通信: http://127.0.0.1:${PORT}/api/events`);
-  console.log(`📊 实时额度: http://127.0.0.1:${PORT}/api/quota`);
+  console.log(`大肥猫 · Antigravity 伴侣服务已就绪`);
+  console.log(`预览地址: http://127.0.0.1:${PORT}`);
+  console.log(`状态通信: http://127.0.0.1:${PORT}/api/events`);
+  console.log(`实时额度: http://127.0.0.1:${PORT}/api/quota`);
   console.log(`======================================================\n`);
 });

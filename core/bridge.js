@@ -81,34 +81,27 @@ class PetBridge {
 
       this.eventSource.onopen = () => {
         this.connected = true;
-        console.log('[PetBridge] Connected to Antigravity live telemetry stream.');
       };
 
       this.eventSource.addEventListener('state', (e) => {
         try {
           const data = JSON.parse(e.data);
           this.onEvent(data);
-        } catch (err) {
-          console.error('[PetBridge] Failed to parse state event', err);
-        }
+        } catch (err) {}
       });
 
       this.eventSource.addEventListener('quota', (e) => {
         try {
           const data = JSON.parse(e.data);
           this.onQuota(data);
-        } catch (err) {
-          console.error('[PetBridge] Failed to parse quota event', err);
-        }
+        } catch (err) {}
       });
 
       this.eventSource.addEventListener('control', (e) => {
         try {
           const data = JSON.parse(e.data);
           this.onControl(data);
-        } catch (err) {
-          console.error('[PetBridge] Failed to parse control event', err);
-        }
+        } catch (err) {}
       });
 
       this.eventSource.onerror = () => {
@@ -117,7 +110,6 @@ class PetBridge {
         setTimeout(() => this.connectSSE(), 3000);
       };
     } catch (err) {
-      console.warn('[PetBridge] SSE not available, falling back to polling', err);
       this.startPolling();
     }
   }
@@ -130,9 +122,7 @@ class PetBridge {
           const data = await res.json();
           this.onEvent(data);
         }
-      } catch (err) {
-        // Server might be paused
-      }
+      } catch (err) {}
     }, 2500);
   }
 }

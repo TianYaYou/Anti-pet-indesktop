@@ -1,21 +1,15 @@
 /**
  * Anti-Pet Core Engine
- * - Dynamic Click-Through & Offscreen Canvas Pixel-Level Alpha Hit-Testing
- * - Cursor Gaze Tracking & Head-Rubbing (Petting) Gesture Recognition
- * - Gravity Physics, Elastic Rebound, Dock/Taskbar Snapping & Screen-Edge Peeking
- * - Antigravity IDE Live Telemetry, Dual-Window Quota & Tray Mode Controls
+ * - Pure Idle Sprite (All extra facial expressions, floating icons, and emojis removed)
+ * - Dual-Ledge Gravity Physics: Lands on Mac Dock bar on desktop, drops to 0px bottom in Fullscreen
+ * - Flush Left/Right Mac Screen Edge Bar Snapping (0px gap)
+ * - Offscreen Canvas Pixel-Level Alpha Hit-Testing & Dynamic Click-Through
  */
 (function () {
   const container = document.getElementById('pet-container');
-  const spriteWrapper = document.getElementById('sprite-wrapper');
   const petFrame = document.getElementById('pet-frame');
-  const toolWrench = document.getElementById('tool-wrench');
   const speechBubble = document.getElementById('speech-bubble');
   const bubbleText = document.getElementById('bubble-text');
-  const effectLayer = document.getElementById('effect-layer');
-  const particleLayer = document.getElementById('particle-layer');
-  const statusBadge = document.getElementById('status-badge');
-  const badgeLabel = document.getElementById('badge-label');
   const quotaSection = document.getElementById('quota-section');
   const quota5hBar = document.getElementById('quota-5h');
   const quota5hVal = document.getElementById('quota-5h-val');
@@ -23,6 +17,7 @@
   const quotaWeekVal = document.getElementById('quota-week-val');
   const quotaMeta = document.getElementById('quota-meta');
   const contextMenu = document.getElementById('context-menu');
+  const floorModeStatus = document.getElementById('floor-mode-status');
   const soundStatus = document.getElementById('sound-status');
   const dndStatus = document.getElementById('dnd-status');
   const ideOnlyStatus = document.getElementById('ide-only-status');
@@ -37,7 +32,6 @@
   const hitCtx = hitCanvas.getContext('2d', { willReadFrequently: true });
   let hitCanvasReady = false;
 
-  // Application State
   const state = {
     skinId: 'fat-cat',
     availableSkins: [],
@@ -49,8 +43,14 @@
     dndPassthrough: false,
     ideOnlyMode: false,
     gravityEnabled: true,
+    // 'auto' (Dock on desktop, 0px bottom in fullscreen) | 'dock' (Mac Dock bar) | 'bottom' (0px screen bottom)
+    floorMode: 'auto',
+    dockBottom: 0,
+    dockLeft: 0,
+    dockRight: 0,
+    hasReceivedDockInfo: false,
     lastIdeActiveAt: Date.now(),
-    facing: 'left', // 'left' or 'right'
+    facing: 'left',
     dockedEdge: null, // 'left' | 'right' | null
     isDragging: false,
     dragStartX: 0,
@@ -71,7 +71,6 @@
     // Timers & Audio
     stateTimer: null,
     bubbleHideTimer: null,
-    blinkTimer: null,
     audioContext: null,
     audioBuffers: {}
   };
@@ -98,6 +97,9 @@
 
   petFrame.addEventListener('load', () => {
     refreshHitCanvas();
+    if (!state.hasMoved && !state.isDragging) {
+      snapToCurrentFloor();
+    }
     syncHitRectsToDesktop();
   });
 
@@ -113,12 +115,10 @@
     ) {
       return false;
     }
-    if (!hitCanvasReady) {
-      return true; // Fallback to bounding box if canvas not yet decoded
-    }
+    if (!hitCanvasReady) return true;
+
     let normX = (clientX - rect.left) / rect.width;
     const normY = (clientY - rect.top) / rect.height;
-    // Account for horizontal flip when facing right
     if (state.facing === 'right') {
       normX = 1 - normX;
     }
@@ -152,7 +152,6 @@
     }
     if (isPointInElement(clientX, clientY, contextMenu)) return true;
     if (isPointInElement(clientX, clientY, speechBubble)) return true;
-    if (isPointInElement(clientX, clientY, statusBadge)) return true;
     return isOpaquePixelOnCat(clientX, clientY);
   }
 
@@ -179,14 +178,6 @@
         h: catRect.height + 12
       });
 
-      const badgeRect = statusBadge.getBoundingClientRect();
-      rects.push({
-        x: badgeRect.left - 4,
-        y: badgeRect.top - 4,
-        w: badgeRect.width + 8,
-        h: badgeRect.height + 8
-      });
-
       if (!speechBubble.classList.contains('hidden')) {
         const bRect = speechBubble.getBoundingClientRect();
         rects.push({
@@ -211,7 +202,6 @@
     ipc.updateHitRects(rects);
   }
 
-  // Explicit mouseenter / mouseleave & pixel-level hit-testing
   [container, speechBubble, contextMenu, dndWakePill].forEach((el) => {
     if (!el) return;
     el.addEventListener('mouseenter', () => {
@@ -227,7 +217,7 @@
   });
 
   // =========================================================================
-  // 2. Cursor Gaze Tracking & Petting (Head-Rubbing) Gesture Recognition
+  // 2. Cursor Gaze Tracking & Head-Rubbing Petting Gesture
   // =========================================================================
 
   function updateCursorGaze(clientX, clientY) {
@@ -240,22 +230,13 @@
     const dx = clientX - centerX;
     const dy = clientY - centerY;
 
-    const maxShiftX = 4.5;
-    const maxShiftY = 3.2;
-    const maxTilt = 3.2;
-
     const normX = Math.max(-1, Math.min(1, dx / 260));
     const normY = Math.max(-1, Math.min(1, dy / 220));
 
-    const shiftX = (normX * maxShiftX).toFixed(2);
-    const shiftY = (normY * maxShiftY).toFixed(2);
-    const tilt = (normX * maxTilt).toFixed(2);
+    document.documentElement.style.setProperty('--gaze-x', `${(normX * 3.5).toFixed(2)}px`);
+    document.documentElement.style.setProperty('--gaze-y', `${(normY * 2.2).toFixed(2)}px`);
+    document.documentElement.style.setProperty('--gaze-tilt', `${(normX * 2.5).toFixed(2)}deg`);
 
-    document.documentElement.style.setProperty('--gaze-x', `${shiftX}px`);
-    document.documentElement.style.setProperty('--gaze-y', `${shiftY}px`);
-    document.documentElement.style.setProperty('--gaze-tilt', `${tilt}deg`);
-
-    // Subtle facing turn if cursor is strongly to one side while idle and not docked
     if (state.currentState === 'idle' && !state.dockedEdge && Math.abs(dx) > 110) {
       const targetFacing = dx > 0 ? 'right' : 'left';
       if (state.facing !== targetFacing) {
@@ -284,8 +265,6 @@
         const dir = deltaX > 0 ? 1 : -1;
         if (state.rubLastDir !== 0 && dir !== state.rubLastDir) {
           state.rubCount += 1;
-          spawnFloatingParticle(`../skins/${state.skinId}/ui/heart.svg`, clientX - rect.left);
-
           if (state.rubCount >= 4 && Date.now() - state.lastPettingAt > 1800) {
             state.rubCount = 0;
             state.lastPettingAt = Date.now();
@@ -307,34 +286,39 @@
     }, 650);
   }
 
-  function spawnFloatingParticle(imgSrc, offsetX = null) {
-    if (!particleLayer) return;
-    const img = document.createElement('img');
-    img.src = imgSrc;
-    img.className = 'floating-particle';
-    const x = offsetX !== null ? Math.max(20, Math.min(165, offsetX)) : 65 + Math.random() * 70;
-    const drift = (Math.random() - 0.5) * 34;
-    img.style.left = `${x}px`;
-    img.style.top = `${18 + Math.random() * 20}px`;
-    img.style.setProperty('--px', `${drift.toFixed(1)}px`);
-    particleLayer.appendChild(img);
-    setTimeout(() => img.remove(), 1150);
-  }
-
   function triggerPettingAction() {
     initAudio();
     playPurrSound();
     const petLine = getRandomDialogue('petting');
-    setState('petting', petLine, 2600);
-    for (let i = 0; i < 3; i++) {
-      setTimeout(() => {
-        spawnFloatingParticle(`../skins/${state.skinId}/ui/heart.svg`);
-      }, i * 240);
-    }
+    setState('petting', petLine, 2400);
   }
 
-  // Global hook called by Rust 35Hz cursor tracker even during click-through
-  window.__antiPetOnGlobalCursor = function (localX, localY) {
+  // Global hook called by Rust 40Hz cursor & Mac Dock tracker
+  window.__antiPetOnGlobalCursor = function (localX, localY, dockBottom, dockLeft, dockRight) {
+    if (typeof dockBottom === 'number') {
+      const prevBottom = state.dockBottom;
+      const prevLeft = state.dockLeft;
+      const prevRight = state.dockRight;
+      state.dockBottom = Math.max(0, dockBottom);
+      state.dockLeft = Math.max(0, dockLeft || 0);
+      state.dockRight = Math.max(0, dockRight || 0);
+
+      // When transitioning between Desktop (Dock visible) and Fullscreen (dockBottom == 0),
+      // automatically drop or adjust the pet to the new floor!
+      if (
+        !state.isDragging &&
+        !state.dockedEdge &&
+        state.gravityEnabled &&
+        (!state.hasReceivedDockInfo ||
+          Math.abs(prevBottom - state.dockBottom) > 1.5 ||
+          Math.abs(prevLeft - state.dockLeft) > 1.5 ||
+          Math.abs(prevRight - state.dockRight) > 1.5)
+      ) {
+        state.hasReceivedDockInfo = true;
+        startReleasePhysics(true);
+      }
+    }
+
     updateCursorGaze(localX, localY);
     const shouldIntercept = evaluateInteractiveHit(localX, localY);
     ipc.setIgnoreCursorEvents(!shouldIntercept);
@@ -352,7 +336,7 @@
   });
 
   // =========================================================================
-  // 3. Audio System (WAV Buffers + Synthesized Purr & Bump Feedback)
+  // 3. Audio System
   // =========================================================================
 
   function initAudio() {
@@ -362,9 +346,7 @@
       if (AudioCtx) {
         state.audioContext = new AudioCtx();
       }
-    } catch (e) {
-      console.warn('[Audio] Web Audio initialization deferred', e);
-    }
+    } catch (e) {}
   }
 
   async function loadAudioBuffer(name, url) {
@@ -374,9 +356,7 @@
       const arrayBuffer = await res.arrayBuffer();
       const buffer = await state.audioContext.decodeAudioData(arrayBuffer);
       state.audioBuffers[name] = buffer;
-    } catch (e) {
-      console.warn(`[Audio] Failed to load sound: ${name}`, e);
-    }
+    } catch (e) {}
   }
 
   function playSound(name) {
@@ -392,12 +372,9 @@
       source.connect(gainNode);
       gainNode.connect(state.audioContext.destination);
       source.start(0);
-    } catch (e) {
-      console.warn('[Audio] Playback error', e);
-    }
+    } catch (e) {}
   }
 
-  // Synthesize a warm, rhythmic cat purr using Web Audio oscillators
   function playPurrSound() {
     if (!state.soundEnabled) return;
     initAudio();
@@ -440,7 +417,6 @@
     }
   }
 
-  // Soft thump sound when snapping to screen edge or taskbar
   function playSoftBumpSound() {
     if (!state.soundEnabled) return;
     initAudio();
@@ -466,7 +442,7 @@
   }
 
   // =========================================================================
-  // 4. Skin Loading, State Machine & Dialogue System
+  // 4. Skin Loading, Pure Idle Frame State Machine & Dialogue System
   // =========================================================================
 
   async function fetchAvailableSkins() {
@@ -480,7 +456,7 @@
 
   async function loadSkin(skinId) {
     try {
-      const res = await fetch(`../skins/${skinId}/skin.json`);
+      const res = await fetch(`/skins/${skinId}/skin.json`);
       state.skinConfig = await res.json();
       state.skinId = skinId;
       if (skinStatus) {
@@ -488,7 +464,7 @@
       }
 
       if (state.skinConfig.dialogue) {
-        const diagRes = await fetch(`../skins/${skinId}/${state.skinConfig.dialogue}`);
+        const diagRes = await fetch(`/skins/${skinId}/${state.skinConfig.dialogue}`);
         const diagData = await diagRes.json();
         state.dialogueBank = diagData.lines || {};
         state.dialogues = state.dialogueBank.idle || ['喵~ 认真写代码哦！'];
@@ -497,39 +473,22 @@
       initAudio();
       if (state.skinConfig.audio) {
         for (const [key, relPath] of Object.entries(state.skinConfig.audio)) {
-          loadAudioBuffer(key, `../skins/${skinId}/${relPath}`);
+          loadAudioBuffer(key, `/skins/${skinId}/${relPath}`);
         }
       }
 
+      // Always keep the single clean idle.png sprite (no expression frame switching)
+      const idlePath = state.skinConfig.frames?.idle || 'frames/idle.png';
+      petFrame.src = `/skins/${state.skinId}/${idlePath}`;
+
       setState('idle');
-      showBubble(getRandomDialogue('idle'), 5000);
-      scheduleIdleBlink();
+      showBubble(getRandomDialogue('idle'), 4500);
     } catch (err) {
       console.error('[Pet] Error loading skin:', err);
     }
   }
 
-  function scheduleIdleBlink() {
-    if (state.blinkTimer) clearTimeout(state.blinkTimer);
-    const nextBlinkMs = 3200 + Math.random() * 4200;
-    state.blinkTimer = setTimeout(() => {
-      if (
-        state.currentState === 'idle' &&
-        !state.isDragging &&
-        state.skinConfig?.frames?.blink
-      ) {
-        petFrame.src = `../skins/${state.skinId}/${state.skinConfig.frames.blink}`;
-        setTimeout(() => {
-          if (state.currentState === 'idle' && state.skinConfig?.frames?.idle) {
-            petFrame.src = `../skins/${state.skinId}/${state.skinConfig.frames.idle}`;
-          }
-        }, 160);
-      }
-      scheduleIdleBlink();
-    }, nextBlinkMs);
-  }
-
-  function setState(newState, text = null, durationMs = 0, toolName = '') {
+  function setState(newState, text = null, durationMs = 0) {
     if (!state.skinConfig) return;
     const cfg = state.skinConfig.states?.[newState] || state.skinConfig.states?.['idle'];
     if (!cfg) return;
@@ -541,7 +500,6 @@
 
     state.currentState = newState;
 
-    // Preserve modifiers (docked, dnd-ghost, ide-hidden, dragging)
     const classes = ['pet-container', `facing-${state.facing}`, `state-${newState}`];
     if (state.isDragging) classes.push('dragging');
     if (state.dockedEdge) classes.push(`docked-${state.dockedEdge}`);
@@ -551,37 +509,9 @@
     }
     container.className = classes.join(' ');
 
-    // Update sprite image
-    const frameName = cfg.frame || 'idle';
-    const framePath = state.skinConfig.frames?.[frameName] || 'frames/idle.png';
-    petFrame.src = `../skins/${state.skinId}/${framePath}`;
-
-    // Show wrench overlay when working on a tool
-    if (toolWrench) {
-      toolWrench.classList.toggle('hidden', newState !== 'working');
-    }
-
-    // Update floating effect
-    if (cfg.effect) {
-      effectLayer.innerHTML = `<img src="../skins/${state.skinId}/${cfg.effect}" alt="effect">`;
-    } else {
-      effectLayer.innerHTML = '';
-    }
-
-    // Spawn celebration sparkles on success
-    if (newState === 'success') {
-      for (let i = 0; i < 3; i++) {
-        setTimeout(() => {
-          spawnFloatingParticle(`../skins/${state.skinId}/ui/sparkle.svg`);
-        }, i * 200);
-      }
-    }
-
-    updateBadge(newState, toolName);
-
     const displayMsg = text || cfg.bubbleText;
     if (displayMsg) {
-      showBubble(displayMsg, durationMs || 4500);
+      showBubble(displayMsg, durationMs || 4200);
     }
 
     const autoRevertTime = durationMs || cfg.durationMs;
@@ -591,23 +521,7 @@
       }, autoRevertTime);
     }
 
-    setTimeout(syncHitRectsToDesktop, 60);
-  }
-
-  function updateBadge(s, toolName = '') {
-    statusBadge.className = `status-badge ${s}`;
-    const labels = {
-      idle: '待命中',
-      thinking: '思考探头中...',
-      working: toolName ? `执行: ${toolName}` : '挥舞扳手中...',
-      success: '搞定得意！',
-      error: '遇到报错',
-      petting: '呼噜享受中~',
-      pressed: '按压蓄力',
-      rebound: 'Duang~',
-      dragging: '被拎起悬空'
-    };
-    badgeLabel.textContent = labels[s] || s;
+    setTimeout(syncHitRectsToDesktop, 50);
   }
 
   function getRandomDialogue(category = 'idle') {
@@ -616,11 +530,10 @@
         ? state.dialogueBank[category]
         : state.dialogues;
     if (!pool || !pool.length) return '喵~';
-    const idx = Math.floor(Math.random() * pool.length);
-    return pool[idx];
+    return pool[Math.floor(Math.random() * pool.length)];
   }
 
-  function showBubble(text, ttlMs = 4500) {
+  function showBubble(text, ttlMs = 4200) {
     bubbleText.textContent = text;
     speechBubble.classList.remove('hidden');
     syncHitRectsToDesktop();
@@ -641,7 +554,7 @@
   }
 
   // =========================================================================
-  // 5. Physics Dragging, Gravity Drop, Bottom Taskbar & Screen-Edge Snapping
+  // 5. Dual-Ledge Gravity Drop (Mac Dock Bar & 0px Fullscreen Bottom) + Side Edges
   // =========================================================================
 
   function cancelGravityAnimation() {
@@ -651,37 +564,88 @@
     }
   }
 
-  function startReleasePhysics() {
+  /**
+   * Compute exact target floor Y coordinate (top of container):
+   * - In Fullscreen (dockBottom == 0) or 'bottom' mode: exact 0px bottom (`window.innerHeight - container.offsetHeight`)
+   * - On Desktop with Mac Dock visible (`dockBottom > 0`):
+   *   - In 'dock' mode: lands on top of Mac Dock (`window.innerHeight - container.offsetHeight - dockBottom`)
+   *   - In 'auto' mode: if dropped above the Dock top edge, lands on top of the Mac Dock bar;
+   *     if dragged below the Dock top line (into the bottom strip), drops all the way to 0px screen bottom!
+   */
+  function computeTargetFloorY(currentRect = null) {
+    const winH = window.innerHeight;
+    const petH = container.offsetHeight || 136;
+    const trueBottomY = winH - petH; // 0px from bottom of screen
+    const dockLedgeY = Math.max(0, winH - petH - state.dockBottom);
+
+    if (state.floorMode === 'bottom' || state.dockBottom <= 1.5) {
+      return trueBottomY;
+    }
+    if (state.floorMode === 'dock') {
+      return dockLedgeY;
+    }
+    // 'auto' mode: if user dragged the pet below the Dock top line, let it drop to 0px screen bottom;
+    // otherwise land cleanly on the Mac Dock bar!
+    if (currentRect && currentRect.top > dockLedgeY + 18) {
+      return trueBottomY;
+    }
+    return dockLedgeY;
+  }
+
+  function snapToCurrentFloor() {
+    const rect = container.getBoundingClientRect();
+    const targetY = computeTargetFloorY();
+    const curX = Math.max(
+      state.dockLeft,
+      Math.min(rect.left, window.innerWidth - container.offsetWidth - state.dockRight)
+    );
+    container.style.left = `${curX}px`;
+    container.style.top = `${targetY}px`;
+    container.style.bottom = 'auto';
+    container.style.right = 'auto';
+    syncHitRectsToDesktop();
+  }
+
+  function startReleasePhysics(silent = false) {
     cancelGravityAnimation();
 
     const rect = container.getBoundingClientRect();
     const winW = window.innerWidth;
-    const winH = window.innerHeight;
-    const edgeThreshold = 34;
+    const petW = container.offsetWidth || 136;
+    const leftBound = state.dockLeft;
+    const rightBound = winW - petW - state.dockRight;
+    const edgeSnapThreshold = 36;
+    const targetFloor = computeTargetFloorY(rect);
 
-    // 1. Check Left / Right Screen Edge Peeking (贴边半隐藏窥视)
-    if (rect.left <= edgeThreshold) {
+    // 1. Check Left / Right Mac Screen Edge Bar Cling (if released near left/right side above floor)
+    if (!silent && rect.left <= leftBound + edgeSnapThreshold && rect.top < targetFloor - 28) {
       state.dockedEdge = 'left';
       state.facing = 'right';
-      container.style.left = '0px';
+      container.style.left = `${leftBound}px`;
+      container.style.top = `${Math.max(0, Math.min(rect.top, targetFloor))}px`;
+      container.style.bottom = 'auto';
+      container.style.right = 'auto';
       container.classList.remove('facing-left', 'docked-right');
       container.classList.add('facing-right', 'docked-left');
       playSoftBumpSound();
       setState('idle');
-      showBubble('本喵在屏幕左边暗中观察你写代码~', 3500);
+      showBubble('贴在左边栏观察你写代码~', 3200);
       syncHitRectsToDesktop();
       return;
     }
 
-    if (rect.right >= winW - edgeThreshold) {
+    if (!silent && rect.left >= rightBound - edgeSnapThreshold && rect.top < targetFloor - 28) {
       state.dockedEdge = 'right';
       state.facing = 'left';
-      container.style.left = `${winW - container.offsetWidth}px`;
+      container.style.left = `${rightBound}px`;
+      container.style.top = `${Math.max(0, Math.min(rect.top, targetFloor))}px`;
+      container.style.bottom = 'auto';
+      container.style.right = 'auto';
       container.classList.remove('facing-right', 'docked-left');
       container.classList.add('facing-left', 'docked-right');
       playSoftBumpSound();
       setState('idle');
-      showBubble('躲在右边偷看你，不许写 Bug 哦！', 3500);
+      showBubble('贴在右边栏偷看你，不许写 Bug 哦！', 3200);
       syncHitRectsToDesktop();
       return;
     }
@@ -689,23 +653,51 @@
     state.dockedEdge = null;
     container.classList.remove('docked-left', 'docked-right');
 
-    // 2. If Gravity Snapping is disabled, rebound in place
-    const floorY = winH - container.offsetHeight - 18;
-    if (!state.gravityEnabled || rect.top >= floorY - 4) {
-      container.style.top = `${Math.min(rect.top, floorY)}px`;
-      playSound('release');
-      setState('rebound', getRandomDialogue('release'), 520);
+    // Snap X flush to left/right edge if dropped near the bottom corners
+    let curX = rect.left;
+    if (curX <= leftBound + edgeSnapThreshold) {
+      curX = leftBound;
+    } else if (curX >= rightBound - edgeSnapThreshold) {
+      curX = rightBound;
+    } else {
+      curX = Math.max(leftBound, Math.min(curX, rightBound));
+    }
+
+    // 2. If Gravity Snapping is disabled, stay in place
+    if (!state.gravityEnabled) {
+      const clampedY = Math.max(0, Math.min(rect.top, window.innerHeight - container.offsetHeight));
+      container.style.left = `${curX}px`;
+      container.style.top = `${clampedY}px`;
+      container.style.bottom = 'auto';
+      container.style.right = 'auto';
+      if (!silent) {
+        playSound('release');
+        setState('rebound', getRandomDialogue('release'), 500);
+      }
       syncHitRectsToDesktop();
       return;
     }
 
-    // 3. Gravity Drop & Elastic Damping Bounce onto Dock/Taskbar Baseline
+    // If already at or below target floor, snap flush immediately
+    if (rect.top >= targetFloor - 2) {
+      container.style.left = `${curX}px`;
+      container.style.top = `${targetFloor}px`;
+      container.style.bottom = 'auto';
+      container.style.right = 'auto';
+      if (!silent) {
+        playSound('release');
+        setState('rebound', getRandomDialogue('release'), 500);
+      }
+      syncHitRectsToDesktop();
+      return;
+    }
+
+    // 3. Gravity Drop & Elastic Bounce onto Target Floor (Mac Dock Bar or 0px Screen Bottom)
     let curY = rect.top;
-    let curX = rect.left;
     let vy = 0;
-    let vx = state.vx * 0.35;
-    const gravity = 0.92;
-    const bounceFactor = -0.36;
+    let vx = silent ? 0 : state.vx * 0.35;
+    const gravity = 1.05;
+    const bounceFactor = -0.34;
     let bounceCount = 0;
 
     function stepGravity() {
@@ -714,25 +706,26 @@
       curX += vx;
       vx *= 0.94;
 
-      const minX = 12;
-      const maxX = window.innerWidth - container.offsetWidth - 12;
+      const minX = state.dockLeft;
+      const maxX = window.innerWidth - container.offsetWidth - state.dockRight;
       curX = Math.max(minX, Math.min(curX, maxX));
 
-      const targetFloor = window.innerHeight - container.offsetHeight - 18;
       if (curY >= targetFloor) {
         curY = targetFloor;
-        if (Math.abs(vy) > 2.4 && bounceCount < 2) {
+        if (!silent && Math.abs(vy) > 2.6 && bounceCount < 2) {
           vy *= bounceFactor;
           bounceCount += 1;
           playSoftBumpSound();
           if (bounceCount === 1) {
-            setState('rebound', getRandomDialogue('release'), 520);
+            setState('rebound', getRandomDialogue('release'), 500);
           }
         } else {
           container.style.left = `${curX}px`;
           container.style.top = `${targetFloor}px`;
+          container.style.bottom = 'auto';
+          container.style.right = 'auto';
           state.gravityRaf = null;
-          playSound('release');
+          if (!silent) playSound('release');
           syncHitRectsToDesktop();
           return;
         }
@@ -740,6 +733,8 @@
 
       container.style.left = `${curX}px`;
       container.style.top = `${curY}px`;
+      container.style.bottom = 'auto';
+      container.style.right = 'auto';
       state.gravityRaf = requestAnimationFrame(stepGravity);
     }
 
@@ -797,11 +792,9 @@
         setState('dragging', getRandomDialogue('dragged'));
       }
 
-      // Swing angle proportional to horizontal drag velocity
       const swingDeg = Math.max(-14, Math.min(14, -instantVx * 0.75));
       document.documentElement.style.setProperty('--drag-swing', `${swingDeg.toFixed(1)}deg`);
 
-      // Update facing direction toward movement
       if (instantVx > 2.2 && state.facing !== 'right') {
         state.facing = 'right';
         container.classList.remove('facing-left');
@@ -813,14 +806,14 @@
       }
     }
 
+    // Zero-gap viewport clamping (0px on all edges so it can touch bottom and side edges flush)
     let newX = state.petInitialX + dx;
     let newY = state.petInitialY + dy;
 
-    const pad = 2;
-    const maxW = window.innerWidth - container.offsetWidth - pad;
-    const maxH = window.innerHeight - container.offsetHeight - pad;
-    newX = Math.max(pad, Math.min(newX, maxW));
-    newY = Math.max(pad, Math.min(newY, maxH));
+    const maxW = window.innerWidth - container.offsetWidth;
+    const maxH = window.innerHeight - container.offsetHeight;
+    newX = Math.max(0, Math.min(newX, maxW));
+    newY = Math.max(0, Math.min(newY, maxH));
 
     container.style.left = `${newX}px`;
     container.style.top = `${newY}px`;
@@ -837,24 +830,23 @@
 
     if (!state.hasMoved) {
       playSound('clickRelease');
-      setState('rebound', null, 520);
-      showBubble(getRandomDialogue('idle'), 4500);
+      setState('rebound', null, 500);
+      showBubble(getRandomDialogue('idle'), 4200);
       syncHitRectsToDesktop();
     } else {
-      startReleasePhysics();
+      startReleasePhysics(false);
     }
   });
 
-  // Bubble text click to cycle tsundere lines
   bubbleText.addEventListener('click', (e) => {
     e.stopPropagation();
     initAudio();
     playSound('clickPress');
-    showBubble(getRandomDialogue('idle'), 4500);
+    showBubble(getRandomDialogue('idle'), 4200);
   });
 
   // =========================================================================
-  // 6. Quota Updater & Mode Controls (DND Passthrough, IDE-Only, Skins, Shortcuts)
+  // 6. Quota Updater & Mode Controls
   // =========================================================================
 
   function updateQuota(fiveHourPct, weekPct, metaText = null) {
@@ -863,9 +855,6 @@
       quota5hBar.style.width = `${pct5}%`;
       quota5hVal.textContent = `${Math.round(pct5)}%`;
       quota5hBar.className = `quota-bar-fill ${pct5 <= 10 ? 'danger' : pct5 <= 30 ? 'warning' : ''}`;
-      if (pct5 <= 25 && state.currentState === 'idle') {
-        showBubble(getRandomDialogue('warning'), 5000);
-      }
     }
     if (typeof weekPct === 'number') {
       const pctW = Math.min(100, Math.max(0, weekPct));
@@ -877,6 +866,19 @@
     }
   }
 
+  function cycleFloorMode() {
+    const modes = ['auto', 'dock', 'bottom'];
+    const labels = {
+      auto: '自动贴合',
+      dock: 'Mac边栏顶',
+      bottom: '屏幕最底边'
+    };
+    const nextIdx = (modes.indexOf(state.floorMode) + 1) % modes.length;
+    state.floorMode = modes[nextIdx];
+    if (floorModeStatus) floorModeStatus.textContent = labels[state.floorMode];
+    startReleasePhysics(false);
+  }
+
   function toggleDndPassthrough(forceVal = null) {
     state.dndPassthrough = typeof forceVal === 'boolean' ? forceVal : !state.dndPassthrough;
     if (dndStatus) dndStatus.textContent = state.dndPassthrough ? '开启' : '关闭';
@@ -885,9 +887,9 @@
     contextMenu.classList.add('hidden');
 
     if (state.dndPassthrough) {
-      showBubble('已开启【完全穿透·免打扰】，鼠标可直接点击底层窗口~', 2800);
+      showBubble('已开启完全穿透免打扰，点击右下角唤醒按钮恢复~', 2600);
     } else {
-      showBubble('本喵回来啦！随时听候差遣~', 3200);
+      showBubble('本喵回来啦！', 3000);
     }
     setTimeout(syncHitRectsToDesktop, 50);
   }
@@ -898,10 +900,8 @@
     state.lastIdeActiveAt = Date.now();
     container.classList.remove('ide-hidden');
     showBubble(
-      state.ideOnlyMode
-        ? '已开启【仅 Antigravity 激活时显示】，长时间无事件将自动隐身~'
-        : '已恢复【常驻桌面陪伴】模式！',
-      3500
+      state.ideOnlyMode ? '已开启仅 IDE 活跃时显示~' : '已恢复常驻桌面陪伴~',
+      3000
     );
     syncHitRectsToDesktop();
   }
@@ -914,9 +914,9 @@
       const idx = state.availableSkins.findIndex((s) => s.id === state.skinId);
       const nextSkin = state.availableSkins[(idx + 1) % state.availableSkins.length];
       await loadSkin(nextSkin.id);
-      showBubble(`已切换至皮肤：【${nextSkin.name || nextSkin.id}】！`, 3500);
+      showBubble(`已切换至皮肤：${nextSkin.name || nextSkin.id}`, 3200);
     } else {
-      showBubble('当前已激活【大肥猫·星语伴侣】，在 skins/ 目录放入新皮肤即可一键切换！', 3800);
+      showBubble('当前皮肤：大肥猫', 3000);
     }
   }
 
@@ -927,7 +927,6 @@
     toggleDndPassthrough(false);
   });
 
-  // Keyboard Shortcut: Cmd/Ctrl + Shift + P to toggle DND passthrough / wake
   window.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
       e.preventDefault();
@@ -935,11 +934,10 @@
     }
   });
 
-  // Context Menu
   container.addEventListener('contextmenu', (e) => {
     e.preventDefault();
     if (state.dndPassthrough) return;
-    const menuW = 225;
+    const menuW = 200;
     const menuH = 290;
     contextMenu.style.left = `${Math.max(8, Math.min(window.innerWidth - menuW, e.clientX))}px`;
     contextMenu.style.top = `${Math.max(8, Math.min(window.innerHeight - menuH, e.clientY))}px`;
@@ -967,10 +965,13 @@
         break;
       case 'random-dialogue':
         playSound('clickPress');
-        showBubble(getRandomDialogue('idle'), 4500);
+        showBubble(getRandomDialogue('idle'), 4200);
         break;
       case 'pet-action':
         triggerPettingAction();
+        break;
+      case 'toggle-floor-mode':
+        cycleFloorMode();
         break;
       case 'toggle-dnd':
         toggleDndPassthrough();
@@ -981,10 +982,7 @@
       case 'toggle-gravity':
         state.gravityEnabled = !state.gravityEnabled;
         if (gravityStatus) gravityStatus.textContent = state.gravityEnabled ? '开启' : '关闭';
-        showBubble(
-          state.gravityEnabled ? '已开启重力下落与底栏吸附~' : '已开启自由空中悬停模式~',
-          3200
-        );
+        if (state.gravityEnabled) startReleasePhysics(false);
         break;
       case 'toggle-sound':
         state.soundEnabled = !state.soundEnabled;
@@ -1001,7 +999,7 @@
   });
 
   // =========================================================================
-  // 7. Connect to Antigravity IDE Telemetry & Control Bus
+  // 7. Connect to Antigravity IDE Telemetry
   // =========================================================================
 
   const bridge = new window.PetBridge({
@@ -1019,7 +1017,7 @@
             : null;
         const msg =
           event.bubbleText || (linePoolKey ? getRandomDialogue(linePoolKey) : null);
-        setState(event.state, msg, event.durationMs, event.tool || '');
+        setState(event.state, msg, event.durationMs);
       }
       if (event.quota) {
         updateQuota(event.quota.fiveHour, event.quota.weekly, event.quota.meta);
@@ -1043,7 +1041,6 @@
   });
   bridge.start();
 
-  // Periodic Idle Dialogue & IDE-Only Visibility Check
   setInterval(() => {
     if (state.ideOnlyMode && Date.now() - state.lastIdeActiveAt > 120000) {
       container.classList.add('ide-hidden');
@@ -1051,15 +1048,18 @@
       return;
     }
     if (state.currentState === 'idle' && !state.isDragging && !state.dndPassthrough) {
-      showBubble(getRandomDialogue('idle'), 5000);
+      showBubble(getRandomDialogue('idle'), 4500);
     }
   }, 45000);
 
   window.addEventListener('resize', () => {
-    syncHitRectsToDesktop();
+    if (!state.isDragging && !state.dockedEdge) {
+      snapToCurrentFloor();
+    } else {
+      syncHitRectsToDesktop();
+    }
   });
 
-  // Initialize
   fetchAvailableSkins();
   loadSkin('fat-cat');
 })();
