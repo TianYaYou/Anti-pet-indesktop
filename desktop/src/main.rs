@@ -636,6 +636,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize System Tray Menu and Icon
     let tray_menu = Menu::new();
+    let item_settings = MenuItem::new("⚙️ 偏好设置...", true, None);
+    let sep0 = PredefinedMenuItem::separator();
     let item_toggle = MenuItem::new("显示 / 隐藏 大肥猫", true, None);
     let item_toggle_mode = MenuItem::new(
         if start_compact { "切换为: 全屏画布模式" } else { "切换为: 紧凑挂件模式 (省资源)" },
@@ -651,6 +653,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let item_quit = MenuItem::new("退出", true, None);
 
     let _ = tray_menu.append_items(&[
+        &item_settings,
+        &sep0,
         &item_toggle,
         &item_toggle_mode,
         &item_dnd,
@@ -757,12 +761,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     // Drain System Tray Menu Click Events
                     while let Ok(menu_event) = MenuEvent::receiver().try_recv() {
-                        if menu_event.id == item_toggle.id() {
+                        if menu_event.id == item_settings.id() {
+                            if !is_window_visible.load(Ordering::Relaxed) {
+                                is_window_visible.store(true, Ordering::Relaxed);
+                                window.set_visible(true);
+                            }
+                            let _ = webview.evaluate_script("if(window.__openSettings)window.__openSettings();");
+                        } else if menu_event.id == item_toggle.id() {
                             let vis = !is_window_visible.load(Ordering::Relaxed);
                             is_window_visible.store(vis, Ordering::Relaxed);
                             window.set_visible(vis);
                         } else if menu_event.id == item_toggle_mode.id() {
                             is_compact_mode = !is_compact_mode;
+                            #[allow(unused_variables)]
                             let (mw, mh, sc) = if let Some(m) = window.current_monitor() {
                                 let s = m.scale_factor();
                                 let sz = m.size().to_logical::<f64>(s);

@@ -5,8 +5,10 @@
  */
 
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
+const { exec } = require('child_process');
 const { fetchAntigravityQuota } = require('./quota-probe');
 const { TranscriptWatcher } = require('./transcript-watcher');
 
@@ -35,9 +37,13 @@ const DEFAULT_SETTINGS = {
   scale: 1.0,
   skinId: 'fat-cat',
   soundEnabled: true,
+  soundVolume: 0.8,
   gravityEnabled: true,
+  floorMode: 'bottom', // 'bottom', 'taskbar', 'free'
   ideOnlyMode: false,
   dndPassthrough: false,
+  bubbleDurationMs: 4000,
+  showQuota: true,
   posX: null,
   posY: null,
   facing: 'left'
@@ -185,6 +191,119 @@ const transcriptWatcher = new TranscriptWatcher({
 });
 transcriptWatcher.start();
 
+function getAutostartStatus() {
+  return new Promise((resolve) => {
+    if (process.platform === 'darwin') {
+      exec('osascript -e \'tell application "System Events" to get the name of every login item\'', (err, stdout) => {
+        if (err) return resolve({ enabled: false, platform: 'darwin' });
+        const items = (stdout || '').split(',').map((s) => s.trim().toLowerCase());
+        const hasItem = items.includes('anti-pet') || items.includes('anti-pet.app') || items.includes('anti-pet-desktop');
+        resolve({ enabled: hasItem, platform: 'darwin' });
+      });
+    } else if (process.platform === 'win32') {
+      exec('reg query "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "AntiPet"', (err, stdout) => {
+        resolve({ enabled: !err && (stdout || '').includes('AntiPet'), platform: 'win32' });
+      });
+    } else {
+      resolve({ enabled: false, platform: process.platform });
+    }
+  });
+}
+
+function setAutostartStatus(enable) {
+  return new Promise((resolve) => {
+    if (process.platform === 'darwin') {
+      if (enable) {
+        let appPath = path.join(ROOT_DIR, 'dist', 'Anti-Pet.app');
+        if (!fs.existsSync(appPath)) {
+          appPath = path.join(ROOT_DIR, 'desktop', 'target', 'release', 'anti-pet-desktop');
+        }
+        if (!fs.existsSync(appPath)) {
+          appPath = path.join(ROOT_DIR, 'anti-pet-desktop');
+        }
+        const script = `tell application "System Events" to make login item at end with properties {path:"${appPath}", hidden:false, name:"Anti-Pet"}`;
+        exec(`osascript -e '${script}'`, (err) => {
+          if (err) return resolve({ ok: false, error: err.message });
+          resolve({ ok: true, enabled: true });
+        });
+      } else {
+        const script = `tell application "System Events" to delete (every login item whose name is "Anti-Pet" or name is "Anti-Pet.app")`;
+        exec(`osascript -e '${script}'`, (err) => {
+          if (err) return resolve({ ok: false, error: err.message });
+          resolve({ ok: true, enabled: false });
+        });
+      }
+    } else if (process.platform === 'win32') {
+      if (enable) {
+        let exePath = path.join(ROOT_DIR, 'anti-pet-desktop.exe');
+        if (!fs.existsSync(exePath)) {
+          exePath = path.join(ROOT_DIR, 'desktop', 'target', 'release', 'anti-pet-desktop.exe');
+        }
+        const cmd = `reg add "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "AntiPet" /t REG_SZ /d "\\"${exePath}\\"" /f`;
+        exec(cmd, (err) => {
+          if (err) return resolve({ ok: false, error: err.message });
+          resolve({ ok: true, enabled: true });
+        });
+      } else {
+        const cmd = `reg delete "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run" /v "AntiPet" /f`;
+        exec(cmd, () => {
+          resolve({ ok: true, enabled: false });
+        });
+      }
+    } else {
+      resolve({ ok: true, enabled: enable });
+    }
+  });
+}
+
+function checkGitHubUpdates() {
+  return new Promise((resolve) => {
+    let currentVersion = 'v0.1.1';
+    try {
+      const pkg = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf-8'));
+      if (pkg.version) currentVersion = 'v' + pkg.version.replace(/^v/, '');
+    } catch (e) {}
+
+    const req = https.get(
+      {
+        hostname: 'api.github.com',
+        path: '/repos/TianYaYou/Anti-pet-indesktop/releases/latest',
+        headers: { 'User-Agent': 'Anti-Pet-Desktop' },
+        timeout: 6000
+      },
+      (res) => {
+        let raw = '';
+        res.on('data', (c) => (raw += c));
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(raw);
+            const latestTag = data.tag_name || currentVersion;
+            const hasUpdate = latestTag !== currentVersion;
+            resolve({
+              currentVersion,
+              latestVersion: latestTag,
+              hasUpdate,
+              releaseName: data.name || latestTag,
+              htmlUrl: data.html_url || 'https://github.com/TianYaYou/Anti-pet-indesktop/releases',
+              publishedAt: data.published_at || new Date().toISOString(),
+              body: data.body || ''
+            });
+          } catch (e) {
+            resolve({ currentVersion, latestVersion: currentVersion, hasUpdate: false, error: e.message });
+          }
+        });
+      }
+    );
+    req.on('error', (e) => {
+      resolve({ currentVersion, latestVersion: currentVersion, hasUpdate: false, error: e.message });
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({ currentVersion, latestVersion: currentVersion, hasUpdate: false, error: 'Request timeout' });
+    });
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
   let pathname = decodeURIComponent(parsedUrl.pathname);
@@ -307,7 +426,39 @@ const server = http.createServer(async (req, res) => {
   }
 
   
-  // 8. Shutdown: /api/shutdown
+  // 7. Autostart API: /api/autostart (GET & POST)
+  if (pathname === '/api/autostart') {
+    if (req.method === 'GET') {
+      const status = await getAutostartStatus();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify(status));
+    }
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', async () => {
+        try {
+          const payload = JSON.parse(body);
+          const result = await setAutostartStatus(!!payload.enabled);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+      return;
+    }
+  }
+
+  // 8. Update Check API: /api/update-check
+  if (pathname === '/api/update-check') {
+    const updateInfo = await checkGitHubUpdates();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(updateInfo));
+  }
+
+  // 9. Shutdown: /api/shutdown
   if (pathname === '/api/shutdown') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true, message: 'Server shutting down' }));
@@ -315,8 +466,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 7. List Skins: /api/skins
-  if (pathname === '/api/skins') {
+  // 10. List Skins: /api/skins
+  if (pathname === '/api/skins' && req.method === 'GET') {
     const skinsDir = path.join(ROOT_DIR, 'skins');
     try {
       const skins = fs
@@ -325,15 +476,205 @@ const server = http.createServer(async (req, res) => {
         .map((d) => {
           const skinJsonPath = path.join(skinsDir, d.name, 'skin.json');
           if (fs.existsSync(skinJsonPath)) {
-            return JSON.parse(fs.readFileSync(skinJsonPath, 'utf-8'));
+            const data = JSON.parse(fs.readFileSync(skinJsonPath, 'utf-8'));
+            return {
+              ...data,
+              id: data.id || d.name,
+              previewUrl: `/skins/${d.name}/frames/idle.png`,
+              isCurrent: d.name === currentSettings.skinId
+            };
           }
-          return { id: d.name, name: d.name };
+          return {
+            id: d.name,
+            name: d.name,
+            previewUrl: `/skins/${d.name}/frames/idle.png`,
+            isCurrent: d.name === currentSettings.skinId
+          };
         });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify(skins));
     } catch (e) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({ error: e.message }));
+    }
+  }
+
+  // 11. Create Skin: /api/skins/create
+  if (pathname === '/api/skins/create' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        const skinId = (payload.skinId || payload.id || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        if (!skinId) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: '无效的皮肤ID (仅支持英文小写与数字/下划线)' }));
+        }
+
+        const skinDir = path.join(ROOT_DIR, 'skins', skinId);
+        if (fs.existsSync(skinDir)) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: `皮肤 ID "${skinId}" 已存在` }));
+        }
+
+        fs.mkdirSync(skinDir, { recursive: true });
+        fs.mkdirSync(path.join(skinDir, 'frames'), { recursive: true });
+        fs.mkdirSync(path.join(skinDir, 'audio'), { recursive: true });
+        fs.mkdirSync(path.join(skinDir, 'ui'), { recursive: true });
+
+        // Copy default frame
+        const defaultFrame = path.join(ROOT_DIR, 'skins', 'fat-cat', 'frames', 'idle.png');
+        if (fs.existsSync(defaultFrame)) {
+          fs.copyFileSync(defaultFrame, path.join(skinDir, 'frames', 'idle.png'));
+        }
+
+        // Copy default audio
+        const audioSrc = path.join(ROOT_DIR, 'skins', 'fat-cat', 'audio');
+        if (fs.existsSync(audioSrc)) {
+          for (const f of fs.readdirSync(audioSrc)) {
+            fs.copyFileSync(path.join(audioSrc, f), path.join(skinDir, 'audio', f));
+          }
+        }
+
+        // Copy default ui icons
+        const uiSrc = path.join(ROOT_DIR, 'skins', 'fat-cat', 'ui');
+        if (fs.existsSync(uiSrc)) {
+          for (const f of fs.readdirSync(uiSrc)) {
+            fs.copyFileSync(path.join(uiSrc, f), path.join(skinDir, 'ui', f));
+          }
+        }
+
+        // Create skin.json
+        const newSkinMeta = {
+          schemaVersion: 1,
+          id: skinId,
+          name: payload.name || skinId,
+          version: '1.0.0',
+          author: payload.author || 'Custom Creator',
+          description: payload.description || '自定义桌宠皮肤',
+          render: {
+            defaultWidth: parseInt(payload.defaultWidth || '136', 10),
+            minWidth: 80,
+            maxWidth: 260,
+            motionPaddingPx: 0,
+            facingTransitionMs: 220
+          },
+          frames: {
+            idle: 'frames/idle.png'
+          },
+          states: {
+            idle: { frame: 'idle', motion: 'breath', loop: true },
+            thinking: { frame: 'idle', motion: 'ponder', loop: true },
+            working: { frame: 'idle', motion: 'working', loop: true },
+            success: { frame: 'idle', motion: 'duang', durationMs: 3000, loop: false },
+            error: { frame: 'idle', motion: 'worry', durationMs: 3500, loop: false },
+            pressed: { frame: 'idle', motion: 'compress', loop: false },
+            rebound: { frame: 'idle', motion: 'duang', durationMs: 500, loop: false }
+          }
+        };
+        fs.writeFileSync(path.join(skinDir, 'skin.json'), JSON.stringify(newSkinMeta, null, 2), 'utf-8');
+
+        // Copy dialogue.json template
+        const defaultDialogue = path.join(ROOT_DIR, 'skins', 'fat-cat', 'dialogue.json');
+        if (fs.existsSync(defaultDialogue)) {
+          fs.copyFileSync(defaultDialogue, path.join(skinDir, 'dialogue.json'));
+        }
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, skin: newSkinMeta }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // 12. Save Skin Metadata: /api/skins/save
+  if (pathname === '/api/skins/save' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        const skinId = payload.id;
+        const skinJsonPath = path.join(ROOT_DIR, 'skins', skinId, 'skin.json');
+        if (!fs.existsSync(skinJsonPath)) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: '皮肤不存在' }));
+        }
+
+        const existing = JSON.parse(fs.readFileSync(skinJsonPath, 'utf-8'));
+        const updated = {
+          ...existing,
+          name: payload.name || existing.name,
+          author: payload.author || existing.author,
+          description: payload.description || existing.description,
+          render: { ...existing.render, ...(payload.render || {}) }
+        };
+        fs.writeFileSync(skinJsonPath, JSON.stringify(updated, null, 2), 'utf-8');
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, skin: updated }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // 13. Dialogue API: /api/dialogue (GET & POST)
+  if (pathname === '/api/dialogue') {
+    const skinId = parsedUrl.searchParams.get('skinId') || currentSettings.skinId || 'fat-cat';
+    const dialoguePath = path.join(ROOT_DIR, 'skins', skinId, 'dialogue.json');
+
+    if (req.method === 'GET') {
+      try {
+        if (!fs.existsSync(dialoguePath)) {
+          return res.writeHead(404, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: 'Dialogue not found' }));
+        }
+        const data = JSON.parse(fs.readFileSync(dialoguePath, 'utf-8'));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify(data));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        return res.end(JSON.stringify({ error: e.message }));
+      }
+    }
+
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        try {
+          const payload = JSON.parse(body);
+          const targetSkin = payload.skinId || skinId;
+          const targetPath = path.join(ROOT_DIR, 'skins', targetSkin, 'dialogue.json');
+
+          let existing = {};
+          if (fs.existsSync(targetPath)) {
+            existing = JSON.parse(fs.readFileSync(targetPath, 'utf-8'));
+          }
+
+          const updated = {
+            ...existing,
+            lines: payload.lines || existing.lines || {},
+            policy: { ...existing.policy, ...(payload.policy || {}) }
+          };
+
+          fs.writeFileSync(targetPath, JSON.stringify(updated, null, 2), 'utf-8');
+          broadcastSSE('dialogue-updated', { skinId: targetSkin });
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, dialogue: updated }));
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+      return;
     }
   }
 

@@ -120,6 +120,15 @@ class PetBridge {
         } catch (err) {}
       });
 
+      this.eventSource.addEventListener('dialogue-updated', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (typeof this.onDialogueUpdated === 'function') {
+            this.onDialogueUpdated(data);
+          }
+        } catch (err) {}
+      });
+
       this.eventSource.onerror = () => {
         this.connected = false;
         this.eventSource.close();
