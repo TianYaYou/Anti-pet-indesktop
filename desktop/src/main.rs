@@ -1,5 +1,6 @@
+#[cfg(target_os = "macos")]
+use std::ffi::c_void;
 use std::{
-    ffi::c_void,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -18,6 +19,8 @@ use tao::{
 use tao::dpi::PhysicalPosition;
 #[cfg(target_os = "macos")]
 use tao::platform::macos::{WindowBuilderExtMacOS, WindowExtMacOS};
+#[cfg(target_os = "windows")]
+use tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
 use tray_icon::{
     Icon as TrayIcon, MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent,
 };
@@ -280,6 +283,77 @@ mod macos_native {
     }
 }
 
+
+#[cfg(target_os = "windows")]
+mod windows_native {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
+    };
+    use windows::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
+    };
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct TaskbarInsets {
+        pub bottom: f64,
+        pub left: f64,
+        pub right: f64,
+    }
+
+    pub fn strip_window_decorations(hwnd_isize: isize) {
+        unsafe {
+            let hwnd = HWND(hwnd_isize as *mut _);
+
+            // 1. Disable Windows 11 rounded window corners (DWMWCP_DONOTROUND = 1)
+            let corner_pref: u32 = 1;
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_WINDOW_CORNER_PREFERENCE,
+                &corner_pref as *const _ as *const _,
+                std::mem::size_of::<u32>() as u32,
+            );
+
+            // 2. Disable window border line (DWMWA_COLOR_NONE = 0xFFFFFFFE)
+            let border_color: u32 = 0xFFFFFFFE;
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_BORDER_COLOR,
+                &border_color as *const _ as *const _,
+                std::mem::size_of::<u32>() as u32,
+            );
+        }
+    }
+
+    pub fn query_taskbar_insets(hwnd_isize: isize, scale_factor: f64) -> TaskbarInsets {
+        unsafe {
+            let hwnd = HWND(hwnd_isize as *mut _);
+            let mut mi = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            let hmon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
+            if GetMonitorInfoW(hmon, &mut mi).as_bool() {
+                let rc_mon = mi.rcMonitor;
+                let rc_work = mi.rcWork;
+
+                let scale = if scale_factor > 0.1 { scale_factor } else { 1.0 };
+                let bottom = ((rc_mon.bottom - rc_work.bottom).max(0) as f64) / scale;
+                let left = ((rc_work.left - rc_mon.left).max(0) as f64) / scale;
+                let right = ((rc_mon.right - rc_work.right).max(0) as f64) / scale;
+
+                TaskbarInsets {
+                    bottom,
+                    left,
+                    right,
+                }
+            } else {
+                TaskbarInsets::default()
+            }
+        }
+    }
+}
+
 fn parse_ipc_command(msg: &str) -> Option<UserEvent> {
     let trimmed = msg.trim();
     if trimmed == "drag_window" {
@@ -332,17 +406,31 @@ fn parse_single_rect(s: &str) -> Option<HitRect> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = std::env::args().collect();
+    let start_compact = args.iter().any(|a| a == "--compact" || a == "-c");
+
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
 
-    let (win_width, win_height) = if let Some(monitor) = event_loop.primary_monitor() {
+    let (mon_width, mon_height, mon_scale) = if let Some(monitor) = event_loop.primary_monitor() {
         let scale = monitor.scale_factor();
         let size = monitor.size().to_logical::<f64>(scale);
-        (size.width.max(360.0), size.height.max(400.0))
+        (size.width.max(360.0), size.height.max(400.0), scale)
     } else {
-        (1440.0, 900.0)
+        (1440.0, 900.0, 1.0)
     };
 
+    let (win_width, win_height, win_x, win_y) = if start_compact {
+        let cw = 340.0;
+        let ch = 400.0;
+        let cx = (mon_width - cw - 24.0).max(0.0);
+        let cy = (mon_height - 48.0 - ch).max(0.0);
+        (cw, ch, cx, cy)
+    } else {
+        (mon_width, mon_height, 0.0, 0.0)
+    };
+
+    #[allow(unused_mut)]
     let mut win_builder = WindowBuilder::new()
         .with_title("Anti-Pet In Desktop")
         .with_transparent(true)
@@ -351,7 +439,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_visible_on_all_workspaces(true)
         .with_resizable(false)
         .with_inner_size(LogicalSize::new(win_width, win_height))
-        .with_position(LogicalPosition::new(0.0, 0.0));
+        .with_position(LogicalPosition::new(win_x, win_y));
+
+    #[cfg(target_os = "windows")]
+    {
+        win_builder = win_builder
+            .with_undecorated_shadow(false)
+            .with_skip_taskbar(true);
+    }
 
     #[cfg(target_os = "macos")]
     {
@@ -367,6 +462,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let window = win_builder.build(&event_loop)?;
     let _ = window.set_ignore_cursor_events(true);
+
+    #[cfg(target_os = "windows")]
+    {
+        windows_native::strip_window_decorations(window.hwnd());
+    }
 
     #[cfg(target_os = "macos")]
     {
@@ -418,6 +518,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize System Tray Menu and Icon
     let tray_menu = Menu::new();
     let item_toggle = MenuItem::new("显示 / 隐藏 大肥猫", true, None);
+    let item_toggle_mode = MenuItem::new(
+        if start_compact { "切换为: 全屏画布模式" } else { "切换为: 紧凑挂件模式 (省资源)" },
+        true,
+        None,
+    );
     let item_dnd = MenuItem::new("完全穿透 (免打扰模式)", true, None);
     let item_reset_zoom = MenuItem::new("重置缩放 (100%)", true, None);
     let item_switch_skin = MenuItem::new("切换皮肤", true, None);
@@ -428,6 +533,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let _ = tray_menu.append_items(&[
         &item_toggle,
+        &item_toggle_mode,
         &item_dnd,
         &item_reset_zoom,
         &item_switch_skin,
@@ -456,6 +562,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut last_dock_sig = (-1.0_f64, -1.0_f64, -1.0_f64);
     let mut last_typing_state = false;
     let mut last_ide_state = false;
+    let mut is_compact_mode = start_compact;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -535,6 +642,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let vis = !is_window_visible.load(Ordering::Relaxed);
                             is_window_visible.store(vis, Ordering::Relaxed);
                             window.set_visible(vis);
+                        } else if menu_event.id == item_toggle_mode.id() {
+                            is_compact_mode = !is_compact_mode;
+                            let (mw, mh, sc) = if let Some(m) = window.current_monitor() {
+                                let s = m.scale_factor();
+                                let sz = m.size().to_logical::<f64>(s);
+                                (sz.width, sz.height, s)
+                            } else {
+                                (mon_width, mon_height, mon_scale)
+                            };
+
+                            if is_compact_mode {
+                                #[cfg(target_os = "windows")]
+                                let tb = windows_native::query_taskbar_insets(window.hwnd(), sc).bottom;
+                                #[cfg(not(target_os = "windows"))]
+                                let tb = 0.0;
+
+                                let cw = 340.0;
+                                let ch = 400.0;
+                                let cx = (mw - cw - 24.0).max(0.0);
+                                let cy = (mh - tb - ch).max(0.0);
+
+                                window.set_inner_size(LogicalSize::new(cw, ch));
+                                window.set_outer_position(LogicalPosition::new(cx, cy));
+                                #[cfg(target_os = "windows")]
+                                windows_native::strip_window_decorations(window.hwnd());
+                                let _ = item_toggle_mode.set_text("切换为: 全屏画布模式");
+                                let _ = webview.evaluate_script("if(window.__antiPetOnModeChange)window.__antiPetOnModeChange('compact');");
+                            } else {
+                                window.set_inner_size(LogicalSize::new(mw, mh));
+                                window.set_outer_position(LogicalPosition::new(0.0, 0.0));
+                                #[cfg(target_os = "windows")]
+                                windows_native::strip_window_decorations(window.hwnd());
+                                let _ = item_toggle_mode.set_text("切换为: 紧凑挂件模式 (省资源)");
+                                let _ = webview.evaluate_script("if(window.__antiPetOnModeChange)window.__antiPetOnModeChange('fullscreen');");
+                            }
                         } else if menu_event.id == item_dnd.id() {
                             let _ = webview.evaluate_script(
                                 "if(window.__antiPetToggleDnd)window.__antiPetToggleDnd();",
@@ -576,15 +718,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     #[cfg(target_os = "macos")]
                     let is_typing = macos_native::is_user_typing_globally();
 
-                    #[cfg(not(target_os = "macos"))]
-                    let dock = (0.0_f64, 0.0_f64, 0.0_f64);
-                    #[cfg(not(target_os = "macos"))]
+                    #[cfg(target_os = "windows")]
+                    let dock = windows_native::query_taskbar_insets(window.hwnd(), window.scale_factor());
+                    #[cfg(target_os = "windows")]
                     let is_typing = false;
+                    #[cfg(target_os = "windows")]
+                    let dock_tuple = (dock.bottom, dock.left, dock.right);
+
+                    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+                    let dock = (0.0_f64, 0.0_f64, 0.0_f64);
+                    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+                    let is_typing = false;
+                    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+                    let dock_tuple = dock;
 
                     #[cfg(target_os = "macos")]
                     let dock_tuple = (dock.bottom, dock.left, dock.right);
-                    #[cfg(not(target_os = "macos"))]
-                    let dock_tuple = dock;
 
                     #[cfg(target_os = "macos")]
                     let cursor_opt = macos_native::get_mouse_location_in_window(window.ns_window());

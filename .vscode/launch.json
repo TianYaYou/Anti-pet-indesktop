@@ -1,0 +1,45 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "🚀 Debug Desktop (MSVC cppvsdbg)",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/desktop/target/debug/anti-pet-desktop.exe",
+      "args": [],
+      "stopAtEntry": false,
+      "cwd": "${workspaceFolder}",
+      "environment": [],
+      "console": "integratedTerminal",
+      "preLaunchTask": "cargo build desktop"
+    },
+    {
+      "name": "🚀 Debug Desktop (CodeLLDB)",
+      "type": "lldb",
+      "request": "launch",
+      "program": "${workspaceFolder}/desktop/target/debug/anti-pet-desktop.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "cargo build desktop"
+    },
+    {
+      "name": "🟢 Debug Server (Node.js)",
+      "type": "node",
+      "request": "launch",
+      "name": "Launch Server",
+      "program": "${workspaceFolder}/server/index.js",
+      "cwd": "${workspaceFolder}",
+      "restart": true
+    }
+  ],
+  "compounds": [
+    {
+      "name": "🌟 Full Stack Debug (Server + Desktop)",
+      "configurations": [
+        "🟢 Debug Server (Node.js)",
+        "🚀 Debug Desktop (MSVC cppvsdbg)"
+      ],
+      "stopAll": true
+    }
+  ]
+}

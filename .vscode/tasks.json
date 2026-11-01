@@ -1,0 +1,56 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cargo build desktop",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--manifest-path",
+        "desktop/Cargo.toml"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "cargo build desktop (release)",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "build",
+        "--release",
+        "--manifest-path",
+        "desktop/Cargo.toml"
+      ],
+      "group": "build",
+      "problemMatcher": [
+        "$rustc"
+      ]
+    },
+    {
+      "label": "start server",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "server/index.js"
+      ],
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "正在启动|伴侣服务",
+          "endsPattern": "已就绪|实时额度"
+        }
+      }
+    }
+  ]
+}
