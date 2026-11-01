@@ -681,7 +681,14 @@ const server = http.createServer(async (req, res) => {
   // 8. Static File Serving (Support both root `/pet.css` and `/core/pet.css`)
   if (pathname === '/' || pathname === '/index.html') {
     pathname = '/core/index.html';
-  } else if (pathname === '/pet.css' || pathname === '/pet.js' || pathname === '/bridge.js') {
+  } else if (
+    pathname === '/pet.css' ||
+    pathname === '/pet.js' ||
+    pathname === '/bridge.js' ||
+    pathname === '/settings.html' ||
+    pathname === '/settings.css' ||
+    pathname === '/settings.js'
+  ) {
     pathname = `/core${pathname}`;
   }
 

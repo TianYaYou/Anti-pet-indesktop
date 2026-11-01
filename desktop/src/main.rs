@@ -52,6 +52,8 @@ enum UserEvent {
     SetVisible(bool),
     DragWindow,
     TickCursor,
+    OpenSettings,
+    CloseSettings,
 }
 
 #[cfg(target_os = "macos")]
@@ -406,6 +408,12 @@ fn parse_ipc_command(msg: &str) -> Option<UserEvent> {
     if trimmed == "drag_window" {
         return Some(UserEvent::DragWindow);
     }
+    if trimmed == "open_settings" {
+        return Some(UserEvent::OpenSettings);
+    }
+    if trimmed == "close_settings" {
+        return Some(UserEvent::CloseSettings);
+    }
     if let Some(val) = trimmed.strip_prefix("set_ignore_cursor_events:") {
         return Some(UserEvent::SetIgnoreCursorEvents(val.trim() == "true"));
     }
@@ -624,6 +632,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_url("http://127.0.0.1:4199")
         .build(&window)?;
 
+    let mut settings_win_builder = WindowBuilder::new()
+        .with_title("偏好设置")
+        .with_inner_size(LogicalSize::new(680.0, 520.0))
+        .with_resizable(false)
+        .with_visible(false);
+
+    #[cfg(target_os = "windows")]
+    {
+        settings_win_builder = settings_win_builder
+            .with_undecorated_shadow(true)
+            .with_skip_taskbar(false);
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        settings_win_builder = settings_win_builder
+            .with_has_shadow(true)
+            .with_titlebar_buttons_hidden(false)
+            .with_titlebar_transparent(false)
+            .with_title_hidden(false);
+    }
+
+    if let Ok(icon) = tao::window::Icon::from_rgba(tray_rgba.to_vec(), 32, 32) {
+        settings_win_builder = settings_win_builder.with_window_icon(Some(icon));
+    }
+
+    let settings_window = settings_win_builder.build(&event_loop)?;
+
+    let settings_ipc_proxy = proxy.clone();
+    let _settings_webview = WebViewBuilder::new()
+        .with_accept_first_mouse(true)
+        .with_ipc_handler(move |req| {
+            let body = req.body();
+            if let Some(evt) = parse_ipc_command(body) {
+                let _ = settings_ipc_proxy.send_event(evt);
+            }
+        })
+        .with_url("http://127.0.0.1:4199/settings.html")
+        .build(&settings_window)?;
+
     let ticker_proxy = proxy.clone();
     thread::spawn(move || loop {
         thread::sleep(Duration::from_millis(25));
@@ -702,14 +750,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
             }
-            Event::WindowEvent {
-                event: WindowEvent::Focused(false),
-                ..
-            } => {
-                let _ = webview.evaluate_script(
-                    "if(window.__antiPetOnWindowBlur)window.__antiPetOnWindowBlur();",
-                );
-            }
             Event::UserEvent(user_evt) => match user_evt {
                 UserEvent::SetIgnoreCursorEvents(ignore) => {
                     frontend_pixel_transparent.store(ignore, Ordering::Relaxed);
@@ -756,17 +796,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 UserEvent::DragWindow => {
                     let _ = window.drag_window();
                 }
+                UserEvent::OpenSettings => {
+                    settings_window.set_visible(true);
+                    settings_window.set_focus();
+                }
+                UserEvent::CloseSettings => {
+                    settings_window.set_visible(false);
+                }
                 UserEvent::TickCursor => {
                     tick_counter = tick_counter.wrapping_add(1);
 
                     // Drain System Tray Menu Click Events
                     while let Ok(menu_event) = MenuEvent::receiver().try_recv() {
                         if menu_event.id == item_settings.id() {
-                            if !is_window_visible.load(Ordering::Relaxed) {
-                                is_window_visible.store(true, Ordering::Relaxed);
-                                window.set_visible(true);
-                            }
-                            let _ = webview.evaluate_script("if(window.__openSettings)window.__openSettings();");
+                            settings_window.set_visible(true);
+                            settings_window.set_focus();
                         } else if menu_event.id == item_toggle.id() {
                             let vis = !is_window_visible.load(Ordering::Relaxed);
                             is_window_visible.store(vis, Ordering::Relaxed);
@@ -944,13 +988,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             },
             Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
+                window_id,
+                event,
                 ..
-            } => {
-                // Minimize/Hide to tray instead of terminating
-                is_window_visible.store(false, Ordering::Relaxed);
-                window.set_visible(false);
-            }
+            } => match event {
+                WindowEvent::Focused(false) => {
+                    if window_id == window.id() {
+                        let _ = webview.evaluate_script(
+                            "if(window.__antiPetOnWindowBlur)window.__antiPetOnWindowBlur();",
+                        );
+                    }
+                }
+                WindowEvent::CloseRequested => {
+                    if window_id == settings_window.id() {
+                        settings_window.set_visible(false);
+                    } else if window_id == window.id() {
+                        // Minimize/Hide pet window to tray instead of terminating
+                        is_window_visible.store(false, Ordering::Relaxed);
+                        window.set_visible(false);
+                    }
+                }
+                _ => (),
+            },
             _ => (),
         }
     });

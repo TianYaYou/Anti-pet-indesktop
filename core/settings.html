@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>偏好设置</title>
+  <link rel="stylesheet" href="/settings.css">
+</head>
+<body class="settings-body">
+  <div class="settings-layout">
+    <!-- Left Sidebar -->
+    <aside class="settings-sidebar">
+      <div class="sidebar-title-bar">
+        <span class="sidebar-title">偏好设置</span>
+        <span class="version-tag" id="version-tag">v0.1.1</span>
+      </div>
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-tab="general">
+          <span class="nav-text">常规与显示</span>
+        </button>
+        <button class="nav-item" data-tab="system">
+          <span class="nav-text">自启动与更新</span>
+        </button>
+        <button class="nav-item" data-tab="skins">
+          <span class="nav-text">皮肤管理</span>
+        </button>
+        <button class="nav-item" data-tab="dialogue">
+          <span class="nav-text">台词与问候</span>
+        </button>
+      </nav>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="settings-main">
+      <div class="tab-content-wrapper">
+        <!-- Tab 1: General & Display -->
+        <section id="tab-general" class="tab-pane active">
+          <div class="pane-header">
+            <h2 class="pane-title">常规与显示</h2>
+            <p class="pane-subtitle">调整大肥猫的桌面尺寸、物理重力下落与交互行为</p>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-title">体型与物理</div>
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">缩放大小</div>
+                <div class="setting-desc">挂件在屏幕上的呈现比例 (也可悬停直接滚轮平滑缩放)</div>
+              </div>
+              <div class="setting-control range-control">
+                <input type="range" id="setting-scale" min="0.5" max="2.0" step="0.05" value="1.0">
+                <span id="setting-scale-val" class="value-label">100%</span>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">落地吸附模式</div>
+                <div class="setting-desc">拖拽松手后猫猫下落吸附的目标基准线</div>
+              </div>
+              <div class="setting-control">
+                <select id="setting-floor-mode" class="native-select">
+                  <option value="bottom">屏幕绝对落底 (0px 极底)</option>
+                  <option value="taskbar">贴合任务栏与 Dock 上沿</option>
+                  <option value="free">自由悬浮 (不吸附底边)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">重力加速度模拟</div>
+                <div class="setting-desc">释放后遵循弹性重力加速度下落，触底自然回弹</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="setting-gravity">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-title">状态与交互</div>
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">实时额度卡片</div>
+                <div class="setting-desc">在对话气泡中同步展示 Antigravity 5小时与周额度进度</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="setting-show-quota">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">仅在 IDE 活跃时显示</div>
+                <div class="setting-desc">前台为 Antigravity / VS Code / Cursor 时自动呈现，切出时隐匿</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="setting-ide-only">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">完全穿透免打扰</div>
+                <div class="setting-desc">猫猫处于只读透明状态，鼠标点击直接透传到底层应用</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="setting-dnd">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">气泡停留时长</div>
+                <div class="setting-desc">台词气泡展示后的持续时间</div>
+              </div>
+              <div class="setting-control range-control">
+                <input type="range" id="setting-bubble-duration" min="1000" max="10000" step="500" value="4000">
+                <span id="setting-bubble-duration-val" class="value-label">4.0s</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-title">声音与音效</div>
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">互动音效</div>
+                <div class="setting-desc">点击、抚摸、成功与报错时的猫叫音频</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="setting-sound">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">音效音量</div>
+                <div class="setting-desc">伴侣音效播放音量大小</div>
+              </div>
+              <div class="setting-control range-control">
+                <input type="range" id="setting-volume" min="0" max="1" step="0.05" value="0.8">
+                <span id="setting-volume-val" class="value-label">80%</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 2: Autostart & Update -->
+        <section id="tab-system" class="tab-pane">
+          <div class="pane-header">
+            <h2 class="pane-title">自启动与更新</h2>
+            <p class="pane-subtitle">管理开机自启动配置与挂件版本检测</p>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-title">系统集成</div>
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">开机自动启动</div>
+                <div class="setting-desc">在系统登录完成后自动在托盘挂载大肥猫伴侣</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="setting-autostart">
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+            <div id="autostart-status-note" class="status-bar neutral">正在检测开机启动状态...</div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-title">版本更新</div>
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">当前版本</div>
+                <div class="setting-desc" id="current-version-desc">v0.1.1 (正式发行版)</div>
+              </div>
+              <div class="setting-control">
+                <button id="btn-check-update" class="native-btn">检查更新</button>
+              </div>
+            </div>
+            <div id="update-status-note" class="status-bar neutral">可点击检查更新获取最新版本信息</div>
+          </div>
+        </section>
+
+        <!-- Tab 3: Skins Management -->
+        <section id="tab-skins" class="tab-pane">
+          <div class="pane-header">
+            <div class="pane-header-row">
+              <div>
+                <h2 class="pane-title">皮肤管理</h2>
+                <p class="pane-subtitle">切换外观外观皮肤，或导入创建自定义伴侣角色</p>
+              </div>
+              <div class="pane-header-actions">
+                <button id="btn-toggle-create-skin" class="native-btn">新建皮肤</button>
+                <button id="btn-toggle-import-skin" class="native-btn">导入皮肤</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Create Skin Form (Hidden by default) -->
+          <div id="create-skin-form" class="section-card expand-form hidden">
+            <div class="section-card-title">新建皮肤模版</div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="new-skin-id" class="field-label">皮肤 ID (英文字母数字)</label>
+                <input type="text" id="new-skin-id" class="native-input" placeholder="例如: cat-black">
+              </div>
+              <div class="form-field">
+                <label for="new-skin-name" class="field-label">皮肤名称</label>
+                <input type="text" id="new-skin-name" class="native-input" placeholder="例如: 黑猫伴侣">
+              </div>
+              <div class="form-field">
+                <label for="new-skin-author" class="field-label">作者信息</label>
+                <input type="text" id="new-skin-author" class="native-input" placeholder="作者昵称">
+              </div>
+              <div class="form-field">
+                <label for="new-skin-desc" class="field-label">简要说明</label>
+                <input type="text" id="new-skin-desc" class="native-input" placeholder="描述该皮肤特色">
+              </div>
+            </div>
+            <div class="form-actions">
+              <button id="btn-cancel-create-skin" class="native-btn">取消</button>
+              <button id="btn-confirm-create-skin" class="native-btn primary">确认创建</button>
+            </div>
+          </div>
+
+          <!-- Import Skin Form (Hidden by default) -->
+          <div id="import-skin-form" class="section-card expand-form hidden">
+            <div class="section-card-title">导入皮肤配置</div>
+            <div class="form-field">
+              <label for="import-skin-json" class="field-label">粘贴 skin.json 配置内容</label>
+              <textarea id="import-skin-json" class="native-textarea" rows="6" placeholder='{\n  "id": "my-custom-cat",\n  "name": "我的猫猫",\n  "version": "1.0.0"\n}'></textarea>
+            </div>
+            <div class="form-actions">
+              <button id="btn-cancel-import-skin" class="native-btn">取消</button>
+              <button id="btn-confirm-import-skin" class="native-btn primary">确认导入</button>
+            </div>
+          </div>
+
+          <!-- Installed Skins List -->
+          <div class="section-card">
+            <div class="section-card-title">已安装皮肤</div>
+            <div id="skins-grid" class="skins-grid">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 4: Dialogue & Greeting -->
+        <section id="tab-dialogue" class="tab-pane">
+          <div class="pane-header">
+            <div class="pane-header-row">
+              <div>
+                <h2 class="pane-title">台词与问候</h2>
+                <p class="pane-subtitle">自定义不同工作状态下的气泡台词与提示内容</p>
+              </div>
+              <div class="pane-header-actions">
+                <select id="dialogue-skin-selector" class="native-select">
+                  <!-- Dynamically populated with installed skins -->
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="dialogue-categories">
+            <!-- Idle Category -->
+            <div class="section-card dialogue-category" data-cat="idle">
+              <div class="category-header">
+                <div>
+                  <div class="category-title">待机日常 (idle)</div>
+                  <div class="category-desc">空闲时随时间周期性随机说出的台词</div>
+                </div>
+                <button class="native-btn btn-add-line" data-cat="idle">添加条目</button>
+              </div>
+              <div class="lines-list" id="lines-idle"></div>
+            </div>
+
+            <!-- Petting Category -->
+            <div class="section-card dialogue-category" data-cat="petting">
+              <div class="category-header">
+                <div>
+                  <div class="category-title">互动抚摸 (petting)</div>
+                  <div class="category-desc">鼠标双击或在猫头连续抚摸摩擦时触发</div>
+                </div>
+                <button class="native-btn btn-add-line" data-cat="petting">添加条目</button>
+              </div>
+              <div class="lines-list" id="lines-petting"></div>
+            </div>
+
+            <!-- Success Category -->
+            <div class="section-card dialogue-category" data-cat="success">
+              <div class="category-header">
+                <div>
+                  <div class="category-title">任务成功 (success)</div>
+                  <div class="category-desc">Antigravity 成功完成编译、测试或代码交付时</div>
+                </div>
+                <button class="native-btn btn-add-line" data-cat="success">添加条目</button>
+              </div>
+              <div class="lines-list" id="lines-success"></div>
+            </div>
+
+            <!-- Thinking Category -->
+            <div class="section-card dialogue-category" data-cat="thinking">
+              <div class="category-header">
+                <div>
+                  <div class="category-title">深度思考 (thinking)</div>
+                  <div class="category-desc">模型在执行深度推理或调用工具流时</div>
+                </div>
+                <button class="native-btn btn-add-line" data-cat="thinking">添加条目</button>
+              </div>
+              <div class="lines-list" id="lines-thinking"></div>
+            </div>
+
+            <!-- Error Category -->
+            <div class="section-card dialogue-category" data-cat="error">
+              <div class="category-header">
+                <div>
+                  <div class="category-title">任务遇阻 (error)</div>
+                  <div class="category-desc">代码构建失败或运行异常时安慰用户的提示</div>
+                </div>
+                <button class="native-btn btn-add-line" data-cat="error">添加条目</button>
+              </div>
+              <div class="lines-list" id="lines-error"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Action Footer -->
+      <footer class="settings-footer">
+        <div class="footer-hint">配置变更将在点击保存后立即同步生效</div>
+        <div class="footer-buttons">
+          <button id="btn-cancel" class="native-btn footer-btn">取消</button>
+          <button id="btn-save" class="native-btn footer-btn primary">保存</button>
+        </div>
+      </footer>
+    </main>
+  </div>
+
+  <div id="settings-toast" class="settings-toast"></div>
+  <script src="/settings.js"></script>
+</body>
+</html>
