@@ -7,6 +7,7 @@ use std::{
     thread,
     time::Duration,
 };
+use muda::{Menu, MenuItem, PredefinedMenuItem, MenuEvent};
 use tao::{
     dpi::{LogicalPosition, LogicalSize, PhysicalPosition},
     event::{Event, StartCause, WindowEvent},
@@ -15,6 +16,9 @@ use tao::{
 };
 #[cfg(target_os = "macos")]
 use tao::platform::macos::{WindowBuilderExtMacOS, WindowExtMacOS};
+use tray_icon::{
+    Icon as TrayIcon, MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent,
+};
 use wry::WebViewBuilder;
 
 /// Interactive bounding rectangle in logical window coordinates
@@ -340,6 +344,42 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Anti-Pet 桌面全透明悬浮穿透引擎已挂载");
 
+    // Initialize System Tray Menu and Icon
+    let tray_menu = Menu::new();
+    let item_toggle = MenuItem::new("显示 / 隐藏 大肥猫", true, None);
+    let item_dnd = MenuItem::new("完全穿透 (免打扰模式)", true, None);
+    let item_reset_zoom = MenuItem::new("重置缩放 (100%)", true, None);
+    let item_switch_skin = MenuItem::new("切换皮肤", true, None);
+    let sep1 = PredefinedMenuItem::separator();
+    let item_about = MenuItem::new("关于 大肥猫桌宠挂件 v0.1.0", false, None);
+    let sep2 = PredefinedMenuItem::separator();
+    let item_quit = MenuItem::new("退出", true, None);
+
+    let _ = tray_menu.append_items(&[
+        &item_toggle,
+        &item_dnd,
+        &item_reset_zoom,
+        &item_switch_skin,
+        &sep1,
+        &item_about,
+        &sep2,
+        &item_quit,
+    ]);
+
+    let tray_rgba = include_bytes!("../../assets/tray.rgba");
+    let tray_icon = TrayIcon::from_rgba(tray_rgba.to_vec(), 32, 32).ok();
+
+    let mut tray_builder = TrayIconBuilder::new()
+        .with_tooltip("大肥猫桌宠挂件 v0.1.0")
+        .with_menu(Box::new(tray_menu));
+
+    if let Some(icon) = tray_icon {
+        tray_builder = tray_builder.with_icon(icon);
+    }
+
+    let _tray = tray_builder.build()?;
+    let is_window_visible = Arc::new(AtomicBool::new(true));
+
     let mut last_cursor_phys = PhysicalPosition::new(-1.0, -1.0);
     let mut tick_counter: u32 = 0;
     let mut last_dock_sig = (-1.0_f64, -1.0_f64, -1.0_f64);
@@ -408,6 +448,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     window.set_always_on_top(on_top);
                 }
                 UserEvent::SetVisible(visible) => {
+                    is_window_visible.store(visible, Ordering::Relaxed);
                     window.set_visible(visible);
                 }
                 UserEvent::DragWindow => {
@@ -415,6 +456,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 UserEvent::TickCursor => {
                     tick_counter = tick_counter.wrapping_add(1);
+
+                    // Drain System Tray Menu Click Events
+                    while let Ok(menu_event) = MenuEvent::receiver().try_recv() {
+                        if menu_event.id == item_toggle.id() {
+                            let vis = !is_window_visible.load(Ordering::Relaxed);
+                            is_window_visible.store(vis, Ordering::Relaxed);
+                            window.set_visible(vis);
+                        } else if menu_event.id == item_dnd.id() {
+                            let _ = webview.evaluate_script(
+                                "if(window.__antiPetToggleDnd)window.__antiPetToggleDnd();",
+                            );
+                        } else if menu_event.id == item_reset_zoom.id() {
+                            let _ = webview.evaluate_script(
+                                "if(window.__antiPetResetZoom)window.__antiPetResetZoom();",
+                            );
+                        } else if menu_event.id == item_switch_skin.id() {
+                            let _ = webview.evaluate_script(
+                                "if(window.__antiPetCycleSkin)window.__antiPetCycleSkin();",
+                            );
+                        } else if menu_event.id == item_quit.id() {
+                            *control_flow = ControlFlow::Exit;
+                        }
+                    }
+
+                    // Drain System Tray Icon Direct Clicks
+                    while let Ok(tray_event) = TrayIconEvent::receiver().try_recv() {
+                        match tray_event {
+                            TrayIconEvent::Click {
+                                button: MouseButton::Left,
+                                button_state: MouseButtonState::Up,
+                                ..
+                            } => {
+                                let vis = !is_window_visible.load(Ordering::Relaxed);
+                                is_window_visible.store(vis, Ordering::Relaxed);
+                                window.set_visible(vis);
+                            }
+                            _ => {}
+                        }
+                    }
 
                     #[cfg(target_os = "macos")]
                     let dock = macos_native::sync_fullscreen_overlay_and_query_dock(
@@ -501,7 +581,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => *control_flow = ControlFlow::Exit,
+            } => {
+                // Minimize/Hide to tray instead of terminating
+                is_window_visible.store(false, Ordering::Relaxed);
+                window.set_visible(false);
+            }
             _ => (),
         }
     });

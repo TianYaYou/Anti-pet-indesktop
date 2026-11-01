@@ -1,7 +1,7 @@
 {
   "name": "anti-pet-indesktop",
   "version": "0.1.0",
-  "description": "Cross-platform lightweight desktop & in-IDE pet companion for Antigravity (Mac & Windows)",
+  "description": "大肥猫桌宠挂件 - Cross-platform lightweight desktop & in-IDE pet companion for Antigravity (Mac & Windows)",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
@@ -18,6 +18,6 @@
     "mac",
     "windows"
   ],
-  "author": "Antigravity Pet Team",
+  "author": "TianYa",
   "license": "MIT"
 }

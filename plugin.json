@@ -1,12 +1,14 @@
 {
   "name": "anti-pet-indesktop",
-  "displayName": "大肥猫 · Antigravity 伴侣桌宠",
+  "displayName": "大肥猫桌宠挂件",
   "version": "0.1.0",
-  "description": "轻量跨平台桌面/内置伴侣桌宠，实时联动 Agent 思考与执行状态，支持按压回弹、额度气泡、傲娇台词与皮肤扩展。",
-  "author": "Antigravity Pet Team",
-  "homepage": "https://github.com/tianya/Anti-pet-indesktop",
+  "description": "轻量跨平台桌面/内置伴侣桌宠，实时联动 Agent 思考与执行状态，支持滚轮丝滑缩放、系统托盘常驻、额度气泡、傲娇台词与皮肤扩展。",
+  "logo": "assets/icon.png",
+  "author": "TianYa",
+  "homepage": "https://github.com/TianYaYou/Anti-pet-indesktop",
+  "repository": "https://github.com/TianYaYou/Anti-pet-indesktop",
   "suggestedPrompts": [
-    "启动大肥猫桌宠伴侣",
+    "启动大肥猫桌宠挂件",
     "让大肥猫说一句傲娇台词",
     "切换桌宠皮肤或查看额度状态"
   ]

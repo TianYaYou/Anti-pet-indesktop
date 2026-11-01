@@ -1,7 +1,9 @@
 /* Anti-Pet In Desktop - Thought Bubble & Adaptive Edge Stylesheet */
 
 :root {
-  --pet-width: 136px;
+  --pet-base-width: 136px;
+  --pet-scale: 1;
+  --pet-width: calc(var(--pet-base-width) * var(--pet-scale));
   --gemini-purple: #7c4dff;
   --gemini-blue: #2979ff;
   --gemini-gradient: linear-gradient(135deg, #7c4dff 0%, #2979ff 100%);
@@ -83,6 +85,32 @@ body.pet-body {
 .dnd-wake-pill.hidden {
   display: none !important;
   pointer-events: none;
+}
+
+/* Floating Zoom Scale Pill */
+.zoom-pill {
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-100%);
+  background: var(--thought-bg);
+  border: 1.5px solid var(--thought-border);
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 4px 14px var(--thought-shadow);
+  pointer-events: none;
+  z-index: 110;
+  opacity: 1;
+  transition: opacity 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  white-space: nowrap;
+}
+
+.zoom-pill.hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-80%) scale(0.9);
 }
 
 /* Pet Container: Zero bottom/side margin so flat-bottom bust touches 0px bottom or Mac Dock bar */

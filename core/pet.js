@@ -25,6 +25,8 @@
   const gravityStatus = document.getElementById('gravity-status');
   const skinStatus = document.getElementById('skin-status');
   const dndWakePill = document.getElementById('dnd-wake-pill');
+  const zoomPill = document.getElementById('zoom-pill');
+  const zoomStatus = document.getElementById('zoom-status');
 
   const ipc = window.DesktopIPC;
 
@@ -71,6 +73,10 @@
     stateTimer: null,
     bubbleHideTimer: null,
     leaveHideTimer: null,
+    scale: parseFloat(localStorage.getItem('anti-pet-scale') || '1.0'),
+    targetScale: parseFloat(localStorage.getItem('anti-pet-scale') || '1.0'),
+    zoomRaf: null,
+    zoomPillTimer: null,
     audioContext: null,
     audioBuffers: {}
   };
@@ -945,6 +951,66 @@
   });
 
   // =========================================================================
+  // Smooth Mouse Wheel Zoom (0.55x ~ 2.40x)
+  // =========================================================================
+
+  function showZoomPill(pct) {
+    if (!zoomPill) return;
+    zoomPill.textContent = `🐾 ${pct}%`;
+    zoomPill.classList.remove('hidden');
+    if (state.zoomPillTimer) clearTimeout(state.zoomPillTimer);
+    state.zoomPillTimer = setTimeout(() => {
+      zoomPill.classList.add('hidden');
+      state.zoomPillTimer = null;
+    }, 1200);
+  }
+
+  function applyScale(val) {
+    document.documentElement.style.setProperty('--pet-scale', val.toFixed(3));
+    if (zoomStatus) zoomStatus.textContent = `${Math.round(val * 100)}%`;
+  }
+
+  function smoothZoomTo(newTarget) {
+    state.targetScale = Math.max(0.55, Math.min(2.4, newTarget));
+    showZoomPill(Math.round(state.targetScale * 100));
+
+    if (state.zoomRaf) return;
+    const step = () => {
+      const diff = state.targetScale - state.scale;
+      if (Math.abs(diff) > 0.003) {
+        state.scale += diff * 0.22;
+        applyScale(state.scale);
+        adjustBubblePosition();
+        syncHitRectsToDesktop();
+        state.zoomRaf = requestAnimationFrame(step);
+      } else {
+        state.scale = state.targetScale;
+        applyScale(state.scale);
+        adjustBubblePosition();
+        syncHitRectsToDesktop();
+        try {
+          localStorage.setItem('anti-pet-scale', state.scale.toFixed(2));
+        } catch (e) {}
+        state.zoomRaf = null;
+      }
+    };
+    state.zoomRaf = requestAnimationFrame(step);
+  }
+
+  window.__antiPetResetZoom = () => {
+    smoothZoomTo(1.0);
+    showBubble('已重置桌宠大小为 100%~', 2400);
+  };
+
+  container.addEventListener('wheel', (e) => {
+    if (state.dndPassthrough) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const factor = e.deltaY < 0 ? 1.075 : 0.93;
+    smoothZoomTo(state.targetScale * factor);
+  }, { passive: false });
+
+  // =========================================================================
   // 7. Quota Updater, Cursor-Anchored Context Menu & Mode Controls
   // =========================================================================
 
@@ -1019,6 +1085,9 @@
       showBubble('当前皮肤：大肥猫', 2600);
     }
   }
+
+  window.__antiPetCycleSkin = () => { cycleSkin(); };
+  window.__antiPetToggleDnd = () => { toggleDndPassthrough(); };
 
   dndWakePill.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1098,6 +1167,10 @@
         break;
       case 'pet-action':
         triggerPettingAction();
+        break;
+      case 'reset-zoom':
+        smoothZoomTo(1.0);
+        showBubble('已重置桌宠大小为 100%~', 2400);
         break;
       case 'toggle-floor-mode':
         cycleFloorMode();
@@ -1196,6 +1269,7 @@
     }
   });
 
+  applyScale(state.scale);
   fetchAvailableSkins();
   loadSkin('fat-cat');
 })();

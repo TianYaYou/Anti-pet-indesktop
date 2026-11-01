@@ -45,6 +45,9 @@
       </div>
     </div>
 
+    <!-- Floating Zoom Scale Pill -->
+    <div id="zoom-pill" class="zoom-pill hidden">🐾 100%</div>
+
     <!-- Pet Sprite Presentation -->
     <div id="sprite-wrapper" class="sprite-wrapper">
       <img
@@ -53,7 +56,7 @@
         src="/skins/fat-cat/frames/idle.png"
         alt="大肥猫"
         width="136"
-        style="width: 136px; max-width: 136px; height: auto;"
+        style="width: 100%; max-width: 100%; height: auto;"
         draggable="false"
         crossorigin="anonymous"
       >
@@ -66,6 +69,7 @@
     <div class="menu-item" data-action="toggle-quota"><span>切换额度卡片</span></div>
     <div class="menu-item" data-action="random-dialogue"><span>换一句傲娇台词</span></div>
     <div class="menu-item" data-action="pet-action"><span>揉头摸摸大肥猫</span></div>
+    <div class="menu-item" data-action="reset-zoom"><span>缩放大小 (滚轮微调)</span><span id="zoom-status" class="menu-val">100%</span></div>
     <div class="menu-divider"></div>
     <div class="menu-item" data-action="toggle-floor-mode"><span>落点模式</span><span id="floor-mode-status" class="menu-val">自动贴合</span></div>
     <div class="menu-item" data-action="toggle-dnd"><span>完全穿透 (免打扰)</span><span id="dnd-status" class="menu-val">关闭</span></div>
