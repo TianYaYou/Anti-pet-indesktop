@@ -15,6 +15,7 @@ dependencies = [
  "muda",
  "tao",
  "tray-icon",
+ "windows",
  "winres",
  "wry",
 ]

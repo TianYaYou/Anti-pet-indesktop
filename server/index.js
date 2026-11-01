@@ -36,7 +36,6 @@ const DEFAULT_SETTINGS = {
   skinId: 'fat-cat',
   soundEnabled: true,
   gravityEnabled: true,
-  floorMode: 'bottom',
   ideOnlyMode: false,
   dndPassthrough: false,
   posX: null,

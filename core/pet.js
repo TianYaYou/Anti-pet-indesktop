@@ -18,7 +18,6 @@
   const quotaWeekVal = document.getElementById('quota-week-val');
   const quotaMeta = document.getElementById('quota-meta');
   const contextMenu = document.getElementById('context-menu');
-  const floorModeStatus = document.getElementById('floor-mode-status');
   const soundStatus = document.getElementById('sound-status');
   const dndStatus = document.getElementById('dnd-status');
   const ideOnlyStatus = document.getElementById('ide-only-status');
@@ -31,8 +30,31 @@
   const ipc = window.DesktopIPC;
   let bridge = null;
 
+  let pendingSettings = {};
+  
+  function saveSettingsImmediately(partial) {
+    if (!partial || typeof partial !== 'object') return;
+    Object.assign(pendingSettings, partial);
+    try {
+      for (const [k, v] of Object.entries(partial)) {
+        localStorage.setItem(`anti-pet-${k}`, typeof v === 'string' ? v : JSON.stringify(v));
+      }
+    } catch (e) {}
+
+    if (state.settingsSaveTimer) {
+      clearTimeout(state.settingsSaveTimer);
+      state.settingsSaveTimer = null;
+    }
+    const payload = { ...pendingSettings };
+    pendingSettings = {};
+    if (bridge && typeof bridge.saveSettings === 'function') {
+      bridge.saveSettings(payload);
+    }
+  }
+
   function debouncedSaveSettings(partial) {
     if (!partial || typeof partial !== 'object') return;
+    Object.assign(pendingSettings, partial);
     try {
       for (const [k, v] of Object.entries(partial)) {
         localStorage.setItem(`anti-pet-${k}`, typeof v === 'string' ? v : JSON.stringify(v));
@@ -41,8 +63,10 @@
 
     if (state.settingsSaveTimer) clearTimeout(state.settingsSaveTimer);
     state.settingsSaveTimer = setTimeout(() => {
+      const payload = { ...pendingSettings };
+      pendingSettings = {};
       if (bridge && typeof bridge.saveSettings === 'function') {
-        bridge.saveSettings(partial);
+        bridge.saveSettings(payload);
       }
     }, 350);
   }
@@ -62,7 +86,6 @@
     dndPassthrough: false,
     ideOnlyMode: false,
     gravityEnabled: true,
-    floorMode: 'bottom',
     dockBottom: 0,
     dockLeft: 0,
     dockRight: 0,
@@ -432,11 +455,9 @@
       state.dockRight = Math.max(0, dockRight || 0);
 
       if (
-        !state.hasMoved &&
         !state.isDragging &&
         !state.dockedEdge &&
         state.gravityEnabled &&
-        state.floorMode === 'dock' &&
         (!state.hasReceivedDockInfo ||
           Math.abs(prevBottom - state.dockBottom) > 1.5 ||
           Math.abs(prevLeft - state.dockLeft) > 1.5 ||
@@ -710,20 +731,21 @@
     const winH = window.innerHeight;
     const petH = container.offsetHeight || 136;
     const trueBottomY = Math.max(0, winH - petH);
-    const dockLedgeY = Math.max(0, winH - petH - state.dockBottom);
+    const dockBottom = Math.max(0, state.dockBottom || 0);
+    const dockLedgeY = Math.max(0, winH - petH - dockBottom);
 
-    if (state.floorMode === 'dock') {
-      return dockLedgeY;
-    }
-    if (state.floorMode === 'bottom' || state.dockBottom <= 2) {
+    // 1. Fullscreen mode or no bottom taskbar: fall to the screen bottom edge
+    if (dockBottom <= 2) {
       return trueBottomY;
     }
 
-    // In 'auto' mode: if user placed or dragged near/below the dock ledge, stay at true bottom
+    // 2. If user dragged Hakimi down into/past the taskbar: fall to screen bottom edge
     const rect = currentRect || container.getBoundingClientRect();
-    if (rect.top >= dockLedgeY - 14) {
+    if (rect.top >= dockLedgeY + Math.min(16, dockBottom * 0.4)) {
       return trueBottomY;
     }
+
+    // 3. Default: fall on top of the taskbar
     return dockLedgeY;
   }
 
@@ -1115,25 +1137,7 @@
     adjustBubblePosition();
   }
 
-  function cycleFloorMode() {
-    const modes = ['bottom', 'auto', 'dock'];
-    const labels = {
-      bottom: '屏幕最底边',
-      auto: '自动贴合',
-      dock: 'Mac边栏顶'
-    };
-    const hints = {
-      bottom: '落点模式：屏幕最底边（可移至屏幕最底端）~',
-      auto: '落点模式：自动贴合~',
-      dock: '落点模式：Mac边栏顶（吸附在Dock栏上方）~'
-    };
-    const nextIdx = (modes.indexOf(state.floorMode) + 1) % modes.length;
-    state.floorMode = modes[nextIdx];
-    if (floorModeStatus) floorModeStatus.textContent = labels[state.floorMode];
-    debouncedSaveSettings({ floorMode: state.floorMode });
-    showBubble(hints[state.floorMode], 2600);
-    startReleasePhysics(false);
-  }
+  
 
   function toggleDndPassthrough(forceVal = null) {
     state.dndPassthrough = typeof forceVal === 'boolean' ? forceVal : !state.dndPassthrough;
@@ -1265,9 +1269,6 @@
         smoothZoomTo(1.0);
         showBubble('已重置桌宠大小为 100%~', 2400);
         break;
-      case 'toggle-floor-mode':
-        cycleFloorMode();
-        break;
       case 'toggle-dnd':
         toggleDndPassthrough();
         return;
@@ -1277,7 +1278,7 @@
       case 'toggle-gravity':
         state.gravityEnabled = !state.gravityEnabled;
         if (gravityStatus) gravityStatus.textContent = state.gravityEnabled ? '开启' : '关闭';
-        debouncedSaveSettings({ gravityEnabled: state.gravityEnabled });
+        saveSettingsImmediately({ gravityEnabled: state.gravityEnabled });
         if (state.gravityEnabled) startReleasePhysics(false);
         break;
       case 'toggle-sound':
@@ -1311,11 +1312,6 @@
       state.gravityEnabled = remote.gravityEnabled;
       if (gravityStatus) gravityStatus.textContent = state.gravityEnabled ? '开启' : '关闭';
     }
-    if (remote.floorMode && remote.floorMode !== state.floorMode) {
-      state.floorMode = remote.floorMode;
-      const labels = { auto: '自动贴合', dock: 'Mac边栏顶', bottom: '屏幕最底边' };
-      if (floorModeStatus) floorModeStatus.textContent = labels[state.floorMode] || '自动贴合';
-    }
     if (typeof remote.ideOnlyMode === 'boolean' && remote.ideOnlyMode !== state.ideOnlyMode) {
       state.ideOnlyMode = remote.ideOnlyMode;
       if (ideOnlyStatus) ideOnlyStatus.textContent = state.ideOnlyMode ? '开启' : '关闭';
@@ -1346,6 +1342,11 @@
       if (savedSkin) {
         state.skinId = savedSkin.replace(/"/g, '');
       }
+      const savedGravity = localStorage.getItem('anti-pet-gravityEnabled');
+      if (savedGravity !== null) {
+        state.gravityEnabled = JSON.parse(savedGravity);
+        if (gravityStatus) gravityStatus.textContent = state.gravityEnabled ? '开启' : '关闭';
+      }
     } catch (e) {}
 
     // 2. Load persistent settings from Server API
@@ -1365,11 +1366,7 @@
           state.gravityEnabled = remote.gravityEnabled;
           if (gravityStatus) gravityStatus.textContent = state.gravityEnabled ? '开启' : '关闭';
         }
-        if (remote.floorMode) {
-          state.floorMode = remote.floorMode;
-          const labels = { auto: '自动贴合', dock: 'Mac边栏顶', bottom: '屏幕最底边' };
-          if (floorModeStatus) floorModeStatus.textContent = labels[state.floorMode] || '自动贴合';
-        }
+        
         if (typeof remote.ideOnlyMode === 'boolean') {
           state.ideOnlyMode = remote.ideOnlyMode;
           if (ideOnlyStatus) ideOnlyStatus.textContent = state.ideOnlyMode ? '开启' : '关闭';
@@ -1493,3 +1490,12 @@
     });
   });
 })();
+
+  window.__antiPetOnModeChange = function (mode) {
+    if (mode === 'compact') {
+      document.body.classList.add('compact-mode');
+    } else {
+      document.body.classList.remove('compact-mode');
+    }
+    snapToCurrentFloor();
+  };

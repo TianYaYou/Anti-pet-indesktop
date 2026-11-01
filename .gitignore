@@ -17,3 +17,9 @@ yarn-error.log*
 .antigravity-pet-ledger.json
 .antigravity-pet-settings.json
 evidence/
+
+# Cargo local overrides
+.cargo/
+
+# Executables
+anti-pet-desktop*.exe

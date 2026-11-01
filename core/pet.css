@@ -512,3 +512,21 @@ body.pet-body {
   background: var(--thought-divider);
   margin: 3px 0;
 }
+
+/* Zero-scrollbar and seamless borderless styling */
+::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+body.compact-mode .pet-container {
+  right: calc(50% - (var(--pet-width) / 2)) !important;
+  left: auto !important;
+  bottom: 0px !important;
+}
+
+body.compact-mode .dnd-wake-pill {
+  right: 8px;
+  bottom: 8px;
+}
