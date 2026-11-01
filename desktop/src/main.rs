@@ -1,4 +1,5 @@
 use std::{
+    ffi::c_void,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
@@ -13,7 +14,7 @@ use tao::{
     window::WindowBuilder,
 };
 #[cfg(target_os = "macos")]
-use tao::platform::macos::WindowBuilderExtMacOS;
+use tao::platform::macos::{WindowBuilderExtMacOS, WindowExtMacOS};
 use wry::WebViewBuilder;
 
 /// Interactive bounding rectangle in logical window coordinates
@@ -31,7 +32,7 @@ impl HitRect {
     }
 }
 
-/// Custom events sent from WebView IPC or background cursor tracker to the main Window thread
+/// Custom events sent from WebView IPC or background ticker to the main Window thread
 #[derive(Debug, Clone)]
 enum UserEvent {
     SetIgnoreCursorEvents(bool),
@@ -44,15 +45,161 @@ enum UserEvent {
     TickCursor,
 }
 
-/// Parse simple IPC message sent via `window.ipc.postMessage(...)`
-/// Supported formats:
-/// - `set_ignore_cursor_events:true` / `set_ignore_cursor_events:false`
-/// - `set_dragging:true` / `set_dragging:false`
-/// - `set_always_on_top:true` / `set_always_on_top:false`
-/// - `set_visible:true` / `set_visible:false`
-/// - `set_dnd:true:x,y,w,h` / `set_dnd:false`
-/// - `hit_rects:x1,y1,w1,h1;x2,y2,w2,h2`
-/// - `drag_window`
+#[cfg(target_os = "macos")]
+mod macos_native {
+    use super::c_void;
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct NSPoint {
+        pub x: f64,
+        pub y: f64,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct NSSize {
+        pub width: f64,
+        pub height: f64,
+    }
+
+    #[repr(C)]
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct NSRect {
+        pub origin: NSPoint,
+        pub size: NSSize,
+    }
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct DockInsets {
+        pub bottom: f64,
+        pub left: f64,
+        pub right: f64,
+    }
+
+    extern "C" {
+        fn objc_getClass(name: *const u8) -> *mut c_void;
+        fn sel_registerName(name: *const u8) -> *mut c_void;
+        fn objc_msgSend();
+        #[cfg(target_arch = "x86_64")]
+        fn objc_msgSend_stret();
+    }
+
+    unsafe fn sel(name: &[u8]) -> *mut c_void {
+        sel_registerName(name.as_ptr())
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    unsafe fn msg_send_rect(receiver: *mut c_void, selector: *mut c_void) -> NSRect {
+        let f: unsafe extern "C" fn(*mut c_void, *mut c_void) -> NSRect =
+            std::mem::transmute(objc_msgSend as *const ());
+        f(receiver, selector)
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn msg_send_rect(receiver: *mut c_void, selector: *mut c_void) -> NSRect {
+        let mut out = NSRect::default();
+        let f: unsafe extern "C" fn(*mut NSRect, *mut c_void, *mut c_void) =
+            std::mem::transmute(objc_msgSend_stret as *const ());
+        f(&mut out, receiver, selector);
+        out
+    }
+
+    /// Elevate NSWindow above macOS Dock & Fullscreen Spaces, force full-screen frame (0px bottom),
+    /// and return current Mac Dock insets (bottom, left, right) in logical points.
+    pub fn sync_fullscreen_overlay_and_query_dock(
+        ns_window: *mut c_void,
+        enforce_frame: bool,
+    ) -> DockInsets {
+        if ns_window.is_null() {
+            return DockInsets::default();
+        }
+        unsafe {
+            // 1. Set window level to NSStatusWindowLevel (25) so it floats above Dock (20) and fullscreen apps
+            let set_level: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) =
+                std::mem::transmute(objc_msgSend as *const ());
+            set_level(ns_window, sel(b"setLevel:\0"), 25);
+
+            // 2. Set collectionBehavior:
+            // CanJoinAllSpaces (1<<0) | Stationary (1<<4) | IgnoresCycle (1<<6) | FullScreenAuxiliary (1<<8)
+            let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
+            let set_behavior: unsafe extern "C" fn(*mut c_void, *mut c_void, usize) =
+                std::mem::transmute(objc_msgSend as *const ());
+            set_behavior(ns_window, sel(b"setCollectionBehavior:\0"), behavior);
+
+            // 3. Get the NSScreen for this window (fallback to [NSScreen mainScreen])
+            let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+                std::mem::transmute(objc_msgSend as *const ());
+            let mut screen = msg_ptr(ns_window, sel(b"screen\0"));
+            if screen.is_null() {
+                let cls = objc_getClass(b"NSScreen\0".as_ptr());
+                if !cls.is_null() {
+                    screen = msg_ptr(cls, sel(b"mainScreen\0"));
+                }
+            }
+            if screen.is_null() {
+                return DockInsets::default();
+            }
+
+            let full_frame = msg_send_rect(screen, sel(b"frame\0"));
+            let vis_frame = msg_send_rect(screen, sel(b"visibleFrame\0"));
+
+            // 4. Force the NSWindow frame to cover the exact full screen (including y = 0 bottom edge)
+            if enforce_frame && full_frame.size.width > 100.0 && full_frame.size.height > 100.0 {
+                let cur_frame = msg_send_rect(ns_window, sel(b"frame\0"));
+                if (cur_frame.origin.x - full_frame.origin.x).abs() > 0.5
+                    || (cur_frame.origin.y - full_frame.origin.y).abs() > 0.5
+                    || (cur_frame.size.width - full_frame.size.width).abs() > 0.5
+                    || (cur_frame.size.height - full_frame.size.height).abs() > 0.5
+                {
+                    let set_frame: unsafe extern "C" fn(*mut c_void, *mut c_void, NSRect, i8) =
+                        std::mem::transmute(objc_msgSend as *const ());
+                    set_frame(ns_window, sel(b"setFrame:display:\0"), full_frame, 1);
+                }
+            }
+
+            // 5. Check if macOS presentation options indicate FullScreen or hidden Dock
+            let app_cls = objc_getClass(b"NSApplication\0".as_ptr());
+            let mut is_fullscreen_space = false;
+            if !app_cls.is_null() {
+                let shared_app = msg_ptr(app_cls, sel(b"sharedApplication\0"));
+                if !shared_app.is_null() {
+                    let msg_usize: unsafe extern "C" fn(*mut c_void, *mut c_void) -> usize =
+                        std::mem::transmute(objc_msgSend as *const ());
+                    let pres_opts =
+                        msg_usize(shared_app, sel(b"currentSystemPresentationOptions\0"));
+                    // AutoHideDock (1<<0) | HideDock (1<<1) | FullScreen (1<<10)
+                    if (pres_opts & ((1 << 0) | (1 << 1) | (1 << 10))) != 0 {
+                        is_fullscreen_space = true;
+                    }
+                }
+            }
+
+            // Also detect if menu bar is hidden (vis_frame top equals full_frame top), which happens in Fullscreen Spaces
+            let top_menu_inset = (full_frame.origin.y + full_frame.size.height)
+                - (vis_frame.origin.y + vis_frame.size.height);
+            if top_menu_inset < 1.0 {
+                is_fullscreen_space = true;
+            }
+
+            if is_fullscreen_space {
+                DockInsets::default()
+            } else {
+                let bottom = (vis_frame.origin.y - full_frame.origin.y).max(0.0);
+                let left = (vis_frame.origin.x - full_frame.origin.x).max(0.0);
+                let right = ((full_frame.origin.x + full_frame.size.width)
+                    - (vis_frame.origin.x + vis_frame.size.width))
+                .max(0.0);
+                DockInsets {
+                    bottom,
+                    left,
+                    right,
+                }
+            }
+        }
+    }
+}
+
 fn parse_ipc_command(msg: &str) -> Option<UserEvent> {
     let trimmed = msg.trim();
     if trimmed == "drag_window" {
@@ -108,8 +255,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
 
-    // Determine primary monitor dimensions so the transparent canvas covers the desktop
-    // while allowing 100% click-through outside the pet & speech bubble.
     let (win_width, win_height) = if let Some(monitor) = event_loop.primary_monitor() {
         let scale = monitor.scale_factor();
         let size = monitor.size().to_logical::<f64>(scale);
@@ -132,20 +277,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         win_builder = win_builder
             .with_has_shadow(false)
-            .with_titlebar_transparent(true);
+            .with_titlebar_transparent(true)
+            .with_title_hidden(true)
+            .with_titlebar_hidden(true)
+            .with_titlebar_buttons_hidden(true)
+            .with_fullsize_content_view(true)
+            .with_movable_by_window_background(false);
     }
 
     let window = win_builder.build(&event_loop)?;
-
-    // Start in click-through mode; hit-testing will dynamically enable interaction over the pet
     let _ = window.set_ignore_cursor_events(true);
 
-    // Default initial hit rect in bottom-right corner before frontend reports exact bounds
+    #[cfg(target_os = "macos")]
+    {
+        let _ = macos_native::sync_fullscreen_overlay_and_query_dock(window.ns_window(), true);
+    }
+
     let initial_rect = HitRect {
-        x: (win_width - 280.0).max(0.0),
-        y: (win_height - 340.0).max(0.0),
-        w: 270.0,
-        h: 330.0,
+        x: (win_width - 200.0).max(0.0),
+        y: (win_height - 260.0).max(0.0),
+        w: 190.0,
+        h: 260.0,
     };
 
     let hit_rects = Arc::new(Mutex::new(vec![initial_rect]));
@@ -173,31 +325,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_url("http://127.0.0.1:4199")
         .build(&window)?;
 
-    // Spawn 35Hz cursor hit-test & gaze-tracking ticker thread
     let ticker_proxy = proxy.clone();
     thread::spawn(move || loop {
-        thread::sleep(Duration::from_millis(28));
+        thread::sleep(Duration::from_millis(25));
         if ticker_proxy.send_event(UserEvent::TickCursor).is_err() {
             break;
         }
     });
 
-    println!("🐾 Anti-Pet 桌面全透明悬浮穿透引擎已挂载 (Always-On-Top + Dynamic Hit-Testing)！");
+    println!("Anti-Pet 桌面全透明悬浮穿透引擎已挂载");
 
     let mut last_cursor_phys = PhysicalPosition::new(-1.0, -1.0);
+    let mut tick_counter: u32 = 0;
+    let mut last_dock_sig = (-1.0_f64, -1.0_f64, -1.0_f64);
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
 
         match event {
             Event::NewEvents(StartCause::Init) => {
-                let _ = window.set_always_on_top(true);
-                let _ = window.set_visible_on_all_workspaces(true);
-                println!("🐾 Anti-Pet 运行时已就绪 (macOS/Windows 顶置穿透已激活)");
+                window.set_always_on_top(true);
+                window.set_visible_on_all_workspaces(true);
+                #[cfg(target_os = "macos")]
+                {
+                    let _ = macos_native::sync_fullscreen_overlay_and_query_dock(
+                        window.ns_window(),
+                        true,
+                    );
+                }
             }
             Event::UserEvent(user_evt) => match user_evt {
                 UserEvent::SetIgnoreCursorEvents(ignore) => {
-                    // Frontend pixel-level alpha hit-test result
                     frontend_pixel_transparent.store(ignore, Ordering::Relaxed);
                     let effective_ignore = if is_dragging.load(Ordering::Relaxed) {
                         false
@@ -206,7 +364,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     } else {
                         ignore
                     };
-                    if currently_ignoring.swap(effective_ignore, Ordering::Relaxed) != effective_ignore {
+                    if currently_ignoring.swap(effective_ignore, Ordering::Relaxed)
+                        != effective_ignore
+                    {
                         let _ = window.set_ignore_cursor_events(effective_ignore);
                     }
                 }
@@ -240,6 +400,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = window.drag_window();
                 }
                 UserEvent::TickCursor => {
+                    tick_counter = tick_counter.wrapping_add(1);
+
+                    #[cfg(target_os = "macos")]
+                    let dock = macos_native::sync_fullscreen_overlay_and_query_dock(
+                        window.ns_window(),
+                        tick_counter % 20 == 0,
+                    );
+                    #[cfg(not(target_os = "macos"))]
+                    let dock = (0.0_f64, 0.0_f64, 0.0_f64);
+
+                    #[cfg(target_os = "macos")]
+                    let dock_tuple = (dock.bottom, dock.left, dock.right);
+                    #[cfg(not(target_os = "macos"))]
+                    let dock_tuple = dock;
+
                     if let Ok(cursor_phys) = window.cursor_position() {
                         let win_pos = window
                             .inner_position()
@@ -250,11 +425,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let local_x = (cursor_phys.x - win_pos.x as f64) / scale;
                         let local_y = (cursor_phys.y - win_pos.y as f64) / scale;
 
-                        // Check if cursor is inside any interactive bounding box
                         let in_hit_box = if is_dragging.load(Ordering::Relaxed) {
                             true
                         } else if dnd_passthrough.load(Ordering::Relaxed) {
-                            // In DND mode, only the tiny wake badge is interactive
                             dnd_wake_rect
                                 .lock()
                                 .ok()
@@ -272,22 +445,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             frontend_pixel_transparent.store(false, Ordering::Relaxed);
                             true
                         } else {
-                            // Inside bounding box: respect frontend's pixel-level alpha check if set
                             frontend_pixel_transparent.load(Ordering::Relaxed)
                         };
 
-                        if currently_ignoring.swap(should_ignore, Ordering::Relaxed) != should_ignore {
+                        if currently_ignoring.swap(should_ignore, Ordering::Relaxed)
+                            != should_ignore
+                        {
                             let _ = window.set_ignore_cursor_events(should_ignore);
                         }
 
-                        // Forward global cursor position to WebView for smooth eye/head gaze tracking
-                        if (cursor_phys.x - last_cursor_phys.x).abs() > 1.5
-                            || (cursor_phys.y - last_cursor_phys.y).abs() > 1.5
-                        {
+                        let cursor_moved = (cursor_phys.x - last_cursor_phys.x).abs() > 1.5
+                            || (cursor_phys.y - last_cursor_phys.y).abs() > 1.5;
+                        let dock_changed = (dock_tuple.0 - last_dock_sig.0).abs() > 0.5
+                            || (dock_tuple.1 - last_dock_sig.1).abs() > 0.5
+                            || (dock_tuple.2 - last_dock_sig.2).abs() > 0.5;
+
+                        if cursor_moved || dock_changed {
                             last_cursor_phys = cursor_phys;
+                            last_dock_sig = dock_tuple;
                             let js = format!(
-                                "if(window.__antiPetOnGlobalCursor)window.__antiPetOnGlobalCursor({:.1},{:.1});",
-                                local_x, local_y
+                                "if(window.__antiPetOnGlobalCursor)window.__antiPetOnGlobalCursor({:.1},{:.1},{:.1},{:.1},{:.1});",
+                                local_x, local_y, dock_tuple.0, dock_tuple.1, dock_tuple.2
                             );
                             let _ = webview.evaluate_script(&js);
                         }
