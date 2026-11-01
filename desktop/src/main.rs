@@ -278,6 +278,53 @@ mod macos_native {
             }
         }
     }
+
+    /// Sets the macOS Dock application tile icon to the provided image bytes.
+    pub fn set_application_dock_icon(png_bytes: &[u8]) {
+        unsafe {
+            let data_cls = objc_getClass(b"NSData\0".as_ptr());
+            let img_cls = objc_getClass(b"NSImage\0".as_ptr());
+            let app_cls = objc_getClass(b"NSApplication\0".as_ptr());
+            if data_cls.is_null() || img_cls.is_null() || app_cls.is_null() {
+                return;
+            }
+
+            let msg_data: unsafe extern "C" fn(*mut c_void, *mut c_void, *const u8, usize) -> *mut c_void =
+                std::mem::transmute(objc_msgSend as *const ());
+            let ns_data = msg_data(
+                data_cls,
+                sel(b"dataWithBytes:length:\0"),
+                png_bytes.as_ptr(),
+                png_bytes.len(),
+            );
+            if ns_data.is_null() {
+                return;
+            }
+
+            let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+                std::mem::transmute(objc_msgSend as *const ());
+            let img_alloc = msg_ptr(img_cls, sel(b"alloc\0"));
+            if img_alloc.is_null() {
+                return;
+            }
+
+            let msg_init: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) -> *mut c_void =
+                std::mem::transmute(objc_msgSend as *const ());
+            let ns_img = msg_init(img_alloc, sel(b"initWithData:\0"), ns_data);
+            if ns_img.is_null() {
+                return;
+            }
+
+            let shared_app = msg_ptr(app_cls, sel(b"sharedApplication\0"));
+            if shared_app.is_null() {
+                return;
+            }
+
+            let msg_set_icon: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) =
+                std::mem::transmute(objc_msgSend as *const ());
+            msg_set_icon(shared_app, sel(b"setApplicationIconImage:\0"), ns_img);
+        }
+    }
 }
 
 fn parse_ipc_command(msg: &str) -> Option<UserEvent> {
@@ -331,6 +378,8 @@ fn parse_single_rect(s: &str) -> Option<HitRect> {
     }
 }
 
+const APP_ICON_PNG: &[u8] = include_bytes!("../../assets/icon.png");
+
 /// Ensures the local node server at 127.0.0.1:4199 is running.
 /// If not responding, attempts to auto-spawn `node server/index.js`.
 fn ensure_local_server_running() {
@@ -353,6 +402,7 @@ fn ensure_local_server_running() {
             candidate_paths.push(exe_dir.join("server/index.js"));
             candidate_paths.push(exe_dir.join("../server/index.js"));
             candidate_paths.push(exe_dir.join("../../server/index.js"));
+            candidate_paths.push(exe_dir.join("../Resources/server/index.js"));
         }
     }
 
@@ -402,6 +452,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         (1440.0, 900.0)
     };
 
+    let tray_rgba = include_bytes!("../../assets/tray.rgba");
+    let win_icon = tao::window::Icon::from_rgba(tray_rgba.to_vec(), 32, 32).ok();
+
     let mut win_builder = WindowBuilder::new()
         .with_title("Anti-Pet In Desktop")
         .with_transparent(true)
@@ -411,6 +464,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_resizable(false)
         .with_inner_size(LogicalSize::new(win_width, win_height))
         .with_position(LogicalPosition::new(0.0, 0.0));
+
+    if let Some(icon) = win_icon {
+        win_builder = win_builder.with_window_icon(Some(icon));
+    }
 
     #[cfg(target_os = "macos")]
     {
@@ -429,6 +486,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(target_os = "macos")]
     {
+        macos_native::set_application_dock_icon(APP_ICON_PNG);
         let _ = macos_native::sync_fullscreen_overlay_and_query_dock(window.ns_window(), true);
     }
 

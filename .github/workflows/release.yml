@@ -87,6 +87,42 @@ jobs:
           cp -r assets bundle/${{ matrix.pkg_name }}/
           cp -r scripts bundle/${{ matrix.pkg_name }}/
           cp README.md LICENSE bundle/${{ matrix.pkg_name }}/
+          
+          # Assemble native macOS Anti-Pet.app bundle
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            APP_DIR="bundle/${{ matrix.pkg_name }}/Anti-Pet.app"
+            mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
+            cp desktop/target/${{ matrix.target }}/release/anti-pet-desktop "$APP_DIR/Contents/MacOS/"
+            cp assets/icon.icns "$APP_DIR/Contents/Resources/"
+            cp -r core skins server assets "$APP_DIR/Contents/Resources/"
+            cat << 'PLIST_EOF' > "$APP_DIR/Contents/Info.plist"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleName</key>
+    <string>Anti-Pet</string>
+    <key>CFBundleDisplayName</key>
+    <string>大肥猫桌宠挂件</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.tianyayou.anti-pet</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleExecutable</key>
+    <string>anti-pet-desktop</string>
+    <key>CFBundleIconFile</key>
+    <string>icon</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
+PLIST_EOF
+          fi
+
           # Clean up any candidates or temporary test images in assets
           rm -rf bundle/${{ matrix.pkg_name }}/assets/candidates bundle/${{ matrix.pkg_name }}/assets/test_designs
           tar -czf ${{ matrix.pkg_name }}.tar.gz -C bundle ${{ matrix.pkg_name }}
