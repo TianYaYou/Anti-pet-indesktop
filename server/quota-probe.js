@@ -97,28 +97,56 @@ async function discoverLanguageServerCandidates() {
       } catch (e) {}
     }
 
+    const tcpMap = new Map();
+    const tcpJson = await execCmd('powershell', [
+      '-NoProfile',
+      '-Command',
+      "Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -in @('127.0.0.1', '0.0.0.0', '::', '::1') } | Select-Object OwningProcess,LocalPort | ConvertTo-Json -Compress"
+    ]);
+    if (tcpJson) {
+      try {
+        const rows = JSON.parse(tcpJson);
+        const list = Array.isArray(rows) ? rows : [rows];
+        for (const r of list) {
+          const pid = Number(r.OwningProcess);
+          const port = Number(r.LocalPort);
+          if (pid && port > 1024 && port < 65535) {
+            if (!tcpMap.has(pid)) tcpMap.set(pid, new Set());
+            tcpMap.get(pid).add(port);
+          }
+        }
+      } catch (e) {}
+    }
+
     const netstatOut = await execCmd('netstat', ['-ano']);
+    if (netstatOut) {
+      for (const line of netstatOut.split(/\r?\n/)) {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 5) {
+          const pid = Number(parts[parts.length - 1]);
+          const localAddr = parts[1] || '';
+          const m = localAddr.match(/:(\d+)$/);
+          if (pid && m) {
+            const port = Number(m[1]);
+            if (port > 1024 && port < 65535) {
+              if (!tcpMap.has(pid)) tcpMap.set(pid, new Set());
+              tcpMap.get(pid).add(port);
+            }
+          }
+        }
+      }
+    }
+
     for (const c of candidates) {
-      const ports = new Set();
+      const ports = new Set(tcpMap.get(c.pid) || []);
       if (c.extPort) {
         ports.add(c.extPort);
         ports.add(c.extPort + 1);
         ports.add(c.extPort + 2);
       }
-      const lines = netstatOut.split(/\r?\n/);
-      for (const line of lines) {
-        if (!line.includes('LISTENING')) continue;
-        const parts = line.trim().split(/\s+/);
-        const pidStr = parts[parts.length - 1];
-        if (Number(pidStr) === c.pid) {
-          const addr = parts[1] || '';
-          const m = addr.match(/:(\d+)$/);
-          if (m) ports.add(Number(m[1]));
-        }
-      }
       c.ports = Array.from(ports);
     }
-    return candidates.sort((a, b) => a.priority - b.priority);
+    return candidates.filter((c) => c.ports.length > 0).sort((a, b) => a.priority - b.priority);
   }
 
   // macOS & Linux process discovery
