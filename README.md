@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/TianYaYou/Anti-pet-indesktop/releases"><img alt="版本" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v0.1.0-blue?style=flat-square"></a>
+  <a href="https://github.com/TianYaYou/Anti-pet-indesktop/releases"><img alt="版本" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v0.1.1-blue?style=flat-square"></a>
   <a href="https://github.com/TianYaYou/Anti-pet-indesktop/blob/main/LICENSE"><img alt="开源许可证" src="https://img.shields.io/badge/License-MIT-orange?style=flat-square"></a>
   <img alt="平台支持" src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-macOS%20%7C%20Windows-8A2BE2?style=flat-square">
   <img alt="核心体积" src="https://img.shields.io/badge/%E5%86%85%E6%A0%B8%E4%BD%93%E7%A7%AF-%3C8MB-brightgreen?style=flat-square">
@@ -20,7 +20,7 @@
 
 ---
 
-> ### 📢 v0.1.0 首发里程碑说明
+> ### 📢 v0.1.1 首发里程碑说明
 >
 > - **脱离重型运行时**：告别动辄 150MB+ 的 Electron 与 180MB+ 的 Python/PySide6 打包体积，基于 **Rust Wry/Tao** 微内核，单二进制文件仅 **约 6~8MB**，内存占用维持在 30MB 左右；
 > - **动态像素穿透检测 (Hit-Testing)**：鼠标划入大肥猫身体或气泡时接管交互，划出透明区域时零阻挡，底层编辑器与浏览器点击畅通无阻；
@@ -156,7 +156,7 @@ npm start
   - `完全穿透 (免打扰模式)`
   - `重置缩放 (100%)`
   - `切换皮肤`
-  - `关于 大肥猫桌宠挂件 v0.1.0`
+  - `关于 大肥猫桌宠挂件 v0.1.1`
   - `退出`
 - **防误触设计**：点击窗口关闭按钮时默认**收拢至托盘后台常驻**，绝不意外丢失挂件状态，只有在托盘菜单点击「退出」才会完全关闭。
 
