@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * Anti-Pet Local Hub, Quota Ledger Reader & Telemetry Server
+ * Anti-Pet Local Hub, Real Antigravity Quota Sync & Telemetry Server
  * Zero-dependency native Node.js HTTP & SSE server
  */
 
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { fetchAntigravityQuota } = require('./quota-probe');
 
 const PORT = parseInt(process.env.ANTI_PET_PORT || '4199', 10);
 const ROOT_DIR = path.resolve(__dirname, '..');
@@ -30,7 +31,7 @@ const MIME_TYPES = {
 
 const sseClients = new Set();
 
-function readCurrentQuota() {
+function readFallbackLedgerQuota() {
   const now = Date.now();
   const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
   const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -39,10 +40,9 @@ function readCurrentQuota() {
 
   if (!fs.existsSync(LEDGER_FILE)) {
     return {
-      fiveHour: 84.5,
-      weekly: 96.0,
-      calls5h: 0,
-      meta: '本机账本已就绪 · 额度充足'
+      fiveHour: 100,
+      weekly: 100,
+      meta: '等待连接 Antigravity 语言服务...'
     };
   }
   try {
@@ -59,13 +59,38 @@ function readCurrentQuota() {
     return {
       fiveHour,
       weekly,
-      calls5h: entries5h.length,
-      meta: `近5h交互 ${entries5h.length} 次 · 账本实时同步`
+      meta: `本地估算 (近5h ${entries5h.length} 次)`
     };
   } catch (e) {
-    return { fiveHour: 84.5, weekly: 96.0, calls5h: 0, meta: '本机账本实时同步' };
+    return { fiveHour: 100, weekly: 100, meta: '等待同步 Antigravity 额度' };
   }
 }
+
+let latestQuota = readFallbackLedgerQuota();
+
+async function refreshLiveQuota(force = false) {
+  try {
+    const live = await fetchAntigravityQuota(force);
+    if (live && typeof live.fiveHour === 'number' && typeof live.weekly === 'number') {
+      const changed =
+        live.fiveHour !== latestQuota.fiveHour ||
+        live.weekly !== latestQuota.weekly ||
+        live.meta !== latestQuota.meta;
+      latestQuota = live;
+      if (changed) {
+        broadcastSSE('quota', latestQuota);
+      }
+      return latestQuota;
+    }
+  } catch (e) {}
+  return latestQuota;
+}
+
+// Poll live Antigravity language_server quota every 15 seconds
+setInterval(() => {
+  refreshLiveQuota(true);
+}, 15000);
+refreshLiveQuota(true);
 
 let currentState = {
   timestamp: Date.now(),
@@ -74,7 +99,7 @@ let currentState = {
   bubbleText: '大肥猫已就位！随时为你护航代码~',
   emotion: 'idle',
   durationMs: 0,
-  quota: readCurrentQuota()
+  quota: latestQuota
 };
 
 if (fs.existsSync(STATE_FILE)) {
@@ -83,15 +108,15 @@ if (fs.existsSync(STATE_FILE)) {
   } catch (e) {}
 }
 
-fs.watchFile(STATE_FILE, { interval: 250 }, () => {
+fs.watchFile(STATE_FILE, { interval: 250 }, async () => {
   try {
     if (fs.existsSync(STATE_FILE)) {
       const data = JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8'));
+      const q = await refreshLiveQuota(false);
+      data.quota = q;
       currentState = data;
       broadcastSSE('state', data);
-      if (data.quota) {
-        broadcastSSE('quota', data.quota);
-      }
+      broadcastSSE('quota', q);
     }
   } catch (e) {}
 });
@@ -107,7 +132,7 @@ function broadcastSSE(eventType, data) {
   }
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
   let pathname = decodeURIComponent(parsedUrl.pathname);
 
@@ -128,12 +153,12 @@ const server = http.createServer((req, res) => {
       'Connection': 'keep-alive'
     });
 
-    const quota = readCurrentQuota();
-    res.write(`event: state\ndata: ${JSON.stringify(currentState)}\n\n`);
-    res.write(`event: quota\ndata: ${JSON.stringify(quota)}\n\n`);
-
     sseClients.add(res);
     req.on('close', () => sseClients.delete(res));
+
+    res.write(`event: state\ndata: ${JSON.stringify(currentState)}\n\n`);
+    const quota = await refreshLiveQuota(true);
+    res.write(`event: quota\ndata: ${JSON.stringify(quota)}\n\n`);
     return;
   }
 
@@ -141,17 +166,16 @@ const server = http.createServer((req, res) => {
   if (pathname === '/api/event' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const payload = JSON.parse(body);
-        if (!payload.quota) {
-          payload.quota = readCurrentQuota();
-        }
+        const liveQ = await refreshLiveQuota(true);
+        payload.quota = liveQ;
         currentState = payload;
         broadcastSSE('state', payload);
-        broadcastSSE('quota', payload.quota);
+        broadcastSSE('quota', liveQ);
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, quota: payload.quota }));
+        res.end(JSON.stringify({ ok: true, quota: liveQ }));
       } catch (e) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid JSON' }));
@@ -180,13 +204,15 @@ const server = http.createServer((req, res) => {
 
   // 4. Get State & Quota: /api/state & /api/quota
   if (pathname === '/api/state') {
+    const quota = await refreshLiveQuota(false);
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ ...currentState, quota: readCurrentQuota() }));
+    return res.end(JSON.stringify({ ...currentState, quota }));
   }
 
   if (pathname === '/api/quota') {
+    const quota = await refreshLiveQuota(true);
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify(readCurrentQuota()));
+    return res.end(JSON.stringify(quota));
   }
 
   // 5. List Skins: /api/skins
@@ -224,7 +250,6 @@ const server = http.createServer((req, res) => {
     return res.end('Access denied');
   }
 
-  // Fallback check inside /core if a top-level path wasn't found
   if (!fs.existsSync(filePath)) {
     const coreFallback = path.join(ROOT_DIR, 'core', pathname);
     if (coreFallback.startsWith(ROOT_DIR) && fs.existsSync(coreFallback)) {
