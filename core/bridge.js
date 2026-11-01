@@ -1,5 +1,5 @@
 /**
- * Anti-Pet Bridge - Telemetry, SSE Event Stream & Desktop Wry IPC Bridge
+ * Anti-Pet Bridge - Telemetry, SSE Event Stream, Settings & Desktop Wry IPC Bridge
  */
 
 class DesktopIPC {
@@ -67,6 +67,8 @@ class PetBridge {
     this.onEvent = options.onEvent || (() => {});
     this.onQuota = options.onQuota || (() => {});
     this.onControl = options.onControl || (() => {});
+    this.onSettings = options.onSettings || (() => {});
+    this.onActivity = options.onActivity || (() => {});
     this.eventSource = null;
     this.connected = false;
   }
@@ -104,6 +106,20 @@ class PetBridge {
         } catch (err) {}
       });
 
+      this.eventSource.addEventListener('settings', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          this.onSettings(data);
+        } catch (err) {}
+      });
+
+      this.eventSource.addEventListener('activity', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          this.onActivity(data);
+        } catch (err) {}
+      });
+
       this.eventSource.onerror = () => {
         this.connected = false;
         this.eventSource.close();
@@ -112,6 +128,34 @@ class PetBridge {
     } catch (err) {
       this.startPolling();
     }
+  }
+
+  async fetchSettings() {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/settings`);
+      if (res.ok) return await res.json();
+    } catch (e) {}
+    return null;
+  }
+
+  async saveSettings(updates) {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/settings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      if (res.ok) return await res.json();
+    } catch (e) {}
+    return null;
+  }
+
+  async fetchIdeStatus() {
+    try {
+      const res = await fetch(`${this.baseUrl}/api/ide-status`);
+      if (res.ok) return await res.json();
+    } catch (e) {}
+    return null;
   }
 
   startPolling() {

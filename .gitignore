@@ -15,4 +15,5 @@ yarn-error.log*
 # Local state
 .antigravity-pet-state.json
 .antigravity-pet-ledger.json
+.antigravity-pet-settings.json
 evidence/

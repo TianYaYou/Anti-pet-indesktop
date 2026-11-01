@@ -29,6 +29,23 @@
   const zoomStatus = document.getElementById('zoom-status');
 
   const ipc = window.DesktopIPC;
+  let bridge = null;
+
+  function debouncedSaveSettings(partial) {
+    if (!partial || typeof partial !== 'object') return;
+    try {
+      for (const [k, v] of Object.entries(partial)) {
+        localStorage.setItem(`anti-pet-${k}`, typeof v === 'string' ? v : JSON.stringify(v));
+      }
+    } catch (e) {}
+
+    if (state.settingsSaveTimer) clearTimeout(state.settingsSaveTimer);
+    state.settingsSaveTimer = setTimeout(() => {
+      if (bridge && typeof bridge.saveSettings === 'function') {
+        bridge.saveSettings(partial);
+      }
+    }, 350);
+  }
 
   const hitCanvas = document.createElement('canvas');
   const hitCtx = hitCanvas.getContext('2d', { willReadFrequently: true });
@@ -77,6 +94,7 @@
     targetScale: parseFloat(localStorage.getItem('anti-pet-scale') || '1.0'),
     zoomRaf: null,
     zoomPillTimer: null,
+    settingsSaveTimer: null,
     audioContext: null,
     audioBuffers: {}
   };
@@ -379,15 +397,24 @@
     setState('petting', petLine, 2400);
   }
 
-  // Global hook called by Rust 40Hz cursor, Mac Dock & typing tracker
+  // Global hook called by Rust 40Hz cursor, Mac Dock, typing & IDE focus tracker
   window.__antiPetOnGlobalCursor = function (
     localX,
     localY,
     dockBottom,
     dockLeft,
     dockRight,
-    isTyping
+    isTyping,
+    isIdeActive
   ) {
+    if (typeof isIdeActive === 'boolean' && isIdeActive) {
+      state.lastIdeActiveAt = Date.now();
+      if (container.classList.contains('ide-hidden')) {
+        container.classList.remove('ide-hidden');
+        syncHitRectsToDesktop();
+      }
+    }
+
     if (typeof isTyping === 'boolean') {
       state.isUserTyping = isTyping;
       if (isTyping && !state.isHoveringPet && !state.isDragging) {
@@ -733,6 +760,10 @@
       showBubble('贴在左边栏观察你写代码~', 2800);
       adjustBubblePosition();
       syncHitRectsToDesktop();
+      debouncedSaveSettings({
+        posX: Math.round(leftBound),
+        posY: Math.round(Math.max(8, Math.min(rect.top, targetFloor)))
+      });
       return;
     }
 
@@ -750,6 +781,10 @@
       showBubble('贴在右边栏偷看你，不许写 Bug 哦！', 2800);
       adjustBubblePosition();
       syncHitRectsToDesktop();
+      debouncedSaveSettings({
+        posX: Math.round(rightBound),
+        posY: Math.round(Math.max(8, Math.min(rect.top, targetFloor)))
+      });
       return;
     }
 
@@ -778,6 +813,10 @@
       }
       adjustBubblePosition();
       syncHitRectsToDesktop();
+      debouncedSaveSettings({
+        posX: Math.round(curX),
+        posY: Math.round(clampedY)
+      });
       return;
     }
 
@@ -792,6 +831,10 @@
       }
       adjustBubblePosition();
       syncHitRectsToDesktop();
+      debouncedSaveSettings({
+        posX: Math.round(curX),
+        posY: Math.round(targetFloor)
+      });
       return;
     }
 
@@ -830,6 +873,10 @@
           if (!silent) playSound('release');
           adjustBubblePosition();
           syncHitRectsToDesktop();
+          debouncedSaveSettings({
+            posX: Math.round(curX),
+            posY: Math.round(targetFloor)
+          });
           return;
         }
       }
@@ -970,15 +1017,15 @@
     if (zoomStatus) zoomStatus.textContent = `${Math.round(val * 100)}%`;
   }
 
-  function smoothZoomTo(newTarget) {
+  function smoothZoomTo(newTarget, persist = true) {
     state.targetScale = Math.max(0.55, Math.min(2.4, newTarget));
     showZoomPill(Math.round(state.targetScale * 100));
 
     if (state.zoomRaf) return;
     const step = () => {
       const diff = state.targetScale - state.scale;
-      if (Math.abs(diff) > 0.003) {
-        state.scale += diff * 0.22;
+      if (Math.abs(diff) > 0.002) {
+        state.scale += diff * 0.24;
         applyScale(state.scale);
         adjustBubblePosition();
         syncHitRectsToDesktop();
@@ -988,10 +1035,10 @@
         applyScale(state.scale);
         adjustBubblePosition();
         syncHitRectsToDesktop();
-        try {
-          localStorage.setItem('anti-pet-scale', state.scale.toFixed(2));
-        } catch (e) {}
         state.zoomRaf = null;
+        if (persist) {
+          debouncedSaveSettings({ scale: parseFloat(state.scale.toFixed(2)) });
+        }
       }
     };
     state.zoomRaf = requestAnimationFrame(step);
@@ -1002,13 +1049,42 @@
     showBubble('已重置桌宠大小为 100%~', 2400);
   };
 
+  // Continuous wheel scaling (Mac trackpad 2-finger scroll, mouse wheel, or pinch)
   container.addEventListener('wheel', (e) => {
     if (state.dndPassthrough) return;
     e.preventDefault();
     e.stopPropagation();
-    const factor = e.deltaY < 0 ? 1.075 : 0.93;
-    smoothZoomTo(state.targetScale * factor);
+
+    let delta = e.deltaY;
+    if (e.deltaMode === 1) delta *= 20; // lines
+    else if (e.deltaMode === 2) delta *= 300; // pages
+
+    // If ctrlKey is true (Mac trackpad pinch gesture), delta is naturally finer
+    const zoomSensitivity = e.ctrlKey ? 0.006 : 0.0018;
+    const zoomFactor = Math.exp(-delta * zoomSensitivity);
+    const clampedFactor = Math.max(0.85, Math.min(1.15, zoomFactor));
+    smoothZoomTo(state.targetScale * clampedFactor);
   }, { passive: false });
+
+  // WebKit native gesture listeners for macOS trackpad pinch-to-zoom
+  let initialPinchScale = 1.0;
+  container.addEventListener('gesturestart', (e) => {
+    if (state.dndPassthrough) return;
+    e.preventDefault();
+    initialPinchScale = state.targetScale;
+  });
+
+  container.addEventListener('gesturechange', (e) => {
+    if (state.dndPassthrough) return;
+    e.preventDefault();
+    smoothZoomTo(initialPinchScale * e.scale, false);
+  });
+
+  container.addEventListener('gestureend', (e) => {
+    if (state.dndPassthrough) return;
+    e.preventDefault();
+    debouncedSaveSettings({ scale: parseFloat(state.scale.toFixed(2)) });
+  });
 
   // =========================================================================
   // 7. Quota Updater, Cursor-Anchored Context Menu & Mode Controls
@@ -1042,6 +1118,7 @@
     const nextIdx = (modes.indexOf(state.floorMode) + 1) % modes.length;
     state.floorMode = modes[nextIdx];
     if (floorModeStatus) floorModeStatus.textContent = labels[state.floorMode];
+    debouncedSaveSettings({ floorMode: state.floorMode });
     startReleasePhysics(false);
   }
 
@@ -1057,6 +1134,7 @@
     } else {
       showBubble('本喵回来啦！', 2600);
     }
+    debouncedSaveSettings({ dndPassthrough: state.dndPassthrough });
     setTimeout(syncHitRectsToDesktop, 50);
   }
 
@@ -1069,6 +1147,7 @@
       state.ideOnlyMode ? '已开启仅 IDE 活跃时显示~' : '已恢复常驻桌面陪伴~',
       2600
     );
+    debouncedSaveSettings({ ideOnlyMode: state.ideOnlyMode });
     syncHitRectsToDesktop();
   }
 
@@ -1081,6 +1160,7 @@
       const nextSkin = state.availableSkins[(idx + 1) % state.availableSkins.length];
       await loadSkin(nextSkin.id);
       showBubble(`已切换至皮肤：${nextSkin.name || nextSkin.id}`, 2800);
+      debouncedSaveSettings({ skinId: nextSkin.id });
     } else {
       showBubble('当前皮肤：大肥猫', 2600);
     }
@@ -1184,11 +1264,13 @@
       case 'toggle-gravity':
         state.gravityEnabled = !state.gravityEnabled;
         if (gravityStatus) gravityStatus.textContent = state.gravityEnabled ? '开启' : '关闭';
+        debouncedSaveSettings({ gravityEnabled: state.gravityEnabled });
         if (state.gravityEnabled) startReleasePhysics(false);
         break;
       case 'toggle-sound':
         state.soundEnabled = !state.soundEnabled;
         soundStatus.textContent = state.soundEnabled ? '开启' : '静音';
+        debouncedSaveSettings({ soundEnabled: state.soundEnabled });
         break;
       case 'switch-skin':
         cycleSkin();
@@ -1200,10 +1282,109 @@
   });
 
   // =========================================================================
-  // 8. Connect to Antigravity IDE Telemetry
+  // 8. Connect to Antigravity IDE Telemetry & Persistent Settings
   // =========================================================================
 
-  const bridge = new window.PetBridge({
+  function applyRemoteSettings(remote) {
+    if (!remote) return;
+    if (typeof remote.scale === 'number' && Math.abs(remote.scale - state.scale) > 0.02) {
+      smoothZoomTo(remote.scale, false);
+    }
+    if (typeof remote.soundEnabled === 'boolean' && remote.soundEnabled !== state.soundEnabled) {
+      state.soundEnabled = remote.soundEnabled;
+      if (soundStatus) soundStatus.textContent = state.soundEnabled ? '开启' : '静音';
+    }
+    if (typeof remote.gravityEnabled === 'boolean' && remote.gravityEnabled !== state.gravityEnabled) {
+      state.gravityEnabled = remote.gravityEnabled;
+      if (gravityStatus) gravityStatus.textContent = state.gravityEnabled ? '开启' : '关闭';
+    }
+    if (remote.floorMode && remote.floorMode !== state.floorMode) {
+      state.floorMode = remote.floorMode;
+      const labels = { auto: '自动贴合', dock: 'Mac边栏顶', bottom: '屏幕最底边' };
+      if (floorModeStatus) floorModeStatus.textContent = labels[state.floorMode] || '自动贴合';
+    }
+    if (typeof remote.ideOnlyMode === 'boolean' && remote.ideOnlyMode !== state.ideOnlyMode) {
+      state.ideOnlyMode = remote.ideOnlyMode;
+      if (ideOnlyStatus) ideOnlyStatus.textContent = state.ideOnlyMode ? '开启' : '关闭';
+    }
+    if (typeof remote.dndPassthrough === 'boolean' && remote.dndPassthrough !== state.dndPassthrough) {
+      toggleDndPassthrough(remote.dndPassthrough);
+    }
+    if (remote.skinId && remote.skinId !== state.skinId) {
+      loadSkin(remote.skinId);
+    }
+  }
+
+  async function initSettings() {
+    // 1. Local storage fast path
+    try {
+      const savedScale = localStorage.getItem('anti-pet-scale');
+      if (savedScale) {
+        state.scale = parseFloat(JSON.parse(savedScale));
+        state.targetScale = state.scale;
+        applyScale(state.scale);
+      }
+      const savedSound = localStorage.getItem('anti-pet-soundEnabled');
+      if (savedSound !== null) {
+        state.soundEnabled = JSON.parse(savedSound);
+        if (soundStatus) soundStatus.textContent = state.soundEnabled ? '开启' : '静音';
+      }
+      const savedSkin = localStorage.getItem('anti-pet-skinId');
+      if (savedSkin) {
+        state.skinId = savedSkin.replace(/"/g, '');
+      }
+    } catch (e) {}
+
+    // 2. Load persistent settings from Server API
+    if (bridge && typeof bridge.fetchSettings === 'function') {
+      const remote = await bridge.fetchSettings();
+      if (remote) {
+        if (typeof remote.scale === 'number') {
+          state.scale = remote.scale;
+          state.targetScale = remote.scale;
+          applyScale(state.scale);
+        }
+        if (typeof remote.soundEnabled === 'boolean') {
+          state.soundEnabled = remote.soundEnabled;
+          if (soundStatus) soundStatus.textContent = state.soundEnabled ? '开启' : '静音';
+        }
+        if (typeof remote.gravityEnabled === 'boolean') {
+          state.gravityEnabled = remote.gravityEnabled;
+          if (gravityStatus) gravityStatus.textContent = state.gravityEnabled ? '开启' : '关闭';
+        }
+        if (remote.floorMode) {
+          state.floorMode = remote.floorMode;
+          const labels = { auto: '自动贴合', dock: 'Mac边栏顶', bottom: '屏幕最底边' };
+          if (floorModeStatus) floorModeStatus.textContent = labels[state.floorMode] || '自动贴合';
+        }
+        if (typeof remote.ideOnlyMode === 'boolean') {
+          state.ideOnlyMode = remote.ideOnlyMode;
+          if (ideOnlyStatus) ideOnlyStatus.textContent = state.ideOnlyMode ? '开启' : '关闭';
+        }
+        if (typeof remote.dndPassthrough === 'boolean' && remote.dndPassthrough !== state.dndPassthrough) {
+          toggleDndPassthrough(remote.dndPassthrough);
+        }
+        if (remote.skinId) {
+          state.skinId = remote.skinId;
+        }
+        if (typeof remote.posX === 'number' && typeof remote.posY === 'number') {
+          const maxW = window.innerWidth - (container.offsetWidth || 136);
+          const maxH = window.innerHeight - (container.offsetHeight || 136);
+          const clampedX = Math.max(0, Math.min(remote.posX, maxW));
+          const clampedY = Math.max(0, Math.min(remote.posY, maxH));
+          container.style.left = `${clampedX}px`;
+          container.style.top = `${clampedY}px`;
+          container.style.bottom = 'auto';
+          container.style.right = 'auto';
+          state.hasMoved = true;
+          adjustBubblePosition();
+          syncHitRectsToDesktop();
+        }
+      }
+    }
+  }
+
+  bridge = new window.PetBridge({
     onEvent: (event) => {
       state.lastIdeActiveAt = Date.now();
       container.classList.remove('ide-hidden');
@@ -1211,6 +1392,8 @@
         const linePoolKey =
           event.state === 'thinking'
             ? 'thinking'
+            : event.state === 'working'
+            ? 'working'
             : event.state === 'success'
             ? 'success'
             : event.state === 'error'
@@ -1223,6 +1406,16 @@
       if (event.quota) {
         updateQuota(event.quota.fiveHour, event.quota.weekly, event.quota.meta);
       }
+    },
+    onActivity: () => {
+      state.lastIdeActiveAt = Date.now();
+      if (container.classList.contains('ide-hidden')) {
+        container.classList.remove('ide-hidden');
+        syncHitRectsToDesktop();
+      }
+    },
+    onSettings: (settings) => {
+      applyRemoteSettings(settings);
     },
     onQuota: (quota) => {
       updateQuota(quota.fiveHour, quota.weekly, quota.meta);
@@ -1243,11 +1436,22 @@
   bridge.start();
 
   // Periodic check for IDE-only visibility; only show idle thought bubble if user is hovering the pet
-  setInterval(() => {
-    if (state.ideOnlyMode && Date.now() - state.lastIdeActiveAt > 120000) {
-      container.classList.add('ide-hidden');
-      syncHitRectsToDesktop();
-      return;
+  setInterval(async () => {
+    if (state.ideOnlyMode) {
+      if (bridge && typeof bridge.fetchIdeStatus === 'function') {
+        const status = await bridge.fetchIdeStatus();
+        if (status && status.active) {
+          state.lastIdeActiveAt = Date.now();
+          if (container.classList.contains('ide-hidden')) {
+            container.classList.remove('ide-hidden');
+            syncHitRectsToDesktop();
+          }
+        } else if (Date.now() - state.lastIdeActiveAt > 120000) {
+          container.classList.add('ide-hidden');
+          syncHitRectsToDesktop();
+          return;
+        }
+      }
     }
     if (
       state.currentState === 'idle' &&
@@ -1258,7 +1462,7 @@
     ) {
       showBubble(getRandomDialogue('idle'), 3500);
     }
-  }, 45000);
+  }, 20000);
 
   window.addEventListener('resize', () => {
     if (!state.isDragging && !state.dockedEdge) {
@@ -1270,6 +1474,9 @@
   });
 
   applyScale(state.scale);
-  fetchAvailableSkins();
-  loadSkin('fat-cat');
+  fetchAvailableSkins().then(() => {
+    initSettings().then(() => {
+      loadSkin(state.skinId || 'fat-cat');
+    });
+  });
 })();

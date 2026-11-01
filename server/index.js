@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Anti-Pet Local Hub, Real Antigravity Quota Sync & Telemetry Server
+ * Anti-Pet Local Hub, Real Antigravity Quota Sync, Live Transcript & Settings Store
  * Zero-dependency native Node.js HTTP & SSE server
  */
 
@@ -8,11 +8,13 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { fetchAntigravityQuota } = require('./quota-probe');
+const { TranscriptWatcher } = require('./transcript-watcher');
 
 const PORT = parseInt(process.env.ANTI_PET_PORT || '4199', 10);
 const ROOT_DIR = path.resolve(__dirname, '..');
 const STATE_FILE = path.join(ROOT_DIR, '.antigravity-pet-state.json');
 const LEDGER_FILE = path.join(ROOT_DIR, '.antigravity-pet-ledger.json');
+const SETTINGS_FILE = path.join(ROOT_DIR, '.antigravity-pet-settings.json');
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -28,6 +30,38 @@ const MIME_TYPES = {
   '.webp': 'image/webp',
   '.ico': 'image/x-icon'
 };
+
+const DEFAULT_SETTINGS = {
+  scale: 1.0,
+  skinId: 'fat-cat',
+  soundEnabled: true,
+  gravityEnabled: true,
+  floorMode: 'auto',
+  ideOnlyMode: false,
+  dndPassthrough: false,
+  posX: null,
+  posY: null,
+  facing: 'left'
+};
+
+function loadSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf-8')) };
+    }
+  } catch (e) {}
+  return { ...DEFAULT_SETTINGS };
+}
+
+let currentSettings = loadSettings();
+
+function saveSettings(newSettings) {
+  currentSettings = { ...currentSettings, ...newSettings };
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(currentSettings, null, 2), 'utf-8');
+  } catch (e) {}
+  return currentSettings;
+}
 
 const sseClients = new Set();
 
@@ -132,6 +166,26 @@ function broadcastSSE(eventType, data) {
   }
 }
 
+// Initialize Real-time Antigravity Brain Transcript Watcher
+const transcriptWatcher = new TranscriptWatcher({
+  onState: (stateUpdate) => {
+    currentState = {
+      ...currentState,
+      ...stateUpdate,
+      quota: latestQuota,
+      timestamp: Date.now()
+    };
+    broadcastSSE('state', currentState);
+    try {
+      fs.writeFileSync(STATE_FILE, JSON.stringify(currentState, null, 2), 'utf-8');
+    } catch (e) {}
+  },
+  onActivity: (act) => {
+    broadcastSSE('activity', { active: true, ...act, timestamp: Date.now() });
+  }
+});
+transcriptWatcher.start();
+
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || '127.0.0.1'}`);
   let pathname = decodeURIComponent(parsedUrl.pathname);
@@ -157,12 +211,50 @@ const server = http.createServer(async (req, res) => {
     req.on('close', () => sseClients.delete(res));
 
     res.write(`event: state\ndata: ${JSON.stringify(currentState)}\n\n`);
+    res.write(`event: settings\ndata: ${JSON.stringify(currentSettings)}\n\n`);
     const quota = await refreshLiveQuota(true);
     res.write(`event: quota\ndata: ${JSON.stringify(quota)}\n\n`);
     return;
   }
 
-  // 2. Post Event: /api/event
+  // 2. Settings API: /api/settings (GET & POST)
+  if (pathname === '/api/settings') {
+    if (req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify(currentSettings));
+    }
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', (chunk) => (body += chunk));
+      req.on('end', () => {
+        try {
+          const updates = JSON.parse(body);
+          const saved = saveSettings(updates);
+          broadcastSSE('settings', saved);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, settings: saved }));
+        } catch (e) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON' }));
+        }
+      });
+      return;
+    }
+  }
+
+  // 3. IDE Status API: /api/ide-status
+  if (pathname === '/api/ide-status') {
+    const lastActive = transcriptWatcher.getLastActiveTime();
+    const isActive = Date.now() - lastActive < 120000;
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({
+      running: true,
+      active: isActive,
+      lastActiveTime: lastActive
+    }));
+  }
+
+  // 4. Post Event: /api/event
   if (pathname === '/api/event' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
@@ -184,7 +276,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 3. Post Control Command: /api/control
+  // 5. Post Control Command: /api/control
   if (pathname === '/api/control' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk) => (body += chunk));
@@ -202,7 +294,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 4. Get State & Quota: /api/state & /api/quota
+  // 6. Get State & Quota: /api/state & /api/quota
   if (pathname === '/api/state') {
     const quota = await refreshLiveQuota(false);
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -215,7 +307,7 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify(quota));
   }
 
-  // 5. List Skins: /api/skins
+  // 7. List Skins: /api/skins
   if (pathname === '/api/skins') {
     const skinsDir = path.join(ROOT_DIR, 'skins');
     try {
@@ -237,7 +329,7 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // 6. Static File Serving (Support both root `/pet.css` and `/core/pet.css`)
+  // 8. Static File Serving (Support both root `/pet.css` and `/core/pet.css`)
   if (pathname === '/' || pathname === '/index.html') {
     pathname = '/core/index.html';
   } else if (pathname === '/pet.css' || pathname === '/pet.js' || pathname === '/bridge.js') {
@@ -281,6 +373,7 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log(`大肥猫 · Antigravity 伴侣服务已就绪`);
   console.log(`预览地址: http://127.0.0.1:${PORT}`);
   console.log(`状态通信: http://127.0.0.1:${PORT}/api/events`);
+  console.log(`配置持久: http://127.0.0.1:${PORT}/api/settings`);
   console.log(`实时额度: http://127.0.0.1:${PORT}/api/quota`);
   console.log(`======================================================\n`);
 });

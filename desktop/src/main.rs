@@ -9,11 +9,13 @@ use std::{
 };
 use muda::{Menu, MenuItem, PredefinedMenuItem, MenuEvent};
 use tao::{
-    dpi::{LogicalPosition, LogicalSize, PhysicalPosition},
+    dpi::{LogicalPosition, LogicalSize},
     event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder},
     window::WindowBuilder,
 };
+#[cfg(not(target_os = "macos"))]
+use tao::dpi::PhysicalPosition;
 #[cfg(target_os = "macos")]
 use tao::platform::macos::{WindowBuilderExtMacOS, WindowExtMacOS};
 use tray_icon::{
@@ -120,6 +122,75 @@ mod macos_native {
             std::mem::transmute(objc_msgSend_stret as *const ());
         f(&mut out, receiver, selector);
         out
+    }
+
+    #[cfg(target_arch = "aarch64")]
+    unsafe fn msg_send_point(receiver: *mut c_void, selector: *mut c_void) -> NSPoint {
+        let f: unsafe extern "C" fn(*mut c_void, *mut c_void) -> NSPoint =
+            std::mem::transmute(objc_msgSend as *const ());
+        f(receiver, selector)
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    unsafe fn msg_send_point(receiver: *mut c_void, selector: *mut c_void) -> NSPoint {
+        let f: unsafe extern "C" fn(*mut c_void, *mut c_void) -> NSPoint =
+            std::mem::transmute(objc_msgSend as *const ());
+        f(receiver, selector)
+    }
+
+    /// Retrieve the cursor position in window logical coordinates directly from Cocoa.
+    /// This bypasses Tao's cursor_position Retina pixel-height bug.
+    pub fn get_mouse_location_in_window(ns_window: *mut c_void) -> Option<(f64, f64)> {
+        if ns_window.is_null() {
+            return None;
+        }
+        unsafe {
+            let event_cls = objc_getClass(b"NSEvent\0".as_ptr());
+            if event_cls.is_null() {
+                return None;
+            }
+            let mouse_loc = msg_send_point(event_cls, sel(b"mouseLocation\0"));
+            let frame = msg_send_rect(ns_window, sel(b"frame\0"));
+            let local_x = mouse_loc.x - frame.origin.x;
+            let local_y = (frame.origin.y + frame.size.height) - mouse_loc.y;
+            Some((local_x, local_y))
+        }
+    }
+
+    /// Returns true if Antigravity, VS Code, Cursor, or the Desktop Pet is the frontmost application.
+    pub fn is_ide_frontmost() -> bool {
+        unsafe {
+            let ws_cls = objc_getClass(b"NSWorkspace\0".as_ptr());
+            if ws_cls.is_null() {
+                return false;
+            }
+            let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+                std::mem::transmute(objc_msgSend as *const ());
+            let shared_ws = msg_ptr(ws_cls, sel(b"sharedWorkspace\0"));
+            if shared_ws.is_null() {
+                return false;
+            }
+            let front_app = msg_ptr(shared_ws, sel(b"frontmostApplication\0"));
+            if front_app.is_null() {
+                return false;
+            }
+            let name_nsstring = msg_ptr(front_app, sel(b"localizedName\0"));
+            if name_nsstring.is_null() {
+                return false;
+            }
+            let utf8_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *const i8 =
+                std::mem::transmute(objc_msgSend as *const ());
+            let cstr = utf8_ptr(name_nsstring, sel(b"UTF8String\0"));
+            if cstr.is_null() {
+                return false;
+            }
+            let name = std::ffi::CStr::from_ptr(cstr).to_string_lossy();
+            let name_lower = name.to_lowercase();
+            name_lower.contains("antigravity")
+                || name_lower.contains("code")
+                || name_lower.contains("cursor")
+                || name_lower.contains("anti-pet")
+        }
     }
 
     /// Elevate NSWindow above macOS Dock & Fullscreen Spaces, force full-screen frame (0px bottom),
@@ -380,10 +451,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _tray = tray_builder.build()?;
     let is_window_visible = Arc::new(AtomicBool::new(true));
 
-    let mut last_cursor_phys = PhysicalPosition::new(-1.0, -1.0);
+    let mut last_cursor_local = (-1.0_f64, -1.0_f64);
     let mut tick_counter: u32 = 0;
     let mut last_dock_sig = (-1.0_f64, -1.0_f64, -1.0_f64);
     let mut last_typing_state = false;
+    let mut last_ide_state = false;
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -514,16 +586,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     #[cfg(not(target_os = "macos"))]
                     let dock_tuple = dock;
 
-                    if let Ok(cursor_phys) = window.cursor_position() {
+                    #[cfg(target_os = "macos")]
+                    let cursor_opt = macos_native::get_mouse_location_in_window(window.ns_window());
+
+                    #[cfg(not(target_os = "macos"))]
+                    let cursor_opt = if let Ok(cursor_phys) = window.cursor_position() {
                         let win_pos = window
                             .inner_position()
                             .or_else(|_| window.outer_position())
                             .unwrap_or(PhysicalPosition::new(0, 0));
                         let scale = window.scale_factor();
+                        Some(((cursor_phys.x - win_pos.x as f64) / scale, (cursor_phys.y - win_pos.y as f64) / scale))
+                    } else {
+                        None
+                    };
 
-                        let local_x = (cursor_phys.x - win_pos.x as f64) / scale;
-                        let local_y = (cursor_phys.y - win_pos.y as f64) / scale;
+                    #[cfg(target_os = "macos")]
+                    let is_ide_active = macos_native::is_ide_frontmost();
+                    #[cfg(not(target_os = "macos"))]
+                    let is_ide_active = false;
 
+                    if let Some((local_x, local_y)) = cursor_opt {
                         let in_hit_box = if is_dragging.load(Ordering::Relaxed) {
                             true
                         } else if dnd_passthrough.load(Ordering::Relaxed) {
@@ -553,25 +636,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let _ = window.set_ignore_cursor_events(should_ignore);
                         }
 
-                        let cursor_moved = (cursor_phys.x - last_cursor_phys.x).abs() > 1.5
-                            || (cursor_phys.y - last_cursor_phys.y).abs() > 1.5;
+                        let cursor_moved = (local_x - last_cursor_local.0).abs() > 1.0
+                            || (local_y - last_cursor_local.1).abs() > 1.0;
                         let dock_changed = (dock_tuple.0 - last_dock_sig.0).abs() > 0.5
                             || (dock_tuple.1 - last_dock_sig.1).abs() > 0.5
                             || (dock_tuple.2 - last_dock_sig.2).abs() > 0.5;
                         let typing_changed = is_typing != last_typing_state;
+                        let ide_changed = is_ide_active != last_ide_state;
 
-                        if cursor_moved || dock_changed || typing_changed {
-                            last_cursor_phys = cursor_phys;
+                        if cursor_moved || dock_changed || typing_changed || ide_changed {
+                            last_cursor_local = (local_x, local_y);
                             last_dock_sig = dock_tuple;
                             last_typing_state = is_typing;
+                            last_ide_state = is_ide_active;
                             let js = format!(
-                                "if(window.__antiPetOnGlobalCursor)window.__antiPetOnGlobalCursor({:.1},{:.1},{:.1},{:.1},{:.1},{});",
+                                "if(window.__antiPetOnGlobalCursor)window.__antiPetOnGlobalCursor({:.1},{:.1},{:.1},{:.1},{:.1},{},{});",
                                 local_x,
                                 local_y,
                                 dock_tuple.0,
                                 dock_tuple.1,
                                 dock_tuple.2,
-                                if is_typing { "true" } else { "false" }
+                                if is_typing { "true" } else { "false" },
+                                if is_ide_active { "true" } else { "false" }
                             );
                             let _ = webview.evaluate_script(&js);
                         }
