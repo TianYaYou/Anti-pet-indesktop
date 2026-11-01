@@ -7,15 +7,24 @@
   <link rel="stylesheet" href="pet.css">
 </head>
 <body class="pet-body">
+  <!-- Floating DND Wake Pill (Shown when full passthrough DND mode is active) -->
+  <div id="dnd-wake-pill" class="dnd-wake-pill hidden" title="点击或按 Cmd/Ctrl+Shift+P 唤醒大肥猫">
+    <span class="wake-icon">🐾</span>
+    <span class="wake-text">穿透免打扰中 · 点击唤醒</span>
+  </div>
+
   <div id="pet-container" class="pet-container facing-left state-idle">
-    <!-- Floating Effects (Sparkles / Hearts / Tears / Thinking Dots) -->
+    <!-- Floating Effects (Sparkles / Hearts / Tears / Thinking Dots / Wrench) -->
     <div id="effect-layer" class="effect-layer"></div>
+
+    <!-- Particle Burst Layer (Petting Hearts / Celebration Stars) -->
+    <div id="particle-layer" class="particle-layer"></div>
 
     <!-- Speech / Quota Bubble -->
     <div id="speech-bubble" class="speech-bubble hidden">
       <div class="bubble-content">
         <div id="bubble-text" class="bubble-text">喵~ 今天也要认真写代码哦！</div>
-        
+
         <!-- Quota Section (Toggleable) -->
         <div id="quota-section" class="quota-section">
           <div class="quota-bar-row">
@@ -32,6 +41,7 @@
             </div>
             <span id="quota-week-val" class="quota-percent">95%</span>
           </div>
+          <div id="quota-meta" class="quota-meta">本机账本实时同步 · 正常</div>
         </div>
       </div>
       <div class="bubble-tail"></div>
@@ -39,7 +49,9 @@
 
     <!-- Pet Sprite Presentation -->
     <div id="sprite-wrapper" class="sprite-wrapper">
-      <img id="pet-frame" class="pet-frame" src="../skins/fat-cat/frames/idle.png" alt="大肥猫" draggable="false">
+      <img id="pet-frame" class="pet-frame" src="../skins/fat-cat/frames/idle.png" alt="大肥猫" draggable="false" crossorigin="anonymous">
+      <!-- Tool Wrench Overlay for IDE PreToolUse -->
+      <div id="tool-wrench" class="tool-wrench hidden" aria-hidden="true">🔧</div>
       <div id="pet-shadow" class="pet-shadow"></div>
     </div>
 
@@ -50,17 +62,21 @@
     </div>
   </div>
 
-  <!-- Right-Click Context Menu -->
+  <!-- Right-Click / Tray Shortcut Context Menu -->
   <div id="context-menu" class="context-menu hidden">
-    <div class="menu-header">大肥猫 · 伴侣设置</div>
+    <div class="menu-header">大肥猫 · 伴侣控制台</div>
     <div class="menu-item" data-action="toggle-quota">📊 切换额度卡片</div>
     <div class="menu-item" data-action="random-dialogue">💬 换一句傲娇台词</div>
-    <div class="menu-item" data-action="pet-action">💖 摸摸大肥猫</div>
+    <div class="menu-item" data-action="pet-action">💖 揉头摸摸大肥猫</div>
     <div class="menu-divider"></div>
-    <div class="menu-item" data-action="switch-skin">👗 切换皮肤 (当前: 大肥猫)</div>
+    <div class="menu-item" data-action="toggle-dnd">🛡️ 完全穿透 (免打扰): <span id="dnd-status">关闭</span></div>
+    <div class="menu-item" data-action="toggle-ide-only">🖥️ 仅 IDE 活跃时显示: <span id="ide-only-status">关闭</span></div>
+    <div class="menu-item" data-action="toggle-gravity">🧲 重力吸附底栏: <span id="gravity-status">开启</span></div>
+    <div class="menu-divider"></div>
+    <div class="menu-item" data-action="switch-skin">👗 切换皮肤 (<span id="skin-status">大肥猫</span>)</div>
     <div class="menu-item" data-action="toggle-sound">🔊 音效: <span id="sound-status">开启</span></div>
     <div class="menu-divider"></div>
-    <div class="menu-item close" data-action="close-menu">关闭菜单</div>
+    <div class="menu-item close" data-action="close-menu">关闭菜单 (快捷键 ⌘/Ctrl+⇧+P)</div>
   </div>
 
   <!-- Core Scripts -->

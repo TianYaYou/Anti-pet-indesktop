@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "id": "fat-cat",
   "name": "大肥猫 · 星语伴侣",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "Antigravity Pet Studio",
-  "description": "可爱傲娇的半身大肥猫桌宠，支持按压回弹、状态表情联动、额度监控与互动台词",
+  "description": "可爱傲娇的半身大肥猫桌宠，支持透明穿透、像素级碰撞、按压回弹、摸头呼噜、重力吸附、状态表情联动与双周期额度监控",
   "render": {
     "defaultWidth": 200,
     "minWidth": 120,
@@ -55,21 +55,27 @@
       "loop": false
     },
     "pressed": {
-      "frame": "idle",
+      "frame": "blink",
       "motion": "compress",
       "loop": false
     },
+    "rebound": {
+      "frame": "proud",
+      "motion": "duang",
+      "durationMs": 520,
+      "loop": false
+    },
     "dragging": {
-      "frame": "idle",
+      "frame": "blink",
       "motion": "held",
       "loop": false
     },
     "petting": {
-      "frame": "proud",
+      "frame": "blink",
       "motion": "nuzzle",
       "effect": "ui/heart.svg",
       "bubbleText": "哼，勉为其难让你摸摸耳朵~",
-      "durationMs": 2000,
+      "durationMs": 2600,
       "loop": false
     }
   },

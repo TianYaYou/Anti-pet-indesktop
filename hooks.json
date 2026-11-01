@@ -41,6 +41,17 @@
         ]
       }
     ],
+    "PostToolUseFailure": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node server/hook-handler.js PostToolUseFailure"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "type": "command",
