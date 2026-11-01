@@ -1,0 +1,117 @@
+name: Release Multi-Platform Packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-package:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 1. Mac-Arm (Apple Silicon M1/M2/M3/M4)
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            pkg_name: Anti-Pet-v0.1.0-macOS-arm64
+            archive_type: tar.gz
+            binary_name: anti-pet-desktop
+
+          # 2. Win-x64 (主流 64 位 Windows)
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            pkg_name: Anti-Pet-v0.1.0-windows-x64
+            archive_type: zip
+            binary_name: anti-pet-desktop.exe
+
+          # 3. Win-x86 (32 位 Windows)
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            pkg_name: Anti-Pet-v0.1.0-windows-x86
+            archive_type: zip
+            binary_name: anti-pet-desktop.exe
+
+          # 4. Win-Arm (Windows on ARM)
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            pkg_name: Anti-Pet-v0.1.0-windows-arm64
+            archive_type: zip
+            binary_name: anti-pet-desktop.exe
+
+          # 5. Linux-x64 (Ubuntu / Debian / Fedora)
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            pkg_name: Anti-Pet-v0.1.0-linux-x64
+            archive_type: tar.gz
+            binary_name: anti-pet-desktop
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+
+      - name: Build release binary
+        run: |
+          cargo build --release --manifest-path desktop/Cargo.toml --target ${{ matrix.target }}
+
+      - name: Assemble portable package (Unix)
+        if: matrix.archive_type == 'tar.gz'
+        run: |
+          mkdir -p bundle/${{ matrix.pkg_name }}
+          cp desktop/target/${{ matrix.target }}/release/${{ matrix.binary_name }} bundle/${{ matrix.pkg_name }}/
+          cp -r core bundle/${{ matrix.pkg_name }}/
+          cp -r skins bundle/${{ matrix.pkg_name }}/
+          cp -r server bundle/${{ matrix.pkg_name }}/
+          cp -r assets bundle/${{ matrix.pkg_name }}/
+          cp -r scripts bundle/${{ matrix.pkg_name }}/
+          cp README.md LICENSE bundle/${{ matrix.pkg_name }}/
+          # Clean up any candidates or temporary test images in assets
+          rm -rf bundle/${{ matrix.pkg_name }}/assets/candidates bundle/${{ matrix.pkg_name }}/assets/test_designs
+          tar -czf ${{ matrix.pkg_name }}.tar.gz -C bundle ${{ matrix.pkg_name }}
+
+      - name: Assemble portable package (Windows)
+        if: matrix.archive_type == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "bundle/${{ matrix.pkg_name }}"
+          Copy-Item "desktop/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" -Destination "bundle/${{ matrix.pkg_name }}/"
+          Copy-Item -Recurse "core" -Destination "bundle/${{ matrix.pkg_name }}/"
+          Copy-Item -Recurse "skins" -Destination "bundle/${{ matrix.pkg_name }}/"
+          Copy-Item -Recurse "server" -Destination "bundle/${{ matrix.pkg_name }}/"
+          Copy-Item -Recurse "assets" -Destination "bundle/${{ matrix.pkg_name }}/"
+          Copy-Item -Recurse "scripts" -Destination "bundle/${{ matrix.pkg_name }}/"
+          Copy-Item "README.md", "LICENSE" -Destination "bundle/${{ matrix.pkg_name }}/"
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "bundle/${{ matrix.pkg_name }}/assets/candidates"
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "bundle/${{ matrix.pkg_name }}/assets/test_designs"
+          Compress-Archive -Path "bundle/${{ matrix.pkg_name }}" -DestinationPath "${{ matrix.pkg_name }}.zip"
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        with:
+          files: |
+            ${{ matrix.pkg_name }}.${{ matrix.archive_type }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

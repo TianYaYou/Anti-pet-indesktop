@@ -331,7 +331,66 @@ fn parse_single_rect(s: &str) -> Option<HitRect> {
     }
 }
 
+/// Ensures the local node server at 127.0.0.1:4199 is running.
+/// If not responding, attempts to auto-spawn `node server/index.js`.
+fn ensure_local_server_running() {
+    use std::net::{SocketAddr, TcpStream};
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    let addr: SocketAddr = "127.0.0.1:4199".parse().unwrap();
+    if TcpStream::connect_timeout(&addr, Duration::from_millis(150)).is_ok() {
+        return;
+    }
+
+    let mut candidate_paths = vec![
+        PathBuf::from("server/index.js"),
+        PathBuf::from("../server/index.js"),
+    ];
+
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            candidate_paths.push(exe_dir.join("server/index.js"));
+            candidate_paths.push(exe_dir.join("../server/index.js"));
+            candidate_paths.push(exe_dir.join("../../server/index.js"));
+        }
+    }
+
+    for path in candidate_paths {
+        if path.exists() {
+            let working_dir = path.parent().and_then(|p| p.parent()).unwrap_or(&path);
+            let mut cmd = Command::new("node");
+            cmd.arg(&path);
+            cmd.current_dir(working_dir);
+
+            #[cfg(target_os = "windows")]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x08000000;
+                cmd.creation_flags(CREATE_NO_WINDOW);
+            }
+
+            if let Ok(mut child) = cmd.spawn() {
+                println!("Auto-spawned background server from {:?}", path);
+                std::thread::spawn(move || {
+                    let _ = child.wait();
+                });
+                for _ in 0..25 {
+                    thread::sleep(Duration::from_millis(80));
+                    if TcpStream::connect_timeout(&addr, Duration::from_millis(80)).is_ok() {
+                        println!("Anti-Pet local server (127.0.0.1:4199) is ready");
+                        break;
+                    }
+                }
+                return;
+            }
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ensure_local_server_running();
+
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
 
