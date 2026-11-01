@@ -1,29 +1,35 @@
-/* Anti-Pet In Desktop - Flush Edge & Zero-Expression Stylesheet */
+/* Anti-Pet In Desktop - Thought Bubble & Adaptive Edge Stylesheet */
 
 :root {
   --pet-width: 136px;
   --gemini-purple: #7c4dff;
   --gemini-blue: #2979ff;
   --gemini-gradient: linear-gradient(135deg, #7c4dff 0%, #2979ff 100%);
-  --gemini-glow: rgba(124, 77, 255, 0.32);
-  --glass-bg: rgba(255, 255, 255, 0.92);
-  --glass-border: rgba(255, 255, 255, 0.72);
-  --shadow-color: rgba(30, 20, 60, 0.18);
-  --text-primary: #1e1b2e;
-  --text-secondary: #65617d;
+  --thought-bg: rgba(252, 251, 255, 0.96);
+  --thought-border: #283666;
+  --thought-divider: rgba(40, 54, 102, 0.16);
+  --thought-shadow: rgba(28, 36, 75, 0.18);
+  --text-primary: #1f2642;
+  --text-secondary: #5c6484;
+  --menu-bg: rgba(250, 249, 255, 0.95);
+  --menu-border: rgba(40, 54, 102, 0.22);
   --gaze-x: 0px;
   --gaze-y: 0px;
   --gaze-tilt: 0deg;
   --drag-swing: 0deg;
+  --bubble-shift-x: 0px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --glass-bg: rgba(26, 23, 40, 0.92);
-    --glass-border: rgba(124, 77, 255, 0.32);
-    --shadow-color: rgba(0, 0, 0, 0.45);
-    --text-primary: #f2efff;
-    --text-secondary: #a39eb8;
+    --thought-bg: rgba(30, 29, 48, 0.95);
+    --thought-border: #7b8cde;
+    --thought-divider: rgba(123, 140, 222, 0.22);
+    --thought-shadow: rgba(0, 0, 0, 0.42);
+    --text-primary: #f2f4ff;
+    --text-secondary: #9fa8c7;
+    --menu-bg: rgba(26, 24, 42, 0.95);
+    --menu-border: rgba(123, 140, 222, 0.28);
   }
 }
 
@@ -56,16 +62,16 @@ body.pet-body {
   align-items: center;
   padding: 5px 12px;
   border-radius: 999px;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  box-shadow: 0 4px 14px var(--shadow-color);
+  background: var(--thought-bg);
+  border: 2px solid var(--thought-border);
+  box-shadow: 0 4px 14px var(--thought-shadow);
   font-size: 11px;
   font-weight: 600;
   color: var(--text-primary);
   cursor: pointer;
   pointer-events: auto;
   z-index: 120;
-  opacity: 0.85;
+  opacity: 0.88;
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
@@ -115,7 +121,7 @@ body.pet-body {
   transform: translateY(20px) scale(0.9);
 }
 
-/* Mac Left / Right Edge Docking (Flush with screen side edge) */
+/* Mac Left / Right Edge Docking */
 .pet-container.docked-left {
   transform: translateX(-42%) rotate(10deg);
   transform-origin: left bottom;
@@ -163,10 +169,10 @@ body.pet-body {
   display: block;
   pointer-events: none;
   transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
-  filter: drop-shadow(0 4px 12px var(--shadow-color));
+  filter: drop-shadow(0 4px 12px var(--thought-shadow));
 }
 
-/* Sprite Motion States (Pure physical body motion, no extra facial expression swaps, no vertical gap at bottom) */
+/* Sprite Motion States */
 .state-idle .sprite-wrapper {
   animation: pet-breath 3.6s ease-in-out infinite;
 }
@@ -206,7 +212,6 @@ body.pet-body {
   transition: transform 0.06s linear;
 }
 
-/* Keyframe Definitions (Anchored at center bottom so bottom edge never lifts off 0px floor during idle) */
 @keyframes pet-breath {
   0%, 100% {
     transform: translate3d(var(--gaze-x), 0, 0) rotate(var(--gaze-tilt)) scale(1, 1);
@@ -252,60 +257,112 @@ body.pet-body {
   100% { transform: scale(1, 1); }
 }
 
-/* Compact Speech / Quota Bubble */
+/* =========================================================================
+   Cat Thought Cloud Bubble ("像是小猫挂件在想的东西")
+   Matches skins/fat-cat/ui/thought-speech.svg & thought-quota.svg style
+   ========================================================================= */
 .speech-bubble {
   position: absolute;
-  bottom: calc(100% + 6px);
-  width: 210px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid var(--glass-border);
-  border-radius: 14px;
-  padding: 9px 11px;
-  box-shadow: 0 8px 22px var(--shadow-color), 0 0 10px var(--gemini-glow);
+  bottom: calc(100% + 18px);
+  left: 50%;
+  width: 204px;
+  transform: translate3d(-50%, 0, 0) scale(1);
+  transform-origin: center bottom;
   opacity: 1;
-  transform: translateY(0) scale(1);
-  transition: opacity 0.24s ease, transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: opacity 0.22s ease, transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1);
   z-index: 20;
   pointer-events: auto;
 }
 
 .speech-bubble.hidden {
   opacity: 0;
-  transform: translateY(8px) scale(0.92);
+  transform: translate3d(-50%, 10px, 0) scale(0.86);
   pointer-events: none;
+}
+
+/* When pet is near top of screen, flip thought bubble below the pet */
+.speech-bubble.flip-below {
+  bottom: auto;
+  top: calc(100% + 18px);
+  transform-origin: center top;
+}
+
+.speech-bubble .bubble-content {
+  position: relative;
+  transform: translateX(var(--bubble-shift-x));
+  background: var(--thought-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 2.5px solid var(--thought-border);
+  border-radius: 26px;
+  padding: 10px 14px;
+  box-shadow: 0 8px 20px var(--thought-shadow);
+  transition: transform 0.18s ease-out;
+  animation: thought-float 3.2s ease-in-out infinite;
+}
+
+@keyframes thought-float {
+  0%, 100% { margin-top: 0px; }
+  50% { margin-top: -3px; }
+}
+
+/* Two floating thought circles (o -> O) anchored above cat's head */
+.thought-trail {
+  position: absolute;
+  left: 50%;
+  bottom: -17px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.speech-bubble.flip-below .thought-trail {
+  bottom: auto;
+  top: -17px;
+  flex-direction: column-reverse;
+}
+
+.thought-dot {
+  display: block;
+  background: var(--thought-bg);
+  border: 2.2px solid var(--thought-border);
+  border-radius: 50%;
+  box-shadow: 0 2px 6px var(--thought-shadow);
+}
+
+.thought-dot-lg {
+  width: 11px;
+  height: 9px;
+  margin-left: 8px;
+}
+
+.thought-dot-sm {
+  width: 7px;
+  height: 6px;
+  margin-left: -4px;
 }
 
 .bubble-text {
   font-size: 12px;
   line-height: 1.45;
   color: var(--text-primary);
-  font-weight: 500;
+  font-weight: 600;
+  text-align: center;
   word-break: break-word;
   cursor: pointer;
 }
 
-.bubble-tail {
-  position: absolute;
-  bottom: -6px;
-  left: 50%;
-  transform: translateX(-50%) rotate(45deg);
-  width: 10px;
-  height: 10px;
-  background: var(--glass-bg);
-  border-right: 1px solid var(--glass-border);
-  border-bottom: 1px solid var(--glass-border);
-}
-
-/* Quota Section */
+/* Quota Section inside Thought Cloud */
 .quota-section {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   margin-top: 7px;
   padding-top: 7px;
-  border-top: 1px dashed var(--glass-border);
+  border-top: 1.5px solid var(--thought-divider);
 }
 
 .quota-bar-row {
@@ -317,22 +374,23 @@ body.pet-body {
 
 .quota-label {
   color: var(--text-secondary);
-  font-weight: 500;
-  width: 42px;
+  font-weight: 600;
+  width: 40px;
+  flex-shrink: 0;
 }
 
 .quota-bar-track {
   flex: 1;
   height: 5px;
-  background: rgba(124, 77, 255, 0.12);
-  border-radius: 3px;
+  background: rgba(124, 77, 255, 0.14);
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .quota-bar-fill {
   height: 100%;
   background: var(--gemini-gradient);
-  border-radius: 3px;
+  border-radius: 999px;
   transition: width 0.4s ease, background 0.3s ease;
 }
 
@@ -350,31 +408,35 @@ body.pet-body {
 
 .quota-percent {
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: 700;
   width: 28px;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 .quota-meta {
-  font-size: 9px;
+  font-size: 9.5px;
   color: var(--text-secondary);
-  text-align: right;
+  text-align: center;
+  margin-top: 1px;
 }
 
-/* Context Menu */
+/* =========================================================================
+   Context Menu (Anchored right at mouse cursor position)
+   ========================================================================= */
 .context-menu {
   position: fixed;
-  background: var(--glass-bg);
+  background: var(--menu-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--glass-border);
-  border-radius: 12px;
+  border: 1.5px solid var(--menu-border);
+  border-radius: 14px;
   padding: 5px 0;
-  min-width: 190px;
-  box-shadow: 0 12px 28px var(--shadow-color);
+  width: 196px;
+  box-shadow: 0 12px 28px var(--thought-shadow);
   z-index: 100;
-  font-size: 11px;
+  font-size: 11.5px;
   color: var(--text-primary);
   pointer-events: auto;
 }
@@ -385,7 +447,7 @@ body.pet-body {
 }
 
 .menu-header {
-  padding: 6px 12px 3px;
+  padding: 5px 12px 3px;
   font-size: 10px;
   font-weight: 700;
   color: var(--gemini-purple);
@@ -393,9 +455,9 @@ body.pet-body {
 }
 
 .menu-item {
-  padding: 6px 12px;
+  padding: 5px 12px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.14s ease;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -403,16 +465,22 @@ body.pet-body {
 }
 
 .menu-item:hover {
-  background: rgba(124, 77, 255, 0.15);
+  background: rgba(124, 77, 255, 0.14);
+}
+
+.menu-val {
+  color: var(--text-secondary);
+  font-weight: 600;
+  font-size: 11px;
 }
 
 .menu-item.close {
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: 10.5px;
 }
 
 .menu-divider {
   height: 1px;
-  background: var(--glass-border);
+  background: var(--thought-divider);
   margin: 3px 0;
 }
