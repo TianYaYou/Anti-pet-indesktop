@@ -238,6 +238,13 @@
     }
   }
 
+  function distanceToRect(x, y, rect) {
+    if (!rect) return 9999;
+    const dx = Math.max(rect.left - x, 0, x - rect.right);
+    const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
   function isPointInElement(clientX, clientY, el) {
     if (!el || el.classList.contains('hidden')) return false;
     const style = window.getComputedStyle(el);
@@ -259,7 +266,12 @@
     if (container.classList.contains('ide-hidden')) {
       return false;
     }
-    if (isPointInElement(clientX, clientY, contextMenu)) return true;
+    if (!contextMenu.classList.contains('hidden')) {
+      const mRect = contextMenu.getBoundingClientRect();
+      const catRect = petFrame.getBoundingClientRect();
+      const dist = Math.min(distanceToRect(clientX, clientY, mRect), distanceToRect(clientX, clientY, catRect));
+      if (dist <= 300) return true;
+    }
     if (isPointInElement(clientX, clientY, bubbleCloud || speechBubble)) return true;
     return isOpaquePixelOnCat(clientX, clientY);
   }
@@ -311,11 +323,16 @@
 
     if (!contextMenu.classList.contains('hidden')) {
       const mRect = contextMenu.getBoundingClientRect();
+      const catRect = petFrame.getBoundingClientRect();
+      const minX = Math.min(catRect.left, mRect.left) - 40;
+      const minY = Math.min(catRect.top, mRect.top) - 40;
+      const maxX = Math.max(catRect.right, mRect.right) + 40;
+      const maxY = Math.max(catRect.bottom, mRect.bottom) + 40;
       rects.push({
-        x: mRect.left - 6,
-        y: mRect.top - 6,
-        w: mRect.width + 12,
-        h: mRect.height + 12
+        x: Math.max(0, minX),
+        y: Math.max(0, minY),
+        w: Math.min(window.innerWidth, maxX - minX),
+        h: Math.min(window.innerHeight, maxY - minY)
       });
     }
 
@@ -393,25 +410,22 @@
         state.leaveHideTimer = null;
       }
     } else {
-      // Cursor left the pet & bubble: close context menu and fade out thought bubble shortly after
+      // Cursor left the pet & bubble: fade out thought bubble shortly after (do not close context menu here)
       if (state.leaveHideTimer) clearTimeout(state.leaveHideTimer);
       state.leaveHideTimer = setTimeout(() => {
         if (!state.isHoveringPet && !state.isDragging) {
-          closeContextMenu();
           hideBubbleImmediately();
         }
-      }, 950);
+      }, 1200);
     }
   }
 
   // Window blur (user clicked into IDE / browser / another app)
   window.__antiPetOnWindowBlur = function () {
-    closeContextMenu();
     hideBubbleImmediately();
   };
 
   window.addEventListener('blur', () => {
-    closeContextMenu();
     hideBubbleImmediately();
   });
 
@@ -547,13 +561,15 @@
     handleHoverChange(shouldIntercept);
     ipc.setIgnoreCursorEvents(!shouldIntercept);
 
-    // If context menu is open and cursor moved far away from both menu and cat, close it
-    if (
-      !contextMenu.classList.contains('hidden') &&
-      !isPointInElement(localX, localY, contextMenu) &&
-      !isOpaquePixelOnCat(localX, localY)
-    ) {
-      closeContextMenu();
+    // If context menu is open and cursor moved far away from both menu and cat (> 300px), close it
+    if (!contextMenu.classList.contains('hidden')) {
+      const mRect = contextMenu.getBoundingClientRect();
+      const catRect = petFrame.getBoundingClientRect();
+      const distToMenu = distanceToRect(localX, localY, mRect);
+      const distToCat = distanceToRect(localX, localY, catRect);
+      if (Math.min(distToMenu, distToCat) > 300) {
+        closeContextMenu();
+      }
     }
   };
 
@@ -565,6 +581,15 @@
       ipc.setIgnoreCursorEvents(!shouldIntercept);
       if (shouldIntercept) {
         detectHeadRubGesture(e.clientX, e.clientY);
+      }
+    }
+    if (!contextMenu.classList.contains('hidden')) {
+      const mRect = contextMenu.getBoundingClientRect();
+      const catRect = petFrame.getBoundingClientRect();
+      const distToMenu = distanceToRect(e.clientX, e.clientY, mRect);
+      const distToCat = distanceToRect(e.clientX, e.clientY, catRect);
+      if (Math.min(distToMenu, distToCat) > 300) {
+        closeContextMenu();
       }
     }
   });
@@ -1118,7 +1143,7 @@
 
   function showZoomPill(pct) {
     if (!zoomPill) return;
-    zoomPill.textContent = `🐾 ${pct}%`;
+    zoomPill.textContent = `${pct}%`;
     zoomPill.classList.remove('hidden');
     if (state.zoomPillTimer) clearTimeout(state.zoomPillTimer);
     state.zoomPillTimer = setTimeout(() => {
@@ -1781,8 +1806,8 @@
       } catch (e) {}
     }
 
-    showToast('✨ 配置已成功保存并生效！');
-    showBubble('设置已保存，喵~', 2500);
+    showToast('配置已保存并生效');
+    showBubble('设置已保存', 2500);
 
     settingsModal.classList.add('hidden');
     draftState = null;
@@ -1821,14 +1846,14 @@
   if (btnCheckUpdate) {
     btnCheckUpdate.addEventListener('click', async () => {
       btnCheckUpdate.disabled = true;
-      btnCheckUpdate.textContent = '⏳ 正在检查...';
+      btnCheckUpdate.textContent = '正在检查...';
       if (updateStatusMsg) updateStatusMsg.textContent = '正在联网查询 GitHub 最新 Release...';
 
       try {
         const res = await fetch('/api/update-check');
         const data = await res.json();
         btnCheckUpdate.disabled = false;
-        btnCheckUpdate.textContent = '🔍 立即检查更新';
+        btnCheckUpdate.textContent = '检查更新';
 
         const curVer = data.currentVersion || data.current || 'v0.1.1';
         const latestVer = data.latestVersion || data.latest || curVer;
@@ -1838,7 +1863,7 @@
         }
 
         if (data.hasUpdate) {
-          if (updateStatusMsg) updateStatusMsg.textContent = `发现新版本 ${latestVer}！`;
+          if (updateStatusMsg) updateStatusMsg.textContent = `发现新版本 ${latestVer}`;
           if (updateDetailsBox) {
             updateDetailsBox.classList.remove('hidden');
             if (updateBadgeTag) updateBadgeTag.textContent = `发现新版 ${latestVer}`;
@@ -1849,12 +1874,12 @@
             }
           }
         } else {
-          if (updateStatusMsg) updateStatusMsg.textContent = `🎉 已是最新版本 (${curVer})`;
+          if (updateStatusMsg) updateStatusMsg.textContent = `已是最新版本 (${curVer})`;
           if (updateDetailsBox) updateDetailsBox.classList.add('hidden');
         }
       } catch (err) {
         btnCheckUpdate.disabled = false;
-        btnCheckUpdate.textContent = '🔍 立即检查更新';
+        btnCheckUpdate.textContent = '检查更新';
         if (updateStatusMsg) updateStatusMsg.textContent = '检查更新失败，请检查网络连接';
       }
     });
@@ -1943,7 +1968,7 @@
         btnConfirmCreateSkin.textContent = '确认创建';
 
         if (result.ok) {
-          showToast(`🎨 皮肤 [${name}] 创建成功！`);
+          showToast(`皮肤 [${name}] 创建成功`);
           createSkinForm.classList.add('hidden');
           newSkinId.value = '';
           newSkinName.value = '';
@@ -2021,7 +2046,7 @@
       const delBtn = document.createElement('button');
       delBtn.className = 'btn-del-line';
       delBtn.title = '删除此条';
-      delBtn.textContent = '🗑️';
+      delBtn.textContent = '删除';
       delBtn.addEventListener('click', () => {
         lines.splice(idx, 1);
         renderDialogueLines();

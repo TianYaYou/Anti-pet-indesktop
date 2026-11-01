@@ -46,7 +46,7 @@
     </div>
 
     <!-- Floating Zoom Scale Pill -->
-    <div id="zoom-pill" class="zoom-pill hidden">🐾 100%</div>
+    <div id="zoom-pill" class="zoom-pill hidden">100%</div>
 
     <!-- Pet Sprite Presentation -->
     <div id="sprite-wrapper" class="sprite-wrapper">
@@ -65,12 +65,12 @@
 
   <!-- Right-Click Context Menu -->
   <div id="context-menu" class="context-menu hidden">
-    <div class="menu-header">大肥猫 · 伴侣控制台</div>
-    <div class="menu-item primary" data-action="open-settings"><span>⚙️ 偏好设置...</span><span class="menu-shortcut">Cmd+,</span></div>
+    <div class="menu-header">伴侣控制台</div>
+    <div class="menu-item primary" data-action="open-settings"><span>偏好设置...</span><span class="menu-shortcut">Cmd+,</span></div>
     <div class="menu-divider"></div>
     <div class="menu-item" data-action="toggle-quota"><span>切换额度卡片</span></div>
-    <div class="menu-item" data-action="random-dialogue"><span>换一句傲娇台词</span></div>
-    <div class="menu-item" data-action="pet-action"><span>揉头摸摸大肥猫</span></div>
+    <div class="menu-item" data-action="random-dialogue"><span>换一句台词</span></div>
+    <div class="menu-item" data-action="pet-action"><span>互动抚摸</span></div>
     <div class="menu-item" data-action="reset-zoom"><span>缩放大小 (滚轮微调)</span><span id="zoom-status" class="menu-val">100%</span></div>
     <div class="menu-divider"></div>
     <div class="menu-item" data-action="toggle-dnd"><span>完全穿透 (免打扰)</span><span id="dnd-status" class="menu-val">关闭</span></div>
@@ -83,37 +83,32 @@
     <div class="menu-item close" data-action="close-menu"><span>关闭菜单 (Cmd/Ctrl+Shift+P)</span></div>
   </div>
 
-  <!-- Settings Modal (Glassmorphic Window) -->
+  <!-- Settings Modal (Native OS Style Window) -->
   <div id="settings-modal" class="settings-modal hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="settings-backdrop" id="settings-backdrop"></div>
     <div class="settings-window">
       <!-- Header -->
       <div class="settings-header">
         <div class="header-left">
-          <span class="settings-icon">🐾</span>
-          <span id="settings-title" class="settings-title">大肥猫 · 偏好设置</span>
+          <span id="settings-title" class="settings-title">偏好设置</span>
           <span class="settings-badge" id="settings-version-badge">v0.1.1</span>
         </div>
-        <button id="btn-settings-close-x" class="settings-close-x" title="关闭 (Esc)">✕</button>
+        <button id="btn-settings-close-x" class="settings-close-x" title="关闭 (Esc)">&times;</button>
       </div>
 
       <!-- Settings Body with Sidebar Tabs -->
       <div class="settings-body">
         <nav class="settings-nav">
           <button class="nav-tab active" data-tab="general">
-            <span class="tab-icon">⚙️</span>
             <span class="tab-label">常规与显示</span>
           </button>
           <button class="nav-tab" data-tab="system">
-            <span class="tab-icon">🚀</span>
             <span class="tab-label">自启动与更新</span>
           </button>
           <button class="nav-tab" data-tab="skins">
-            <span class="tab-icon">🎨</span>
             <span class="tab-label">皮肤管理</span>
           </button>
           <button class="nav-tab" data-tab="dialogue">
-            <span class="tab-icon">💬</span>
             <span class="tab-label">台词与问候</span>
           </button>
         </nav>
@@ -121,121 +116,123 @@
         <main class="settings-content">
           <!-- Tab 1: General Settings -->
           <section id="tab-general" class="tab-pane active">
-            <div class="settings-section">
+            <div class="section-group">
               <h3 class="section-title">体型与物理</h3>
-              
-              <!-- Scale Slider -->
-              <div class="setting-item">
-                <div class="setting-info">
-                  <div class="setting-label">缩放大小</div>
-                  <div class="setting-desc">调整挂件在桌面的显示比例 (亦可悬停桌宠直接滚轮微调)</div>
+              <div class="settings-section">
+                <!-- Scale Slider -->
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <div class="setting-label">缩放大小</div>
+                    <div class="setting-desc">调整挂件在桌面的显示比例 (亦可悬停桌宠直接滚轮微调)</div>
+                  </div>
+                  <div class="setting-ctrl range-ctrl">
+                    <input type="range" id="setting-scale" min="0.5" max="2.0" step="0.05" value="1.0">
+                    <span id="setting-scale-val" class="ctrl-val">100%</span>
+                  </div>
                 </div>
-                <div class="setting-ctrl range-ctrl">
-                  <input type="range" id="setting-scale" min="0.5" max="2.0" step="0.05" value="1.0">
-                  <span id="setting-scale-val" class="ctrl-val">100%</span>
-                </div>
-              </div>
 
-              <!-- Floor Mode -->
-              <div class="setting-item">
-                <div class="setting-info">
-                  <div class="setting-label">落地吸附模式</div>
-                  <div class="setting-desc">松手时猫猫下落吸附的基准位置</div>
+                <!-- Floor Mode -->
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <div class="setting-label">落地吸附模式</div>
+                    <div class="setting-desc">松手时猫猫下落吸附的基准位置</div>
+                  </div>
+                  <div class="setting-ctrl">
+                    <select id="setting-floor-mode" class="select-ctrl">
+                      <option value="bottom">屏幕绝对落底 (0px 极底)</option>
+                      <option value="taskbar">贴合任务栏 / Dock 上沿</option>
+                      <option value="free">自由悬浮 (不自动吸底)</option>
+                    </select>
+                  </div>
                 </div>
-                <div class="setting-ctrl">
-                  <select id="setting-floor-mode" class="select-ctrl">
-                    <option value="bottom">屏幕绝对落底 (0px 极底)</option>
-                    <option value="taskbar">贴合任务栏 / Dock 上沿</option>
-                    <option value="free">自由悬浮 (不自动吸底)</option>
-                  </select>
-                </div>
-              </div>
 
-              <!-- Gravity Toggle -->
-              <div class="setting-item">
-                <div class="setting-info">
-                  <div class="setting-label">重力加速度回弹</div>
-                  <div class="setting-desc">拖拽释放后模拟弹性重力落地</div>
-                </div>
-                <div class="setting-ctrl">
-                  <label class="switch">
-                    <input type="checkbox" id="setting-gravity">
-                    <span class="slider"></span>
-                  </label>
+                <!-- Gravity Toggle -->
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <div class="setting-label">重力加速度回弹</div>
+                    <div class="setting-desc">拖拽释放后模拟弹性重力落地</div>
+                  </div>
+                  <div class="setting-ctrl">
+                    <label class="switch">
+                      <input type="checkbox" id="setting-gravity">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div class="settings-section">
+            <div class="section-group">
               <h3 class="section-title">交互与提示</h3>
+              <div class="settings-section">
+                <!-- Sound Toggle & Volume -->
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <div class="setting-label">互动音效</div>
+                    <div class="setting-desc">点击、抚摸及回弹时的声音反馈</div>
+                  </div>
+                  <div class="setting-ctrl switch-with-slider">
+                    <label class="switch">
+                      <input type="checkbox" id="setting-sound">
+                      <span class="slider"></span>
+                    </label>
+                    <input type="range" id="setting-volume" min="0" max="1" step="0.05" value="0.8" title="音量大小">
+                    <button id="btn-test-sound" class="btn btn-sm btn-secondary" title="试听音效">试听</button>
+                  </div>
+                </div>
 
-              <!-- Sound Toggle & Volume -->
-              <div class="setting-item">
-                <div class="setting-info">
-                  <div class="setting-label">互动音效</div>
-                  <div class="setting-desc">点击、抚摸及回弹时的猫猫呼噜与音效反馈</div>
+                <!-- Quota HUD Toggle -->
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <div class="setting-label">思考气泡中显示额度卡片</div>
+                    <div class="setting-desc">同步显示 Antigravity 5h 及周使用额度柱状图</div>
+                  </div>
+                  <div class="setting-ctrl">
+                    <label class="switch">
+                      <input type="checkbox" id="setting-show-quota">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
                 </div>
-                <div class="setting-ctrl switch-with-slider">
-                  <label class="switch">
-                    <input type="checkbox" id="setting-sound">
-                    <span class="slider"></span>
-                  </label>
-                  <input type="range" id="setting-volume" min="0" max="1" step="0.05" value="0.8" title="音量大小">
-                  <button id="btn-test-sound" class="btn-sm" title="试听音效">🔊 试听</button>
-                </div>
-              </div>
 
-              <!-- Quota HUD Toggle -->
-              <div class="setting-item">
-                <div class="setting-info">
-                  <div class="setting-label">思考气泡中显示额度卡片</div>
-                  <div class="setting-desc">同步显示 Antigravity 5h 及周使用额度柱状图</div>
+                <!-- Bubble Duration -->
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <div class="setting-label">气泡停留时长</div>
+                    <div class="setting-desc">台词气泡展示后的自动渐隐消失时间</div>
+                  </div>
+                  <div class="setting-ctrl range-ctrl">
+                    <input type="range" id="setting-bubble-duration" min="2000" max="15000" step="500" value="4000">
+                    <span id="setting-bubble-duration-val" class="ctrl-val">4.0s</span>
+                  </div>
                 </div>
-                <div class="setting-ctrl">
-                  <label class="switch">
-                    <input type="checkbox" id="setting-show-quota">
-                    <span class="slider"></span>
-                  </label>
-                </div>
-              </div>
 
-              <!-- Bubble Duration -->
-              <div class="setting-item">
-                <div class="setting-info">
-                  <div class="setting-label">气泡停留时长</div>
-                  <div class="setting-desc">台词气泡展示后的自动渐隐消失时间</div>
+                <!-- IDE Only Mode -->
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <div class="setting-label">仅在开发环境活跃时显示</div>
+                    <div class="setting-desc">切换到 Antigravity / Cursor / VS Code 时唤醒，其余时间自动隐身休眠</div>
+                  </div>
+                  <div class="setting-ctrl">
+                    <label class="switch">
+                      <input type="checkbox" id="setting-ide-only">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
                 </div>
-                <div class="setting-ctrl range-ctrl">
-                  <input type="range" id="setting-bubble-duration" min="2000" max="15000" step="500" value="4000">
-                  <span id="setting-bubble-duration-val" class="ctrl-val">4.0s</span>
-                </div>
-              </div>
 
-              <!-- IDE Only Mode -->
-              <div class="setting-item">
-                <div class="setting-info">
-                  <div class="setting-label">仅在开发环境活跃时显示</div>
-                  <div class="setting-desc">切换到 Antigravity / Cursor / VS Code 时唤醒，其余时间自动隐身休眠</div>
-                </div>
-                <div class="setting-ctrl">
-                  <label class="switch">
-                    <input type="checkbox" id="setting-ide-only">
-                    <span class="slider"></span>
-                  </label>
-                </div>
-              </div>
-
-              <!-- DND Passthrough Mode -->
-              <div class="setting-item">
-                <div class="setting-info">
-                  <div class="setting-label">完全穿透免打扰 (DND)</div>
-                  <div class="setting-desc">鼠标完全穿透不拦截任何点击，仅在顶部显示唤醒浮条</div>
-                </div>
-                <div class="setting-ctrl">
-                  <label class="switch">
-                    <input type="checkbox" id="setting-dnd">
-                    <span class="slider"></span>
-                  </label>
+                <!-- DND Passthrough Mode -->
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <div class="setting-label">完全穿透免打扰 (DND)</div>
+                    <div class="setting-desc">鼠标完全穿透不拦截任何点击，仅在顶部显示唤醒浮条</div>
+                  </div>
+                  <div class="setting-ctrl">
+                    <label class="switch">
+                      <input type="checkbox" id="setting-dnd">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
                 </div>
               </div>
             </div>
@@ -243,42 +240,44 @@
 
           <!-- Tab 2: System & Updates -->
           <section id="tab-system" class="tab-pane hidden">
-            <div class="settings-section">
+            <div class="section-group">
               <h3 class="section-title">开机自启</h3>
-              <div class="setting-item">
-                <div class="setting-info">
-                  <div class="setting-label">登录系统时自动启动</div>
-                  <div class="setting-desc" id="autostart-desc">开机进入系统后自动拉起大肥猫后台挂件</div>
-                </div>
-                <div class="setting-ctrl">
-                  <label class="switch">
-                    <input type="checkbox" id="setting-autostart">
-                    <span class="slider"></span>
-                  </label>
+              <div class="settings-section">
+                <div class="setting-item">
+                  <div class="setting-info">
+                    <div class="setting-label">登录系统时自动启动</div>
+                    <div class="setting-desc" id="autostart-desc">开机进入系统后自动拉起大肥猫后台挂件</div>
+                  </div>
+                  <div class="setting-ctrl">
+                    <label class="switch">
+                      <input type="checkbox" id="setting-autostart">
+                      <span class="slider"></span>
+                    </label>
+                  </div>
                 </div>
               </div>
               <div id="autostart-status-note" class="status-note info">正在获取系统启动项状态...</div>
             </div>
 
-            <div class="settings-section">
+            <div class="section-group">
               <h3 class="section-title">软件更新</h3>
               <div class="update-card">
                 <div class="update-card-left">
                   <div class="update-version-row">
-                    <span class="update-label">当前运行版本:</span>
+                    <span class="update-label">当前版本:</span>
                     <span class="update-current-ver" id="update-current-ver">v0.1.1</span>
                   </div>
                   <div class="update-status-msg" id="update-status-msg">点击右侧按钮检查 GitHub 最新发布版本</div>
                 </div>
-                <button id="btn-check-update" class="btn btn-secondary">🔍 立即检查更新</button>
+                <button id="btn-check-update" class="btn btn-secondary">检查更新</button>
               </div>
 
               <div id="update-details-box" class="update-details-box hidden">
-                <div class="update-badge new" id="update-badge-tag">发现新版本 v0.1.2</div>
+                <div class="update-badge new" id="update-badge-tag">发现新版本</div>
                 <div class="update-date" id="update-date">发布于 2026-11-01</div>
                 <div class="update-body" id="update-changelog">更新日志加载中...</div>
                 <div class="update-actions">
-                  <a id="btn-update-download" href="#" target="_blank" class="btn btn-primary">⬇️ 前往 GitHub 下载新版</a>
+                  <a id="btn-update-download" href="#" target="_blank" class="btn btn-primary">前往 GitHub 下载新版</a>
                 </div>
               </div>
             </div>
@@ -289,20 +288,20 @@
             <div class="skins-toolbar">
               <div class="toolbar-title">已安装皮肤 (<span id="skins-count">1</span>)</div>
               <div class="toolbar-btns">
-                <button id="btn-show-create-skin" class="btn btn-sm btn-secondary">➕ 新建皮肤</button>
+                <button id="btn-show-create-skin" class="btn btn-sm btn-secondary">新建皮肤</button>
               </div>
             </div>
 
             <!-- Create Skin Form (collapsible) -->
             <div id="create-skin-form" class="create-skin-box hidden">
-              <div class="create-box-title">🎨 新建自定义皮肤骨架</div>
+              <div class="create-box-title">新建皮肤模板</div>
               <div class="form-row">
                 <label>皮肤 ID (英文数字)</label>
-                <input type="text" id="new-skin-id" placeholder="如: my-cute-cat" maxlength="24">
+                <input type="text" id="new-skin-id" placeholder="如: my-skin" maxlength="24">
               </div>
               <div class="form-row">
                 <label>皮肤名称</label>
-                <input type="text" id="new-skin-name" placeholder="如: 我的小可爱">
+                <input type="text" id="new-skin-name" placeholder="如: 新皮肤">
               </div>
               <div class="form-row">
                 <label>作者信息</label>
@@ -328,10 +327,10 @@
           <section id="tab-dialogue" class="tab-pane hidden">
             <div class="dialogue-header">
               <div class="dialogue-skin-selector">
-                <label>当前编辑皮肤:</label>
+                <label>编辑皮肤:</label>
                 <select id="dialogue-skin-select" class="select-ctrl"></select>
               </div>
-              <button id="btn-reset-dialogue" class="btn btn-sm btn-secondary" title="恢复出厂预设台词">🔄 恢复默认台词</button>
+              <button id="btn-reset-dialogue" class="btn btn-sm btn-secondary" title="恢复出厂预设台词">恢复默认台词</button>
             </div>
 
             <!-- State Category Selector Tabs -->
@@ -347,8 +346,8 @@
 
             <!-- Add Line Bar -->
             <div class="add-line-bar">
-              <input type="text" id="input-new-line" placeholder="输入新的傲娇/有趣台词...">
-              <button id="btn-add-line" class="btn btn-sm btn-primary">➕ 添加台词</button>
+              <input type="text" id="input-new-line" placeholder="输入新的台词...">
+              <button id="btn-add-line" class="btn btn-sm btn-primary">添加</button>
             </div>
 
             <!-- Dialogue Lines List -->
@@ -363,8 +362,8 @@
       <div class="settings-footer">
         <div class="footer-hint" id="settings-status-hint">按 Esc 取消更改</div>
         <div class="footer-actions">
-          <button id="btn-settings-cancel" class="btn btn-secondary">取 消</button>
-          <button id="btn-settings-save" class="btn btn-primary">💾 保存配置</button>
+          <button id="btn-settings-cancel" class="btn btn-secondary">取消</button>
+          <button id="btn-settings-save" class="btn btn-primary">保存</button>
         </div>
       </div>
     </div>

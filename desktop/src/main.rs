@@ -636,7 +636,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Initialize System Tray Menu and Icon
     let tray_menu = Menu::new();
-    let item_settings = MenuItem::new("⚙️ 偏好设置...", true, None);
+    let item_settings = MenuItem::new("偏好设置...", true, None);
     let sep0 = PredefinedMenuItem::separator();
     let item_toggle = MenuItem::new("显示 / 隐藏 大肥猫", true, None);
     let item_toggle_mode = MenuItem::new(
