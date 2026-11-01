@@ -62,7 +62,7 @@
     dndPassthrough: false,
     ideOnlyMode: false,
     gravityEnabled: true,
-    floorMode: 'auto',
+    floorMode: 'bottom',
     dockBottom: 0,
     dockLeft: 0,
     dockRight: 0,
@@ -432,9 +432,11 @@
       state.dockRight = Math.max(0, dockRight || 0);
 
       if (
+        !state.hasMoved &&
         !state.isDragging &&
         !state.dockedEdge &&
         state.gravityEnabled &&
+        state.floorMode === 'dock' &&
         (!state.hasReceivedDockInfo ||
           Math.abs(prevBottom - state.dockBottom) > 1.5 ||
           Math.abs(prevLeft - state.dockLeft) > 1.5 ||
@@ -442,6 +444,8 @@
       ) {
         state.hasReceivedDockInfo = true;
         startReleasePhysics(true);
+      } else {
+        state.hasReceivedDockInfo = true;
       }
     }
 
@@ -705,16 +709,19 @@
   function computeTargetFloorY(currentRect = null) {
     const winH = window.innerHeight;
     const petH = container.offsetHeight || 136;
-    const trueBottomY = winH - petH;
+    const trueBottomY = Math.max(0, winH - petH);
     const dockLedgeY = Math.max(0, winH - petH - state.dockBottom);
 
-    if (state.floorMode === 'bottom' || state.dockBottom <= 1.5) {
-      return trueBottomY;
-    }
     if (state.floorMode === 'dock') {
       return dockLedgeY;
     }
-    if (currentRect && currentRect.top > dockLedgeY + 18) {
+    if (state.floorMode === 'bottom' || state.dockBottom <= 2) {
+      return trueBottomY;
+    }
+
+    // In 'auto' mode: if user placed or dragged near/below the dock ledge, stay at true bottom
+    const rect = currentRect || container.getBoundingClientRect();
+    if (rect.top >= dockLedgeY - 14) {
       return trueBottomY;
     }
     return dockLedgeY;
@@ -722,7 +729,7 @@
 
   function snapToCurrentFloor() {
     const rect = container.getBoundingClientRect();
-    const targetY = computeTargetFloorY();
+    const targetY = computeTargetFloorY(rect);
     const curX = Math.max(
       state.dockLeft,
       Math.min(rect.left, window.innerWidth - container.offsetWidth - state.dockRight)
@@ -1109,16 +1116,22 @@
   }
 
   function cycleFloorMode() {
-    const modes = ['auto', 'dock', 'bottom'];
+    const modes = ['bottom', 'auto', 'dock'];
     const labels = {
+      bottom: '屏幕最底边',
       auto: '自动贴合',
-      dock: 'Mac边栏顶',
-      bottom: '屏幕最底边'
+      dock: 'Mac边栏顶'
+    };
+    const hints = {
+      bottom: '落点模式：屏幕最底边（可移至屏幕最底端）~',
+      auto: '落点模式：自动贴合~',
+      dock: '落点模式：Mac边栏顶（吸附在Dock栏上方）~'
     };
     const nextIdx = (modes.indexOf(state.floorMode) + 1) % modes.length;
     state.floorMode = modes[nextIdx];
     if (floorModeStatus) floorModeStatus.textContent = labels[state.floorMode];
     debouncedSaveSettings({ floorMode: state.floorMode });
+    showBubble(hints[state.floorMode], 2600);
     startReleasePhysics(false);
   }
 
