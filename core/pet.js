@@ -551,7 +551,7 @@
   }
 
   function playSound(name) {
-    if (!state.soundEnabled || !state.audioContext || !state.audioBuffers[name]) return;
+    if (state.dndPassthrough || !state.soundEnabled || !state.audioContext || !state.audioBuffers[name]) return;
     try {
       if (state.audioContext.state === 'suspended') {
         state.audioContext.resume();
@@ -568,7 +568,7 @@
   }
 
   function playPurrSound() {
-    if (!state.soundEnabled) return;
+    if (state.dndPassthrough || !state.soundEnabled) return;
     initAudio();
     if (!state.audioContext) return;
     try {
@@ -611,7 +611,7 @@
   }
 
   function playSoftBumpSound() {
-    if (!state.soundEnabled) return;
+    if (state.dndPassthrough || !state.soundEnabled) return;
     initAudio();
     if (!state.audioContext) return;
     try {
@@ -702,8 +702,8 @@
     container.className = classes.join(' ');
 
     const displayMsg = text || cfg.bubbleText;
-    // Do not interrupt with ambient bubbles if the user is actively typing
-    if (displayMsg && (!state.isUserTyping || state.isHoveringPet || newState === 'error')) {
+    // Do not interrupt with ambient bubbles if the user is actively typing or if pet is in silent DND mode
+    if (displayMsg && !state.dndPassthrough && (!state.isUserTyping || state.isHoveringPet || newState === 'error')) {
       showBubble(displayMsg, durationMs || 3200);
     }
 
@@ -727,6 +727,7 @@
   }
 
   function showBubble(text, ttlMs = 0) {
+    if (state.dndPassthrough) return;
     bubbleText.textContent = text;
     speechBubble.classList.remove('hidden');
     adjustBubblePosition();
@@ -1190,9 +1191,9 @@
     closeContextMenu();
 
     if (state.dndPassthrough) {
-      showBubble('已开启完全穿透免打扰，点击右下角按钮即可唤醒~', 2200);
+      hideBubbleImmediately();
     } else {
-      showBubble('本喵回来啦！', 2600);
+      showBubble('大肥猫醒来啦！', 2400);
     }
     debouncedSaveSettings({ dndPassthrough: state.dndPassthrough });
     setTimeout(syncHitRectsToDesktop, 50);
@@ -1269,23 +1270,32 @@
     items.forEach((item) => {
       const key = item.getAttribute('data-menu-key');
       if (key === 'openAntigravity') return;
-      if (key && config[key] === false) {
-        item.classList.add('hidden');
-      } else {
-        item.classList.remove('hidden');
+      const val = config[key];
+      let shouldShow = true;
+      if (val === false || val === 'never') {
+        shouldShow = false;
+      } else if (val === 'active') {
+        if (key === 'dnd') shouldShow = state.dndPassthrough;
+        else if (key === 'ideOnly') shouldShow = state.ideOnlyMode;
+        else if (key === 'gravity') shouldShow = state.gravityEnabled;
+        else if (key === 'quota') shouldShow = state.showQuota;
       }
+      item.classList.toggle('hidden', !shouldShow);
     });
 
     const agItem = contextMenu.querySelector('[data-menu-key="openAntigravity"]');
     if (agItem) {
-      if (config.openAntigravity === false) {
+      const agVal = config.openAntigravity;
+      if (agVal === false || agVal === 'never') {
         agItem.classList.add('hidden');
+      } else if (agVal === 'always') {
+        agItem.classList.remove('hidden');
       } else {
+        // 'auto' or true (default): auto-hide if Antigravity is already running
         try {
           const res = await fetch('/api/antigravity/status');
           if (res.ok) {
             const data = await res.json();
-            // If already running/open, hide this option! If not running, show it!
             agItem.classList.toggle('hidden', Boolean(data.running));
           } else {
             agItem.classList.remove('hidden');
