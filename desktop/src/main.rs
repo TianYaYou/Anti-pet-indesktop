@@ -417,7 +417,7 @@ mod cpu_2d_app {
         let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
         let proxy = event_loop.create_proxy();
 
-        let (mon_width, mon_height, mon_scale) =
+        let (mon_width, mon_height, _mon_scale) =
             if let Some(monitor) = event_loop.primary_monitor() {
                 let scale = monitor.scale_factor();
                 let size = monitor.size().to_logical::<f64>(scale);
@@ -433,7 +433,7 @@ mod cpu_2d_app {
         };
         #[cfg(target_os = "windows")]
         let init_dock = {
-            let insets = windows_window::query_taskbar_insets(0, mon_scale);
+            let insets = windows_window::query_taskbar_insets(0, _mon_scale);
             (insets.bottom, insets.left, insets.right)
         };
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
