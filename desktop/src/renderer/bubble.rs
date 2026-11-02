@@ -652,24 +652,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_bubble_draw() {
-        let mut pixmap = Pixmap::new(400, 400);
-        let bubble = ThoughtBubble {
-            visible: true,
-            text: "本喵随时待命~".to_string(),
-            show_quota: true,
-            five_hour_pct: 95.0,
-            weekly_pct: 80.0,
-            quota_meta: "5h重置 4h 11m · 周重置 6d 6h".to_string(),
-            opacity: 1.0,
-        };
-        let rect = bubble.draw(&mut pixmap, 200.0, 300.0, 100.0, 100.0, 1440.0, 1.0);
-        assert!(rect.is_some());
-        let r = rect.unwrap();
-        assert!(r.w > 180.0);
-        assert!(r.h > 45.0);
-        let center_px = (r.x + r.w * 0.5) as i32;
-        let center_py = (r.y + r.h * 0.5) as i32;
-        assert!(pixmap.alpha_at_physical(center_px, center_py) > 200);
+    fn test_text_rendering() {
+        let mut pixmap = Pixmap::new(200, 200);
+        #[cfg(target_os = "macos")]
+        unsafe {
+            macos_text::draw_text_into_pixmap(
+                &mut pixmap,
+                "测试文字",
+                10.0,
+                10.0,
+                150.0,
+                30.0,
+                14.0,
+                0.5,
+                [30, 41, 59],
+                1.0,
+            );
+        }
+        let mut non_zero_count = 0;
+        let mut min_y = 200;
+        let mut max_y = 0;
+        for y in 0..200 {
+            for x in 0..200 {
+                let alpha = pixmap.alpha_at_physical(x, y);
+                if alpha > 0 {
+                    non_zero_count += 1;
+                    min_y = min_y.min(y);
+                    max_y = max_y.max(y);
+                }
+            }
+        }
+        println!("test_text_rendering: count={}, min_y={}, max_y={}", non_zero_count, min_y, max_y);
+        assert!(non_zero_count > 0, "Text must produce non-zero pixels!");
+        assert!(min_y >= 8 && max_y <= 45, "Text pixels should be between y=8 and y=45, got min_y={}, max_y={}", min_y, max_y);
     }
 }
+

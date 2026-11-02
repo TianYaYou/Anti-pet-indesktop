@@ -69,7 +69,9 @@ mod cpu_2d_app {
         Tick25ms,
         QuotaUpdated(QuotaSnapshot),
         HookStateChanged(HookStateUpdate),
+        CloseSettings,
     }
+
 
     #[cfg(target_os = "macos")]
     mod macos_window {
@@ -241,7 +243,7 @@ mod cpu_2d_app {
         }
     }
 
-    fn open_settings_page() {
+    fn ensure_backend_server() {
         let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 4199));
         let server_alive = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(150)).is_ok();
         if !server_alive {
@@ -260,32 +262,14 @@ mod cpu_2d_app {
                 let _ = std::process::Command::new("node")
                     .arg(server_path)
                     .spawn();
-                std::thread::sleep(Duration::from_millis(500));
+                std::thread::sleep(Duration::from_millis(400));
             }
-        }
-
-        #[cfg(target_os = "macos")]
-        {
-            let _ = std::process::Command::new("/usr/bin/open")
-                .arg("http://127.0.0.1:4199/settings.html")
-                .spawn();
-        }
-        #[cfg(target_os = "windows")]
-        {
-            let _ = std::process::Command::new("cmd")
-                .args(["/C", "start", "http://127.0.0.1:4199/settings.html"])
-                .spawn();
-        }
-        #[cfg(target_os = "linux")]
-        {
-            let _ = std::process::Command::new("xdg-open")
-                .arg("http://127.0.0.1:4199/settings.html")
-                .spawn();
         }
     }
 
+
     pub fn run_cpu_2d() -> Result<(), Box<dyn std::error::Error>> {
-        let state_watcher = NativeStateWatcher::new();
+        let mut state_watcher = NativeStateWatcher::new();
         let mut settings = state_watcher.load_settings();
 
         let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
@@ -322,8 +306,8 @@ mod cpu_2d_app {
             .with_inner_size(LogicalSize::new(COMPACT_WIN_W, COMPACT_WIN_H))
             .with_position(LogicalPosition::new(default_x, default_y));
 
-        if let Some(icon) = win_icon {
-            win_builder = win_builder.with_window_icon(Some(icon));
+        if let Some(ref icon) = win_icon {
+            win_builder = win_builder.with_window_icon(Some(icon.clone()));
         }
 
         #[cfg(target_os = "macos")]
@@ -347,6 +331,33 @@ mod cpu_2d_app {
 
         let window = win_builder.build(&event_loop)?;
         let _ = window.set_ignore_cursor_events(true);
+
+        let mut settings_win_builder = WindowBuilder::new()
+            .with_title("偏好设置")
+            .with_inner_size(LogicalSize::new(680.0, 520.0))
+            .with_resizable(false)
+            .with_visible(false);
+
+        if let Some(ref icon) = win_icon {
+            settings_win_builder = settings_win_builder.with_window_icon(Some(icon.clone()));
+        }
+
+        let settings_window = settings_win_builder.build(&event_loop)?;
+
+        let settings_ipc_proxy = proxy.clone();
+        let settings_webview = wry::WebViewBuilder::new()
+            .with_accept_first_mouse(true)
+            .with_ipc_handler(move |req| {
+                let body = req.body();
+                if body == "close_settings" {
+                    let _ = settings_ipc_proxy.send_event(AppEvent::CloseSettings);
+                }
+            })
+            .with_url("http://127.0.0.1:4199/settings.html")
+            .build(&settings_window)?;
+
+        let mut pending_settings_save: Option<Instant> = None;
+
 
         #[cfg(target_os = "macos")]
         let surface = {
@@ -377,13 +388,17 @@ mod cpu_2d_app {
         physics.gravity_enabled = settings.gravity_enabled;
         physics.floor_mode = settings.floor_mode.clone();
 
+        let initial_quota = crate::quota::read_state_file_quota()
+            .or_else(crate::quota::read_fallback_ledger_quota);
         let mut bubble = ThoughtBubble {
             visible: !settings.dnd_passthrough,
             text: pick_random_line(IDLE_DIALOGUES).to_string(),
             show_quota: settings.show_quota,
-            five_hour_pct: 100.0,
-            weekly_pct: 100.0,
-            quota_meta: "正在同步 Antigravity 额度...".to_string(),
+            five_hour_pct: initial_quota.as_ref().map(|q| q.five_hour).unwrap_or(100.0),
+            weekly_pct: initial_quota.as_ref().map(|q| q.weekly).unwrap_or(100.0),
+            quota_meta: initial_quota
+                .map(|q| q.meta)
+                .unwrap_or_else(|| "正在同步 Antigravity 额度...".to_string()),
             opacity: if settings.dnd_passthrough { 0.0 } else { 1.0 },
         };
         let mut bubble_hide_deadline: Option<Instant> =
@@ -505,7 +520,13 @@ mod cpu_2d_app {
                         dirty_frame = true;
                     }
 
+                    AppEvent::CloseSettings => {
+                        settings_window.set_visible(false);
+                    }
+
                     AppEvent::Tick25ms => {
+
+
                         // 1. Drain native context/tray menu events
                         while let Ok(menu_evt) = MenuEvent::receiver().try_recv() {
                             if let Some(action) = menu_mgr.resolve_event(&menu_evt.id) {
@@ -517,9 +538,13 @@ mod cpu_2d_app {
                                         bubble.opacity = 1.0;
                                         bubble_hide_deadline =
                                             Some(Instant::now() + Duration::from_millis(3500));
-                                        open_settings_page();
+                                        ensure_backend_server();
+                                        settings_window.set_visible(true);
+                                        settings_window.set_focus();
+                                        let _ = settings_webview.load_url("http://127.0.0.1:4199/settings.html");
                                         dirty_frame = true;
                                     }
+
                                     PetMenuAction::NextDialogue => {
                                         audio.play(SoundEffect::ClickRelease);
                                         bubble.text = pick_random_line(IDLE_DIALOGUES).to_string();
@@ -648,9 +673,31 @@ mod cpu_2d_app {
                             }
                         }
 
+                        // 2.1 Check if user changed settings from Settings window or file
+                        if let Some(new_settings) = state_watcher.poll_settings_change() {
+                            if (new_settings.scale - settings.scale).abs() >= 0.01 {
+                                physics.zoom_scale = new_settings.scale;
+                            }
+                            physics.gravity_enabled = new_settings.gravity_enabled;
+                            physics.floor_mode = new_settings.floor_mode.clone();
+                            audio.enabled = new_settings.sound_enabled;
+                            bubble.show_quota = new_settings.show_quota;
+                            settings = new_settings;
+                            dirty_frame = true;
+                        }
+
+                        // 2.2 Debounced settings persistence
+                        if let Some(save_at) = pending_settings_save {
+                            if Instant::now() >= save_at {
+                                pending_settings_save = None;
+                                state_watcher.save_settings(&settings);
+                            }
+                        }
+
                         if !is_window_visible {
                             return;
                         }
+
 
                         // 3. Query macOS Dock insets, global typing state, and cursor position
                         #[cfg(target_os = "macos")]
@@ -808,16 +855,25 @@ mod cpu_2d_app {
                     }
                 },
 
-                Event::WindowEvent { event, .. } => match event {
+                Event::WindowEvent { window_id, event, .. } => match event {
+                    WindowEvent::CloseRequested => {
+                        if window_id == settings_window.id() {
+                            settings_window.set_visible(false);
+                        } else if window_id == window.id() {
+                            is_window_visible = false;
+                            window.set_visible(false);
+                        }
+                    }
+
                     WindowEvent::Focused(false) => {
-                        if bubble.visible && !last_over_cat {
+                        if window_id == window.id() && bubble.visible && !last_over_cat {
                             bubble.visible = false;
                             dirty_frame = true;
                         }
                     }
 
                     WindowEvent::MouseWheel { delta, .. } => {
-                        if settings.dnd_passthrough {
+                        if window_id != window.id() || settings.dnd_passthrough {
                             return;
                         }
                         if last_over_cat {
@@ -827,105 +883,101 @@ mod cpu_2d_app {
                                 _ => 0.0,
                             };
                             if delta_y.abs() > 0.1 {
-                                let zoom_factor = (-delta_y * 0.003).exp() as f32;
-                                let new_scale = (physics.zoom_scale * zoom_factor).clamp(0.60, 1.80);
+                                // In Cocoa/Tao on macOS, positive delta_y is scrolling UP (natural zoom IN)
+                                let zoom_factor = (delta_y * 0.002).exp() as f32;
+                                let new_scale = (physics.zoom_scale * zoom_factor).clamp(0.50, 2.00);
                                 let rounded_scale = (new_scale * 100.0).round() / 100.0;
                                 if (rounded_scale - physics.zoom_scale).abs() >= 0.01 {
                                     physics.zoom_scale = rounded_scale;
                                     settings.scale = rounded_scale;
-                                    physics.trigger_duang_rebound(300);
+                                    physics.trigger_duang_rebound(280);
                                     bubble.text = format!("体型缩放: {:.0}%", rounded_scale * 100.0);
                                     bubble.visible = true;
                                     bubble.opacity = 1.0;
                                     bubble_hide_deadline =
                                         Some(Instant::now() + Duration::from_millis(2400));
-                                    state_watcher.save_settings(&settings);
+                                    pending_settings_save =
+                                        Some(Instant::now() + Duration::from_millis(400));
                                     dirty_frame = true;
                                 }
                             }
                         }
                     }
 
-                    WindowEvent::MouseInput { state, button, .. } => match button {
-                        TaoMouseButton::Right => {
-                            if state == ElementState::Pressed {
-                                pointer_down = false;
-                                is_dragging = false;
-                                audio.play(SoundEffect::ClickPress);
-
-                                #[cfg(target_os = "macos")]
-                                {
-                                    let mouse_pos = macos_window::get_cursor_state(
-                                        window.ns_window(),
-                                        mon_height,
-                                    )
-                                    .map(|(_, _, lx, ly)| muda::dpi::LogicalPosition::new(lx, ly));
-                                    menu_mgr.show_context_menu_macos(window.ns_view(), mouse_pos);
-                                }
-                                #[cfg(target_os = "windows")]
-                                menu_mgr.show_context_menu_windows(window.hwnd(), None);
-                            }
+                    WindowEvent::MouseInput { state, button, .. } => {
+                        if window_id != window.id() {
+                            return;
                         }
-
-                        TaoMouseButton::Left => {
-                            if settings.dnd_passthrough {
-                                // In DND mode, only right-click opens the context menu; left-click is ignored
-                                return;
-                            }
-                            if state == ElementState::Pressed {
-                                pointer_down = true;
-                                is_dragging = false;
-                                drag_total_dist = 0.0;
-                                #[cfg(target_os = "macos")]
-                                if let Some((sx, sy, _, _)) =
-                                    macos_window::get_cursor_state(window.ns_window(), mon_height)
-                                {
-                                    drag_last_screen = (sx, sy);
-                                }
-                                audio.play(SoundEffect::PopPress);
-                                physics.on_pointer_down();
-                                dirty_frame = true;
-                            } else if pointer_down {
-                                pointer_down = false;
-                                if is_dragging {
+                        match button {
+                            TaoMouseButton::Right => {
+                                if state == ElementState::Pressed {
+                                    pointer_down = false;
                                     is_dragging = false;
-                                    audio.play(SoundEffect::PopRelease);
-                                    physics.on_drag_release(
-                                        mon_width,
-                                        mon_height,
-                                        last_dock.0,
-                                        last_dock.1,
-                                        last_dock.2,
-                                    );
-                                    window.set_outer_position(LogicalPosition::new(
-                                        physics.win_x,
-                                        physics.win_y,
-                                    ));
-                                    settings.pos_x = Some(physics.win_x);
-                                    settings.pos_y = Some(physics.win_y);
-                                    state_watcher.save_settings(&settings);
-                                } else {
-                                    // Short click -> Duang rebound + next tsundere dialogue!
-                                    audio.play(SoundEffect::ClickRelease);
-                                    physics.trigger_duang_rebound(460);
-                                    bubble.text = pick_random_line(IDLE_DIALOGUES).to_string();
-                                    bubble.visible = true;
-                                    bubble.opacity = 1.0;
-                                    bubble_hide_deadline =
-                                        Some(Instant::now() + Duration::from_millis(5000));
-                                }
-                                dirty_frame = true;
-                            }
-                        }
-                        _ => (),
-                    },
+                                    audio.play(SoundEffect::ClickPress);
 
-                    WindowEvent::CloseRequested => {
-                        is_window_visible = false;
-                        window.set_visible(false);
+                                    #[cfg(target_os = "macos")]
+                                    menu_mgr.show_context_menu_macos(window.ns_view(), None);
+                                    #[cfg(target_os = "windows")]
+                                    menu_mgr.show_context_menu_windows(window.hwnd(), None);
+                                }
+                            }
+
+                            TaoMouseButton::Left => {
+                                if settings.dnd_passthrough {
+                                    // In DND mode, only right-click opens the context menu; left-click is ignored
+                                    return;
+                                }
+                                if state == ElementState::Pressed {
+                                    pointer_down = true;
+                                    is_dragging = false;
+                                    drag_total_dist = 0.0;
+                                    #[cfg(target_os = "macos")]
+                                    if let Some((sx, sy, _, _)) =
+                                        macos_window::get_cursor_state(window.ns_window(), mon_height)
+                                    {
+                                        drag_last_screen = (sx, sy);
+                                    }
+                                    audio.play(SoundEffect::PopPress);
+                                    physics.on_pointer_down();
+                                    dirty_frame = true;
+                                } else if pointer_down {
+                                    pointer_down = false;
+                                    if is_dragging {
+                                        is_dragging = false;
+                                        audio.play(SoundEffect::PopRelease);
+                                        physics.on_drag_release(
+                                            mon_width,
+                                            mon_height,
+                                            last_dock.0,
+                                            last_dock.1,
+                                            last_dock.2,
+                                        );
+                                        window.set_outer_position(LogicalPosition::new(
+                                            physics.win_x,
+                                            physics.win_y,
+                                        ));
+                                        settings.pos_x = Some(physics.win_x);
+                                        settings.pos_y = Some(physics.win_y);
+                                        state_watcher.save_settings(&settings);
+                                    } else {
+                                        // Short click -> Duang rebound + next tsundere dialogue!
+                                        audio.play(SoundEffect::ClickRelease);
+                                        physics.trigger_duang_rebound(460);
+                                        bubble.text = pick_random_line(IDLE_DIALOGUES).to_string();
+                                        bubble.visible = true;
+                                        bubble.opacity = 1.0;
+                                        bubble_hide_deadline =
+                                            Some(Instant::now() + Duration::from_millis(5000));
+                                    }
+                                    dirty_frame = true;
+                                }
+                            }
+                            _ => (),
+                        }
                     }
                     _ => (),
                 },
+
                 _ => (),
             }
         });

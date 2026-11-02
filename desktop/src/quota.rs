@@ -1,9 +1,12 @@
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
+use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
 
-#[derive(Clone, Debug)]
+
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct QuotaSnapshot {
     pub five_hour: f32,
     pub weekly: f32,
@@ -30,7 +33,8 @@ struct EndpointCandidate {
 }
 
 /// Native Rust Antigravity `language_server` Quota Prober (replaces `server/quota-probe.js`).
-/// Queries `RetrieveUserQuotaSummary` and `GetUserStatus` directly from the local Antigravity process.
+/// Queries `RetrieveUserQuotaSummary` and `GetUserStatus` directly from the local Antigravity process,
+/// with robust fallback to `.antigravity-pet-state.json` and `.antigravity-pet-ledger.json`.
 pub struct NativeQuotaProber {
     cached_endpoint: Option<(u16, bool, String)>, // (port, is_https, csrf_token)
     last_snapshot: QuotaSnapshot,
@@ -38,15 +42,19 @@ pub struct NativeQuotaProber {
 
 impl Default for NativeQuotaProber {
     fn default() -> Self {
+        let initial_snap = read_state_file_quota()
+            .or_else(read_fallback_ledger_quota)
+            .unwrap_or_default();
         Self {
             cached_endpoint: None,
-            last_snapshot: QuotaSnapshot::default(),
+            last_snapshot: initial_snap,
         }
     }
 }
 
 impl NativeQuotaProber {
     pub fn fetch_live_quota(&mut self) -> QuotaSnapshot {
+
         // 1. Try cached endpoint first for fast (< 15ms) polling
         if let Some((port, is_https, ref token)) = self.cached_endpoint.clone() {
             if let Some(snap) = probe_single_port(port, is_https, token) {
@@ -82,6 +90,17 @@ impl NativeQuotaProber {
             self.cached_endpoint = Some(ep);
             self.last_snapshot = snap.clone();
             return snap;
+        }
+
+        // 3. Fallback when live Antigravity language_server is not reachable
+        if let Some(state_snap) = read_state_file_quota() {
+            self.last_snapshot = state_snap.clone();
+            return state_snap;
+        }
+
+        if let Some(ledger_snap) = read_fallback_ledger_quota() {
+            self.last_snapshot = ledger_snap.clone();
+            return ledger_snap;
         }
 
         self.last_snapshot.clone()
@@ -316,7 +335,7 @@ pub fn parse_iso8601_to_unix(s: &str) -> Option<i64> {
     Some(days * 86400 + (hour as i64) * 3600 + (min as i64) * 60 + (sec as i64))
 }
 
-/// Formats a target ISO-8601 timestamp string into a concise reset countdown (e.g. `4h 11m`, `6d 6h`).
+/// Formats a target ISO-8601 timestamp string or unix timestamp into a concise reset countdown (e.g. `4h 11m`, `6d 6h`).
 pub fn format_reset_countdown(reset_time_raw: &str) -> String {
     let target_unix = if let Some(sec) = parse_iso8601_to_unix(reset_time_raw) {
         sec
@@ -353,148 +372,351 @@ pub fn format_reset_countdown(reset_time_raw: &str) -> String {
     }
 }
 
-/// Extracts a string property value enclosed in quotes: `"key": "value"`
-fn extract_string_prop(obj_str: &str, key: &str) -> Option<String> {
-    let pattern = format!("\"{}\"", key);
-    let idx = obj_str.find(&pattern)?;
-    let after_key = &obj_str[idx + pattern.len()..];
-    let colon = after_key.find(':')?;
-    let after_colon = after_key[colon + 1..].trim_start();
-    let quote_start = after_colon.find('"')?;
-    let rest = &after_colon[quote_start + 1..];
-    let quote_end = rest.find('"')?;
-    Some(rest[..quote_end].to_string())
+fn extract_fraction_from_val(val: &serde_json::Value) -> Option<f32> {
+    if let Some(f) = val.get("remainingFraction").and_then(|v| v.as_f64()) {
+        return Some(f as f32);
+    }
+    if let Some(f) = val.get("remaining_fraction").and_then(|v| v.as_f64()) {
+        return Some(f as f32);
+    }
+    if let Some(f) = val.get("fraction").and_then(|v| v.as_f64()) {
+        return Some(f as f32);
+    }
+    if let Some(rem) = val.get("remaining") {
+        if let Some(f) = rem.get("fraction").and_then(|v| v.as_f64()) {
+            return Some(f as f32);
+        }
+    }
+    None
 }
 
-/// Extracts a float property value: `"key": 0.85` or `"key": "0.85"`
-fn extract_float_prop(obj_str: &str, key: &str) -> Option<f32> {
-    let pattern = format!("\"{}\"", key);
-    let idx = obj_str.find(&pattern)?;
-    let after_key = &obj_str[idx + pattern.len()..];
-    let colon = after_key.find(':')?;
-    let after_colon = after_key[colon + 1..].trim_start();
-    let num_str: String = after_colon
-        .trim_start_matches('"')
-        .chars()
-        .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
-        .collect();
-    num_str.parse::<f32>().ok()
+fn extract_reset_label(val: &serde_json::Value) -> String {
+    let reset_raw = val
+        .get("resetTime")
+        .or_else(|| val.get("reset_time"))
+        .or_else(|| val.get("remaining").and_then(|r| r.get("resetTime")))
+        .or_else(|| val.get("remaining").and_then(|r| r.get("reset_time")));
+
+    if let Some(raw) = reset_raw {
+        if let Some(s) = raw.as_str() {
+            return format_reset_countdown(s);
+        } else if let Some(n) = raw.as_i64() {
+            return format_reset_countdown(&n.to_string());
+        }
+    }
+    String::new()
 }
 
-/// Zero-dependency parser for `RetrieveUserQuotaSummary` and `GetUserStatus` JSON responses.
+/// Comprehensive parser for `RetrieveUserQuotaSummary`, `GetUserStatus`, and `GetCommandModelConfigs`.
 /// Faithfully reproduces the logic in `server/quota-probe.js`.
 pub fn parse_quota_json(json: &str) -> Option<QuotaSnapshot> {
-    if !json.contains("remainingFraction") && !json.contains("remaining_fraction") {
-        return None;
+    let parsed: serde_json::Value = serde_json::from_str(json).ok()?;
+
+    // 1. Try QuotaSummary response format (groups -> buckets or buckets)
+    let summary_root = parsed
+        .get("response")
+        .or_else(|| parsed.get("quotaSummary"))
+        .or_else(|| parsed.get("userQuotaSummary"))
+        .or_else(|| parsed.get("userStatus").and_then(|u| u.get("quotaSummary")))
+        .unwrap_or(&parsed);
+
+    let mut all_buckets = Vec::new();
+    if let Some(groups) = summary_root.get("groups").and_then(|g| g.as_array()) {
+        for grp in groups {
+            let grp_name = grp
+                .get("displayName")
+                .or_else(|| grp.get("display_name"))
+                .or_else(|| grp.get("title"))
+                .or_else(|| grp.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_lowercase();
+            if let Some(buckets) = grp.get("buckets").and_then(|b| b.as_array()) {
+                for b in buckets {
+                    all_buckets.push((grp_name.clone(), b));
+                }
+            }
+        }
+    }
+    if let Some(buckets) = summary_root.get("buckets").and_then(|b| b.as_array()) {
+        for b in buckets {
+            all_buckets.push((String::new(), b));
+        }
     }
 
-    let mut gemini_5h: Option<(f32, String)> = None; // (pct, reset_label)
-    let mut gemini_weekly: Option<(f32, String)> = None;
-    let mut fallback_5h: Option<(f32, String)> = None;
-    let mut fallback_weekly: Option<(f32, String)> = None;
+    if !all_buckets.is_empty() {
+        let mut gemini_5h: Option<(f32, String)> = None;
+        let mut gemini_weekly: Option<(f32, String)> = None;
+        let mut fallback_5h: Option<(f32, String)> = None;
+        let mut fallback_weekly: Option<(f32, String)> = None;
 
-    // Scan individual JSON bucket objects delimited by '{' and '}'
-    for key in ["\"remainingFraction\"", "\"remaining_fraction\""] {
-        let mut search_from = 0usize;
-        while let Some(rel_pos) = json[search_from..].find(key) {
-            let pos = search_from + rel_pos;
-            search_from = pos + key.len();
-
-            // Find the opening '{' before pos and closing '}' after pos
-            let Some(open_brace) = json[..pos].rfind('{') else {
+        for (grp_name, b) in all_buckets {
+            let Some(frac) = extract_fraction_from_val(b) else {
                 continue;
             };
-            let Some(close_offset) = json[pos..].find('}') else {
-                continue;
-            };
-            let close_brace = pos + close_offset;
-            let bucket_obj = &json[open_brace..=close_brace];
-
-            let frac = extract_float_prop(bucket_obj, "remainingFraction")
-                .or_else(|| extract_float_prop(bucket_obj, "remaining_fraction"))
-                .or_else(|| extract_float_prop(bucket_obj, "fraction"));
-            let Some(f) = frac else {
-                continue;
-            };
-            let pct = (f.clamp(0.0, 1.0) * 1000.0).round() / 10.0;
-
-            let bucket_id = extract_string_prop(bucket_obj, "bucketId")
-                .or_else(|| extract_string_prop(bucket_obj, "bucket_id"))
-                .or_else(|| extract_string_prop(bucket_obj, "id"))
+            let pct = ((frac.clamp(0.0, 1.0) * 1000.0).round()) / 10.0;
+            let id = b
+                .get("bucketId")
+                .or_else(|| b.get("bucket_id"))
+                .or_else(|| b.get("id"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_lowercase();
+            let win = b
+                .get("window")
+                .or_else(|| b.get("cadence"))
+                .or_else(|| b.get("windowType"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_lowercase();
+            let name = b
+                .get("displayName")
+                .or_else(|| b.get("display_name"))
+                .or_else(|| b.get("label"))
+                .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_lowercase();
 
-            let window = extract_string_prop(bucket_obj, "window")
-                .or_else(|| extract_string_prop(bucket_obj, "cadence"))
-                .or_else(|| extract_string_prop(bucket_obj, "windowType"))
-                .unwrap_or_default()
-                .to_lowercase();
+            let reset_label = extract_reset_label(b);
 
-            let reset_time = extract_string_prop(bucket_obj, "resetTime")
-                .or_else(|| extract_string_prop(bucket_obj, "reset_time"))
-                .unwrap_or_default();
-            let reset_label = format_reset_countdown(&reset_time);
+            let is_third_party = id.contains("3p")
+                || id.contains("claude")
+                || id.contains("gpt")
+                || grp_name.contains("claude")
+                || grp_name.contains("gpt");
 
-            let is_third_party = bucket_id.contains("3p")
-                || bucket_id.contains("claude")
-                || bucket_id.contains("gpt");
-            let is_gemini = !is_third_party
-                || bucket_id.contains("gemini")
-                || bucket_obj.to_lowercase().contains("gemini models");
+            let is_gemini = id.contains("gemini") || grp_name.contains("gemini") || !is_third_party;
 
-            let is_5h = bucket_id.contains("5h")
-                || bucket_id.contains("session")
-                || window.contains("5h")
-                || window.contains("five")
-                || window.contains("session");
+            let is_5h = id.contains("5h")
+                || id.contains("session")
+                || win.contains("5h")
+                || win.contains("five")
+                || win.contains("session")
+                || name.contains("5h")
+                || name.contains("five hour");
 
-            let is_weekly = bucket_id.contains("week")
-                || bucket_id.contains("7d")
-                || window.contains("week")
-                || window.contains("7d");
+            let is_weekly = id.contains("week")
+                || id.contains("7d")
+                || win.contains("week")
+                || win.contains("7d")
+                || name.contains("week");
 
             if is_gemini && is_5h {
-                if gemini_5h.is_none() || bucket_id == "gemini-5h" || pct < gemini_5h.as_ref().unwrap().0 {
-                    gemini_5h = Some((pct, reset_label));
+                if gemini_5h.is_none() || id == "gemini-5h" || pct < gemini_5h.as_ref().unwrap().0 {
+                    gemini_5h = Some((pct, reset_label.clone()));
                 }
             } else if is_gemini && is_weekly {
-                if gemini_weekly.is_none() || bucket_id == "gemini-weekly" || pct < gemini_weekly.as_ref().unwrap().0 {
-                    gemini_weekly = Some((pct, reset_label));
+                if gemini_weekly.is_none() || id == "gemini-weekly" || pct < gemini_weekly.as_ref().unwrap().0 {
+                    gemini_weekly = Some((pct, reset_label.clone()));
                 }
             } else if is_5h && fallback_5h.is_none() {
-                fallback_5h = Some((pct, reset_label));
+                fallback_5h = Some((pct, reset_label.clone()));
             } else if is_weekly && fallback_weekly.is_none() {
-                fallback_weekly = Some((pct, reset_label));
+                fallback_weekly = Some((pct, reset_label.clone()));
+            }
+        }
+
+        let chosen_5h = gemini_5h.or(fallback_5h);
+        let chosen_weekly = gemini_weekly.or(fallback_weekly);
+
+        if chosen_5h.is_some() || chosen_weekly.is_some() {
+            let fh = chosen_5h.as_ref().map(|x| x.0).or_else(|| chosen_weekly.as_ref().map(|x| x.0)).unwrap_or(100.0);
+            let wk = chosen_weekly.as_ref().map(|x| x.0).unwrap_or(fh);
+            let reset_5h = chosen_5h.as_ref().map(|x| x.1.as_str()).unwrap_or("");
+            let reset_wk = chosen_weekly.as_ref().map(|x| x.1.as_str()).unwrap_or("");
+
+            let meta = match (!reset_5h.is_empty(), !reset_wk.is_empty()) {
+                (true, true) => format!("5h重置 {} · 周重置 {}", reset_5h, reset_wk),
+                (true, false) => format!("5h重置 {}", reset_5h),
+                (false, true) => format!("周重置 {}", reset_wk),
+                (false, false) => "Antigravity 实时额度已同步".to_string(),
+            };
+
+            return Some(QuotaSnapshot {
+                five_hour: fh,
+                weekly: wk,
+                meta,
+                source: "antigravity-live".to_string(),
+            });
+        }
+    }
+
+    // 2. Try GetUserStatus / GetCommandModelConfigs format (clientModelConfigs)
+    let configs = parsed
+        .get("userStatus")
+        .and_then(|u| u.get("cascadeModelConfigData"))
+        .and_then(|c| c.get("clientModelConfigs"))
+        .or_else(|| {
+            parsed
+                .get("cascadeModelConfigData")
+                .and_then(|c| c.get("clientModelConfigs"))
+        })
+        .or_else(|| parsed.get("clientModelConfigs"))
+        .and_then(|v| v.as_array());
+
+    if let Some(model_list) = configs {
+        let mut gemini_5h: Option<(f32, String)> = None;
+        let mut gemini_weekly: Option<(f32, String)> = None;
+
+        for m in model_list {
+            let label = m
+                .get("label")
+                .or_else(|| m.get("displayName"))
+                .or_else(|| m.get("modelOrAlias").and_then(|o| o.get("model")))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_lowercase();
+
+            let is_gemini = label.contains("gemini")
+                || (!label.contains("claude") && !label.contains("gpt"));
+            if !is_gemini {
+                continue;
+            }
+
+            if let Some(q_info) = m.get("quotaInfo") {
+                if let Some(frac) = extract_fraction_from_val(q_info) {
+                    let pct = ((frac.clamp(0.0, 1.0) * 1000.0).round()) / 10.0;
+                    let reset = extract_reset_label(q_info);
+                    if gemini_5h.is_none() || pct < gemini_5h.as_ref().unwrap().0 {
+                        gemini_5h = Some((pct, reset));
+                    }
+                }
+            }
+
+            let w_info = m
+                .get("weeklyQuotaInfo")
+                .or_else(|| m.get("weekly_quota_info"))
+                .or_else(|| m.get("quotaInfo").and_then(|q| q.get("weeklyQuotaInfo")));
+
+            if let Some(wq) = w_info {
+                if let Some(frac) = extract_fraction_from_val(wq) {
+                    let pct = ((frac.clamp(0.0, 1.0) * 1000.0).round()) / 10.0;
+                    let reset = extract_reset_label(wq);
+                    if gemini_weekly.is_none() || pct < gemini_weekly.as_ref().unwrap().0 {
+                        gemini_weekly = Some((pct, reset));
+                    }
+                }
+            }
+        }
+
+        if gemini_5h.is_some() || gemini_weekly.is_some() {
+            let fh = gemini_5h.as_ref().map(|x| x.0).or_else(|| gemini_weekly.as_ref().map(|x| x.0)).unwrap_or(100.0);
+            let wk = gemini_weekly.as_ref().map(|x| x.0).unwrap_or(fh);
+            let reset_5h = gemini_5h.as_ref().map(|x| x.1.as_str()).unwrap_or("");
+            let reset_wk = gemini_weekly.as_ref().map(|x| x.1.as_str()).unwrap_or("");
+
+            let meta = match (!reset_5h.is_empty(), !reset_wk.is_empty()) {
+                (true, true) => format!("5h重置 {} · 周重置 {}", reset_5h, reset_wk),
+                (true, false) => format!("5h重置 {}", reset_5h),
+                (false, true) => format!("周重置 {}", reset_wk),
+                (false, false) => "Antigravity 实时额度已同步".to_string(),
+            };
+
+            return Some(QuotaSnapshot {
+                five_hour: fh,
+                weekly: wk,
+                meta,
+                source: "antigravity-live".to_string(),
+            });
+        }
+    }
+
+    None
+}
+
+/// Reads local activity ledger (`.antigravity-pet-ledger.json`) to calculate estimated usage,
+/// mirroring the fallback algorithm in `server/index.js`.
+pub fn read_fallback_ledger_quota() -> Option<QuotaSnapshot> {
+    let ledger_path = find_file_in_project_or_home(".antigravity-pet-ledger.json")?;
+    let content = std::fs::read_to_string(ledger_path).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(&content).ok()?;
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_millis() as u64;
+
+    const FIVE_HOURS_MS: u64 = 5 * 3600 * 1000;
+    const ONE_WEEK_MS: u64 = 7 * 86400 * 1000;
+    const FIVE_HOUR_BUDGET: f64 = 160.0;
+    const WEEKLY_BUDGET: f64 = 1200.0;
+
+    let entries = parsed.get("entries").and_then(|v| v.as_array())?;
+    let mut used_5h = 0.0_f64;
+    let mut used_week = 0.0_f64;
+    let mut count_5h = 0usize;
+
+    for item in entries {
+        let ts = item.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
+        let weight = item.get("weight").and_then(|v| v.as_f64()).unwrap_or(0.5);
+        if now_ms >= ts && (now_ms - ts) < ONE_WEEK_MS {
+            used_week += weight;
+            if (now_ms - ts) <= FIVE_HOURS_MS {
+                used_5h += weight;
+                count_5h += 1;
             }
         }
     }
 
-    let chosen_5h = gemini_5h.or(fallback_5h);
-    let chosen_weekly = gemini_weekly.or(fallback_weekly);
+    let fh_pct = (((FIVE_HOUR_BUDGET - used_5h) / FIVE_HOUR_BUDGET) * 100.0).clamp(5.0, 100.0);
+    let wk_pct = (((WEEKLY_BUDGET - used_week) / WEEKLY_BUDGET) * 100.0).clamp(5.0, 100.0);
 
-    if chosen_5h.is_none() && chosen_weekly.is_none() {
-        return None;
-    }
-
-    let fh = chosen_5h.as_ref().map(|x| x.0).or_else(|| chosen_weekly.as_ref().map(|x| x.0))?;
-    let wk = chosen_weekly.as_ref().map(|x| x.0).unwrap_or(fh);
-
-    let reset_5h = chosen_5h.as_ref().map(|x| x.1.as_str()).unwrap_or("");
-    let reset_wk = chosen_weekly.as_ref().map(|x| x.1.as_str()).unwrap_or("");
-
-    let meta = match (!reset_5h.is_empty(), !reset_wk.is_empty()) {
-        (true, true) => format!("5h重置 {} · 周重置 {}", reset_5h, reset_wk),
-        (true, false) => format!("5h重置 {}", reset_5h),
-        (false, true) => format!("周重置 {}", reset_wk),
-        (false, false) => "Antigravity 实时额度已同步".to_string(),
-    };
+    let five_hour = ((fh_pct * 10.0).round()) as f32 / 10.0;
+    let weekly = ((wk_pct * 10.0).round()) as f32 / 10.0;
 
     Some(QuotaSnapshot {
-        five_hour: fh,
-        weekly: wk,
-        meta,
-        source: "antigravity-live".to_string(),
+        five_hour,
+        weekly,
+        meta: format!("本地估算 (近5h {} 次)", count_5h),
+        source: "local-ledger".to_string(),
     })
+}
+
+/// Reads quota directly embedded in `.antigravity-pet-state.json` (written by Antigravity IDE hooks).
+pub fn read_state_file_quota() -> Option<QuotaSnapshot> {
+    let state_path = find_file_in_project_or_home(".antigravity-pet-state.json")?;
+    let content = std::fs::read_to_string(state_path).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(&content).ok()?;
+
+    let quota_obj = parsed.get("quota")?;
+    let fh = quota_obj.get("fiveHour").and_then(|v| v.as_f64())?;
+    let wk = quota_obj.get("weekly").and_then(|v| v.as_f64())?;
+    let meta = quota_obj
+        .get("meta")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Antigravity 实时额度已同步")
+        .to_string();
+
+    Some(QuotaSnapshot {
+        five_hour: fh as f32,
+        weekly: wk as f32,
+        meta,
+        source: "state-file".to_string(),
+    })
+}
+
+fn find_file_in_project_or_home(filename: &str) -> Option<PathBuf> {
+    if let Ok(cwd) = std::env::current_dir() {
+        let p = cwd.join(filename);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        for anc in exe.ancestors().skip(1) {
+            let p = anc.join(filename);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+    if let Some(home) = dirs::home_dir() {
+        let p = home.join(filename);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -513,6 +735,34 @@ mod tests {
         let snap = parse_quota_json(json).expect("should parse real response");
         assert_eq!(snap.five_hour, 94.1);
         assert_eq!(snap.weekly, 80.8);
+        assert!(snap.meta.contains("5h重置"));
+        assert!(snap.meta.contains("周重置"));
+    }
+
+    #[test]
+    fn test_parse_get_user_status_json() {
+        let json = r#"{
+            "userStatus": {
+                "cascadeModelConfigData": {
+                    "clientModelConfigs": [
+                        {
+                            "label": "Gemini 1.5 Pro",
+                            "quotaInfo": {
+                                "remainingFraction": 0.854,
+                                "resetTime": "2026-11-02T18:00:00Z"
+                            },
+                            "weeklyQuotaInfo": {
+                                "remainingFraction": 0.721,
+                                "resetTime": "2026-11-08T14:21:23Z"
+                            }
+                        }
+                    ]
+                }
+            }
+        }"#;
+        let snap = parse_quota_json(json).expect("should parse user status response");
+        assert_eq!(snap.five_hour, 85.4);
+        assert_eq!(snap.weekly, 72.1);
         assert!(snap.meta.contains("5h重置"));
         assert!(snap.meta.contains("周重置"));
     }
