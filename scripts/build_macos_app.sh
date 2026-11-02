@@ -51,9 +51,9 @@ cat << 'EOF' > "$APP_DIR/Contents/Info.plist"
     <key>CFBundleIdentifier</key>
     <string>com.tianyayou.anti-pet</string>
     <key>CFBundleVersion</key>
-    <string>0.1.1</string>
+    <string>0.2.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.1</string>
+    <string>0.2.0</string>
     <key>CFBundleExecutable</key>
     <string>anti-pet-desktop</string>
     <key>CFBundleIconFile</key>

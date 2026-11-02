@@ -20,35 +20,35 @@ jobs:
           # 1. Mac-Arm (Apple Silicon M1/M2/M3/M4)
           - os: macos-latest
             target: aarch64-apple-darwin
-            pkg_name: Anti-Pet-v0.1.1-macOS-arm64
+            arch_name: macOS-arm64
             archive_type: tar.gz
             binary_name: anti-pet-desktop
 
           # 2. Win-x64 (主流 64 位 Windows)
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            pkg_name: Anti-Pet-v0.1.1-windows-x64
+            arch_name: windows-x64
             archive_type: zip
             binary_name: anti-pet-desktop.exe
 
           # 3. Win-x86 (32 位 Windows)
           - os: windows-latest
             target: i686-pc-windows-msvc
-            pkg_name: Anti-Pet-v0.1.1-windows-x86
+            arch_name: windows-x86
             archive_type: zip
             binary_name: anti-pet-desktop.exe
 
           # 4. Win-Arm (Windows on ARM)
           - os: windows-latest
             target: aarch64-pc-windows-msvc
-            pkg_name: Anti-Pet-v0.1.1-windows-arm64
+            arch_name: windows-arm64
             archive_type: zip
             binary_name: anti-pet-desktop.exe
 
           # 5. Linux-x64 (Ubuntu / Debian / Fedora)
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            pkg_name: Anti-Pet-v0.1.1-linux-x64
+            arch_name: linux-x64
             archive_type: tar.gz
             binary_name: anti-pet-desktop
 
@@ -79,47 +79,49 @@ jobs:
       - name: Assemble portable package (Unix)
         if: matrix.archive_type == 'tar.gz'
         run: |
-          mkdir -p bundle/${{ matrix.pkg_name }}
-          cp desktop/target/${{ matrix.target }}/release/${{ matrix.binary_name }} bundle/${{ matrix.pkg_name }}/
-          cp -r core bundle/${{ matrix.pkg_name }}/
-          cp -r skins bundle/${{ matrix.pkg_name }}/
-          cp -r server bundle/${{ matrix.pkg_name }}/
-          cp -r assets bundle/${{ matrix.pkg_name }}/
-          cp -r scripts bundle/${{ matrix.pkg_name }}/
-          cp README.md LICENSE bundle/${{ matrix.pkg_name }}/
+          PKG="Anti-Pet-${{ github.ref_name }}-${{ matrix.arch_name }}"
+          mkdir -p "bundle/$PKG"
+          cp "desktop/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "bundle/$PKG/"
+          cp -r core "bundle/$PKG/"
+          cp -r skins "bundle/$PKG/"
+          cp -r server "bundle/$PKG/"
+          cp -r assets "bundle/$PKG/"
+          cp -r scripts "bundle/$PKG/"
+          cp README.md LICENSE "bundle/$PKG/"
           
           # Assemble native macOS Anti-Pet.app bundle
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
             chmod +x scripts/build_macos_app.sh
-            ./scripts/build_macos_app.sh desktop/target/${{ matrix.target }}/release/anti-pet-desktop
-            cp -r dist/Anti-Pet.app bundle/${{ matrix.pkg_name }}/
+            ./scripts/build_macos_app.sh "desktop/target/${{ matrix.target }}/release/anti-pet-desktop"
+            cp -r dist/Anti-Pet.app "bundle/$PKG/"
           fi
 
           # Clean up any candidates or temporary test images in assets
-          rm -rf bundle/${{ matrix.pkg_name }}/assets/candidates bundle/${{ matrix.pkg_name }}/assets/test_designs
-          tar -czf ${{ matrix.pkg_name }}.tar.gz -C bundle ${{ matrix.pkg_name }}
+          rm -rf "bundle/$PKG/assets/candidates" "bundle/$PKG/assets/test_designs"
+          tar -czf "$PKG.tar.gz" -C bundle "$PKG"
 
       - name: Assemble portable package (Windows)
         if: matrix.archive_type == 'zip'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path "bundle/${{ matrix.pkg_name }}"
-          Copy-Item "desktop/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" -Destination "bundle/${{ matrix.pkg_name }}/"
-          Copy-Item -Recurse "core" -Destination "bundle/${{ matrix.pkg_name }}/"
-          Copy-Item -Recurse "skins" -Destination "bundle/${{ matrix.pkg_name }}/"
-          Copy-Item -Recurse "server" -Destination "bundle/${{ matrix.pkg_name }}/"
-          Copy-Item -Recurse "assets" -Destination "bundle/${{ matrix.pkg_name }}/"
-          Copy-Item -Recurse "scripts" -Destination "bundle/${{ matrix.pkg_name }}/"
-          Copy-Item "README.md", "LICENSE" -Destination "bundle/${{ matrix.pkg_name }}/"
-          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "bundle/${{ matrix.pkg_name }}/assets/candidates"
-          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "bundle/${{ matrix.pkg_name }}/assets/test_designs"
-          Compress-Archive -Path "bundle/${{ matrix.pkg_name }}" -DestinationPath "${{ matrix.pkg_name }}.zip"
+          $Pkg = "Anti-Pet-${{ github.ref_name }}-${{ matrix.arch_name }}"
+          New-Item -ItemType Directory -Force -Path "bundle/$Pkg"
+          Copy-Item "desktop/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" -Destination "bundle/$Pkg/"
+          Copy-Item -Recurse "core" -Destination "bundle/$Pkg/"
+          Copy-Item -Recurse "skins" -Destination "bundle/$Pkg/"
+          Copy-Item -Recurse "server" -Destination "bundle/$Pkg/"
+          Copy-Item -Recurse "assets" -Destination "bundle/$Pkg/"
+          Copy-Item -Recurse "scripts" -Destination "bundle/$Pkg/"
+          Copy-Item "README.md", "LICENSE" -Destination "bundle/$Pkg/"
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "bundle/$Pkg/assets/candidates"
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "bundle/$Pkg/assets/test_designs"
+          Compress-Archive -Path "bundle/$Pkg" -DestinationPath "$Pkg.zip"
 
       - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
         with:
           files: |
-            ${{ matrix.pkg_name }}.${{ matrix.archive_type }}
+            Anti-Pet-${{ github.ref_name }}-${{ matrix.arch_name }}.${{ matrix.archive_type }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
