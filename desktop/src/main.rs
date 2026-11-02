@@ -8,7 +8,7 @@ use std::{
     thread,
     time::Duration,
 };
-use muda::{Menu, MenuItem, PredefinedMenuItem, MenuEvent};
+use muda::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tao::{
     dpi::{LogicalPosition, LogicalSize},
     event::{Event, StartCause, WindowEvent},
@@ -26,6 +26,9 @@ use tray_icon::{
 };
 use wry::WebViewBuilder;
 
+const COMPACT_W: f64 = 340.0;
+const COMPACT_H: f64 = 400.0;
+
 /// Interactive bounding rectangle in logical window coordinates
 #[derive(Clone, Copy, Debug)]
 struct HitRect {
@@ -41,12 +44,29 @@ impl HitRect {
     }
 }
 
+/// Gravity physics state for Compact Widget Mode native window movement
+struct CompactFallPhysics {
+    active: bool,
+    x: f64,
+    y: f64,
+    vx: f64,
+    vy: f64,
+    target_floor_y: f64,
+    bounces: u8,
+}
+
 /// Custom events sent from WebView IPC or background ticker to the main Window thread
 #[derive(Debug, Clone)]
 enum UserEvent {
     SetIgnoreCursorEvents(bool),
     UpdateHitRects(Vec<HitRect>),
     SetDragging(bool),
+    MoveWindowBy(f64, f64),
+    ReleaseWindow {
+        vx: f64,
+        gravity: bool,
+        floor_mode: String,
+    },
     SetDndPassthrough(bool, Option<HitRect>),
     SetAlwaysOnTop(bool),
     SetVisible(bool),
@@ -94,15 +114,11 @@ mod macos_native {
         fn objc_msgSend();
         #[cfg(target_arch = "x86_64")]
         fn objc_msgSend_stret();
-        // CoreGraphics global keyboard idle timer (no Accessibility permission required)
         fn CGEventSourceSecondsSinceLastEventType(state_id: i32, event_type: u32) -> f64;
     }
 
-    /// Returns true if the user pressed or released a key anywhere in macOS within the last 1.2s
     pub fn is_user_typing_globally() -> bool {
         unsafe {
-            // state_id = 0 (kCGEventSourceStateCombinedSessionState)
-            // event_type = 10 (kCGEventKeyDown), 11 (kCGEventKeyUp)
             let down_secs = CGEventSourceSecondsSinceLastEventType(0, 10);
             let up_secs = CGEventSourceSecondsSinceLastEventType(0, 11);
             (down_secs >= 0.0 && down_secs < 1.2) || (up_secs >= 0.0 && up_secs < 1.2)
@@ -143,8 +159,6 @@ mod macos_native {
         f(receiver, selector)
     }
 
-    /// Retrieve the cursor position in window logical coordinates directly from Cocoa.
-    /// This bypasses Tao's cursor_position Retina pixel-height bug.
     pub fn get_mouse_location_in_window(ns_window: *mut c_void) -> Option<(f64, f64)> {
         if ns_window.is_null() {
             return None;
@@ -162,7 +176,6 @@ mod macos_native {
         }
     }
 
-    /// Returns true if Antigravity, VS Code, Cursor, or the Desktop Pet is the frontmost application.
     pub fn is_ide_frontmost() -> bool {
         unsafe {
             let ws_cls = objc_getClass(b"NSWorkspace\0".as_ptr());
@@ -198,8 +211,6 @@ mod macos_native {
         }
     }
 
-    /// Elevate NSWindow above macOS Dock & Fullscreen Spaces, force full-screen frame (0px bottom),
-    /// and return current Mac Dock insets (bottom, left, right) in logical points.
     pub fn sync_fullscreen_overlay_and_query_dock(
         ns_window: *mut c_void,
         enforce_frame: bool,
@@ -284,54 +295,6 @@ mod macos_native {
         }
     }
 
-    /// Sets the macOS Dock application tile icon to the provided image bytes.
-    pub fn set_application_dock_icon(png_bytes: &[u8]) {
-        unsafe {
-            let data_cls = objc_getClass(b"NSData\0".as_ptr());
-            let img_cls = objc_getClass(b"NSImage\0".as_ptr());
-            let app_cls = objc_getClass(b"NSApplication\0".as_ptr());
-            if data_cls.is_null() || img_cls.is_null() || app_cls.is_null() {
-                return;
-            }
-
-            let msg_data: unsafe extern "C" fn(*mut c_void, *mut c_void, *const u8, usize) -> *mut c_void =
-                std::mem::transmute(objc_msgSend as *const ());
-            let ns_data = msg_data(
-                data_cls,
-                sel(b"dataWithBytes:length:\0"),
-                png_bytes.as_ptr(),
-                png_bytes.len(),
-            );
-            if ns_data.is_null() {
-                return;
-            }
-
-            let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
-                std::mem::transmute(objc_msgSend as *const ());
-            let img_alloc = msg_ptr(img_cls, sel(b"alloc\0"));
-            if img_alloc.is_null() {
-                return;
-            }
-
-            let msg_init: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) -> *mut c_void =
-                std::mem::transmute(objc_msgSend as *const ());
-            let ns_img = msg_init(img_alloc, sel(b"initWithData:\0"), ns_data);
-            if ns_img.is_null() {
-                return;
-            }
-
-            let shared_app = msg_ptr(app_cls, sel(b"sharedApplication\0"));
-            if shared_app.is_null() {
-                return;
-            }
-
-            let msg_set_icon: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) =
-                std::mem::transmute(objc_msgSend as *const ());
-            msg_set_icon(shared_app, sel(b"setApplicationIconImage:\0"), ns_img);
-        }
-    }
-
-    /// Sets NSApplication activation policy to Accessory (1) so it runs purely as a menu bar / tray tool with NO Dock icon.
     pub fn set_accessory_activation_policy() {
         unsafe {
             let app_cls = objc_getClass(b"NSApplication\0".as_ptr());
@@ -346,21 +309,19 @@ mod macos_native {
             }
             let msg_set_policy: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) -> bool =
                 std::mem::transmute(objc_msgSend as *const ());
-            // NSApplicationActivationPolicyAccessory = 1 (No Dock icon, menu bar accessory tool)
             msg_set_policy(shared_app, sel(b"setActivationPolicy:\0"), 1);
         }
     }
 }
 
-
 #[cfg(target_os = "windows")]
 mod windows_native {
     use windows::Win32::Foundation::HWND;
-    use windows::Win32::Graphics::Gdi::{
-        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
-    };
     use windows::Win32::Graphics::Dwm::{
         DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
+    };
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
     };
 
     #[derive(Clone, Copy, Debug, Default)]
@@ -373,8 +334,6 @@ mod windows_native {
     pub fn strip_window_decorations(hwnd_isize: isize) {
         unsafe {
             let hwnd = HWND(hwnd_isize as *mut _);
-
-            // 1. Disable Windows 11 rounded window corners (DWMWCP_DONOTROUND = 1)
             let corner_pref: u32 = 1;
             let _ = DwmSetWindowAttribute(
                 hwnd,
@@ -382,8 +341,6 @@ mod windows_native {
                 &corner_pref as *const _ as *const _,
                 std::mem::size_of::<u32>() as u32,
             );
-
-            // 2. Disable window border line (DWMWA_COLOR_NONE = 0xFFFFFFFE)
             let border_color: u32 = 0xFFFFFFFE;
             let _ = DwmSetWindowAttribute(
                 hwnd,
@@ -405,12 +362,10 @@ mod windows_native {
             if GetMonitorInfoW(hmon, &mut mi).as_bool() {
                 let rc_mon = mi.rcMonitor;
                 let rc_work = mi.rcWork;
-
                 let scale = if scale_factor > 0.1 { scale_factor } else { 1.0 };
                 let bottom = ((rc_mon.bottom - rc_work.bottom).max(0) as f64) / scale;
                 let left = ((rc_work.left - rc_mon.left).max(0) as f64) / scale;
                 let right = ((rc_mon.right - rc_work.right).max(0) as f64) / scale;
-
                 TaskbarInsets {
                     bottom,
                     left,
@@ -439,6 +394,32 @@ fn parse_ipc_command(msg: &str) -> Option<UserEvent> {
     }
     if let Some(val) = trimmed.strip_prefix("set_dragging:") {
         return Some(UserEvent::SetDragging(val.trim() == "true"));
+    }
+    if let Some(val) = trimmed.strip_prefix("move_window_by:") {
+        let nums: Vec<f64> = val
+            .split(',')
+            .filter_map(|n| n.trim().parse::<f64>().ok())
+            .collect();
+        if nums.len() == 2 {
+            return Some(UserEvent::MoveWindowBy(nums[0], nums[1]));
+        }
+    }
+    if let Some(val) = trimmed.strip_prefix("release_window:") {
+        let parts: Vec<&str> = val.split(',').collect();
+        let vx = parts
+            .first()
+            .and_then(|s| s.trim().parse::<f64>().ok())
+            .unwrap_or(0.0);
+        let gravity = parts.get(1).map(|s| s.trim() == "true").unwrap_or(true);
+        let floor_mode = parts
+            .get(2)
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|| "auto".to_string());
+        return Some(UserEvent::ReleaseWindow {
+            vx,
+            gravity,
+            floor_mode,
+        });
     }
     if let Some(val) = trimmed.strip_prefix("set_always_on_top:") {
         return Some(UserEvent::SetAlwaysOnTop(val.trim() == "true"));
@@ -480,11 +461,6 @@ fn parse_single_rect(s: &str) -> Option<HitRect> {
     }
 }
 
-#[allow(dead_code)]
-const APP_ICON_PNG: &[u8] = include_bytes!("../../assets/icon.png");
-
-/// Ensures the local node server at 127.0.0.1:4199 is running.
-/// If not responding, attempts to auto-spawn `node server/index.js`.
 fn ensure_local_server_running() {
     use std::net::{SocketAddr, TcpStream};
     use std::path::PathBuf;
@@ -561,18 +537,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tray_rgba = include_bytes!("../../assets/tray.rgba");
     let win_icon = tao::window::Icon::from_rgba(tray_rgba.to_vec(), 32, 32).ok();
 
+    let init_compact_x = (mon_width - COMPACT_W - 24.0).max(0.0);
+    let init_compact_y = (mon_height - 72.0 - COMPACT_H).max(0.0);
+
     let (win_width, win_height, win_x, win_y) = if start_compact {
-        let cw = 340.0;
-        let ch = 400.0;
-        let cx = (mon_width - cw - 24.0).max(0.0);
-        let cy = (mon_height - 48.0 - ch).max(0.0);
-        (cw, ch, cx, cy)
+        (COMPACT_W, COMPACT_H, init_compact_x, init_compact_y)
     } else {
         (mon_width, mon_height, 0.0, 0.0)
     };
 
     #[allow(unused_mut)]
-
     let mut win_builder = WindowBuilder::new()
         .with_title("Anti-Pet In Desktop")
         .with_transparent(true)
@@ -617,7 +591,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(target_os = "macos")]
     {
         macos_native::set_accessory_activation_policy();
-        let _ = macos_native::sync_fullscreen_overlay_and_query_dock(window.ns_window(), true);
+        let _ = macos_native::sync_fullscreen_overlay_and_query_dock(
+            window.ns_window(),
+            !start_compact,
+        );
     }
 
     let initial_rect = HitRect {
@@ -634,15 +611,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let currently_ignoring = Arc::new(AtomicBool::new(true));
     let frontend_pixel_transparent = Arc::new(AtomicBool::new(false));
 
+    let init_script = if start_compact {
+        "window.__ANTI_PET_DESKTOP__ = true; window.__ANTI_PET_INITIAL_MODE__ = 'compact';"
+    } else {
+        "window.__ANTI_PET_DESKTOP__ = true; window.__ANTI_PET_INITIAL_MODE__ = 'fullscreen';"
+    };
+
     let ipc_proxy = proxy.clone();
     let webview = WebViewBuilder::new()
         .with_transparent(true)
         .with_accept_first_mouse(true)
-        .with_initialization_script(
-            r#"
-            window.__ANTI_PET_DESKTOP__ = true;
-            "#,
-        )
+        .with_initialization_script(init_script)
         .with_ipc_handler(move |req| {
             let body = req.body();
             if let Some(evt) = parse_ipc_command(body) {
@@ -702,21 +681,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Anti-Pet 桌面全透明悬浮穿透引擎已挂载");
 
-    // Initialize System Tray Menu and Icon
     let tray_menu = Menu::new();
     let item_settings = MenuItem::new("偏好设置...", true, None);
     let sep0 = PredefinedMenuItem::separator();
     let item_toggle = MenuItem::new("显示 / 隐藏 大肥猫", true, None);
     let item_toggle_mode = MenuItem::new(
-        if start_compact { "切换为: 全屏画布模式" } else { "切换为: 紧凑挂件模式 (省资源)" },
+        if start_compact {
+            "切换为: 全屏画布模式"
+        } else {
+            "切换为: 紧凑挂件模式 (省资源)"
+        },
         true,
         None,
     );
-    let item_dnd = MenuItem::new("完全穿透 (免打扰模式)", true, None);
+    let item_dnd = MenuItem::new("免打扰模式", true, None);
     let item_reset_zoom = MenuItem::new("重置缩放 (100%)", true, None);
     let item_switch_skin = MenuItem::new("切换皮肤", true, None);
     let sep1 = PredefinedMenuItem::separator();
-    let item_about = MenuItem::new("关于 大肥猫桌宠挂件 v0.2.0", false, None);
+    let item_about = MenuItem::new("关于 大肥猫桌宠挂件 v0.2.1", false, None);
     let sep2 = PredefinedMenuItem::separator();
     let item_quit = MenuItem::new("退出", true, None);
 
@@ -734,11 +716,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &item_quit,
     ]);
 
-    let tray_rgba = include_bytes!("../../assets/tray.rgba");
     let tray_icon = TrayIcon::from_rgba(tray_rgba.to_vec(), 32, 32).ok();
 
     let mut tray_builder = TrayIconBuilder::new()
-        .with_tooltip("大肥猫桌宠挂件 v0.2.0")
+        .with_tooltip("大肥猫桌宠挂件 v0.2.1")
         .with_menu(Box::new(tray_menu));
 
     if let Some(icon) = tray_icon {
@@ -754,6 +735,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut last_typing_state = false;
     let mut last_ide_state = false;
     let mut is_compact_mode = start_compact;
+    let mut compact_x = init_compact_x;
+    let mut compact_y = init_compact_y;
+    let mut compact_physics = CompactFallPhysics {
+        active: false,
+        x: init_compact_x,
+        y: init_compact_y,
+        vx: 0.0,
+        vy: 0.0,
+        target_floor_y: init_compact_y,
+        bounces: 0,
+    };
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;
@@ -766,7 +758,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     let _ = macos_native::sync_fullscreen_overlay_and_query_dock(
                         window.ns_window(),
-                        true,
+                        !is_compact_mode,
                     );
                 }
             }
@@ -793,8 +785,114 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
                 UserEvent::SetDragging(dragging) => {
                     is_dragging.store(dragging, Ordering::Relaxed);
-                    if dragging && currently_ignoring.swap(false, Ordering::Relaxed) {
-                        let _ = window.set_ignore_cursor_events(false);
+                    if dragging {
+                        compact_physics.active = false;
+                        if currently_ignoring.swap(false, Ordering::Relaxed) {
+                            let _ = window.set_ignore_cursor_events(false);
+                        }
+                    }
+                }
+                UserEvent::MoveWindowBy(dx, dy) => {
+                    if is_compact_mode {
+                        compact_physics.active = false;
+                        let (mw, mh) = if let Some(m) = window.current_monitor() {
+                            let s = m.scale_factor();
+                            let sz = m.size().to_logical::<f64>(s);
+                            (sz.width, sz.height)
+                        } else {
+                            (mon_width, mon_height)
+                        };
+                        compact_x = (compact_x + dx).clamp(-100.0, mw - COMPACT_W + 100.0);
+                        compact_y = (compact_y + dy).clamp(0.0, mh - COMPACT_H);
+                        window.set_outer_position(LogicalPosition::new(compact_x, compact_y));
+                    }
+                }
+                UserEvent::ReleaseWindow {
+                    vx,
+                    gravity,
+                    floor_mode,
+                } => {
+                    if !is_compact_mode {
+                        return;
+                    }
+                    let (mw, mh) = if let Some(m) = window.current_monitor() {
+                        let s = m.scale_factor();
+                        let sz = m.size().to_logical::<f64>(s);
+                        (sz.width, sz.height)
+                    } else {
+                        (mon_width, mon_height)
+                    };
+
+                    let dock_bottom = last_dock_sig.0.max(0.0);
+                    let dock_left = last_dock_sig.1.max(0.0);
+                    let dock_right = last_dock_sig.2.max(0.0);
+
+                    let true_bottom_y = (mh - COMPACT_H).max(0.0);
+                    let dock_ledge_y = (mh - COMPACT_H - dock_bottom).max(0.0);
+
+                    let target_floor_y = if floor_mode == "bottom" || dock_bottom <= 2.0 {
+                        true_bottom_y
+                    } else if floor_mode == "taskbar" || floor_mode == "dock" {
+                        dock_ledge_y
+                    } else if floor_mode == "free" || !gravity {
+                        compact_y
+                    } else if compact_y >= dock_ledge_y + 18.0 {
+                        true_bottom_y
+                    } else {
+                        dock_ledge_y
+                    };
+
+                    // Left / Right screen edge docking check (cat is centered inside COMPACT_W)
+                    let cat_pad_x = ((COMPACT_W - 136.0) * 0.5).max(0.0);
+                    let min_win_x = dock_left - cat_pad_x;
+                    let max_win_x = mw - dock_right - COMPACT_W + cat_pad_x;
+                    let edge_snap_dist = 36.0;
+
+                    if compact_x <= min_win_x + edge_snap_dist && compact_y < target_floor_y - 28.0
+                    {
+                        compact_x = min_win_x;
+                        window.set_outer_position(LogicalPosition::new(compact_x, compact_y));
+                        let _ = webview.evaluate_script(
+                            "if(window.__antiPetOnCompactEdgeDock)window.__antiPetOnCompactEdgeDock('left');",
+                        );
+                        return;
+                    }
+                    if compact_x >= max_win_x - edge_snap_dist && compact_y < target_floor_y - 28.0
+                    {
+                        compact_x = max_win_x;
+                        window.set_outer_position(LogicalPosition::new(compact_x, compact_y));
+                        let _ = webview.evaluate_script(
+                            "if(window.__antiPetOnCompactEdgeDock)window.__antiPetOnCompactEdgeDock('right');",
+                        );
+                        return;
+                    }
+
+                    let _ = webview.evaluate_script(
+                        "if(window.__antiPetOnCompactEdgeDock)window.__antiPetOnCompactEdgeDock(null);",
+                    );
+
+                    compact_x = compact_x.clamp(min_win_x, max_win_x);
+
+                    if !gravity || floor_mode == "free" || compact_y >= target_floor_y - 2.0 {
+                        compact_y = if !gravity || floor_mode == "free" {
+                            compact_y.clamp(0.0, true_bottom_y)
+                        } else {
+                            target_floor_y
+                        };
+                        window.set_outer_position(LogicalPosition::new(compact_x, compact_y));
+                        let _ = webview.evaluate_script(
+                            "if(window.__antiPetOnCompactBounce)window.__antiPetOnCompactBounce();",
+                        );
+                    } else {
+                        compact_physics = CompactFallPhysics {
+                            active: true,
+                            x: compact_x,
+                            y: compact_y,
+                            vx: vx * 0.35,
+                            vy: 0.0,
+                            target_floor_y,
+                            bounces: 0,
+                        };
                     }
                 }
                 UserEvent::SetDndPassthrough(enabled, wake_rect) => {
@@ -826,6 +924,44 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 UserEvent::TickCursor => {
                     tick_counter = tick_counter.wrapping_add(1);
 
+                    // Step Compact Mode Window Gravity Physics if active
+                    if is_compact_mode && compact_physics.active {
+                        let (mw, _) = if let Some(m) = window.current_monitor() {
+                            let s = m.scale_factor();
+                            let sz = m.size().to_logical::<f64>(s);
+                            (sz.width, sz.height)
+                        } else {
+                            (mon_width, mon_height)
+                        };
+                        let cat_pad_x = ((COMPACT_W - 136.0) * 0.5).max(0.0);
+                        let min_win_x = last_dock_sig.1.max(0.0) - cat_pad_x;
+                        let max_win_x = mw - last_dock_sig.2.max(0.0) - COMPACT_W + cat_pad_x;
+
+                        compact_physics.vy += 1.15;
+                        compact_physics.y += compact_physics.vy;
+                        compact_physics.x =
+                            (compact_physics.x + compact_physics.vx).clamp(min_win_x, max_win_x);
+                        compact_physics.vx *= 0.94;
+
+                        if compact_physics.y >= compact_physics.target_floor_y {
+                            compact_physics.y = compact_physics.target_floor_y;
+                            if compact_physics.vy.abs() > 2.8 && compact_physics.bounces < 2 {
+                                compact_physics.vy *= -0.34;
+                                compact_physics.bounces += 1;
+                                if compact_physics.bounces == 1 {
+                                    let _ = webview.evaluate_script(
+                                        "if(window.__antiPetOnCompactBounce)window.__antiPetOnCompactBounce();",
+                                    );
+                                }
+                            } else {
+                                compact_physics.active = false;
+                            }
+                        }
+                        compact_x = compact_physics.x;
+                        compact_y = compact_physics.y;
+                        window.set_outer_position(LogicalPosition::new(compact_x, compact_y));
+                    }
+
                     // Drain System Tray Menu Click Events
                     while let Ok(menu_event) = MenuEvent::receiver().try_recv() {
                         if menu_event.id == item_settings.id() {
@@ -837,6 +973,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             window.set_visible(vis);
                         } else if menu_event.id == item_toggle_mode.id() {
                             is_compact_mode = !is_compact_mode;
+                            compact_physics.active = false;
                             #[allow(unused_variables)]
                             let (mw, mh, sc) = if let Some(m) = window.current_monitor() {
                                 let s = m.scale_factor();
@@ -847,29 +984,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             };
 
                             if is_compact_mode {
-                                #[cfg(target_os = "windows")]
-                                let tb = windows_native::query_taskbar_insets(window.hwnd(), sc).bottom;
-                                #[cfg(not(target_os = "windows"))]
-                                let tb = 0.0;
+                                let tb = last_dock_sig.0.max(0.0);
+                                compact_x = (mw - COMPACT_W - 24.0).max(0.0);
+                                compact_y = (mh - tb - COMPACT_H).max(0.0);
 
-                                let cw = 340.0;
-                                let ch = 400.0;
-                                let cx = (mw - cw - 24.0).max(0.0);
-                                let cy = (mh - tb - ch).max(0.0);
-
-                                window.set_inner_size(LogicalSize::new(cw, ch));
-                                window.set_outer_position(LogicalPosition::new(cx, cy));
+                                window.set_inner_size(LogicalSize::new(COMPACT_W, COMPACT_H));
+                                window.set_outer_position(LogicalPosition::new(
+                                    compact_x, compact_y,
+                                ));
                                 #[cfg(target_os = "windows")]
                                 windows_native::strip_window_decorations(window.hwnd());
                                 let _ = item_toggle_mode.set_text("切换为: 全屏画布模式");
-                                let _ = webview.evaluate_script("if(window.__antiPetOnModeChange)window.__antiPetOnModeChange('compact');");
+                                let _ = webview.evaluate_script(
+                                    "if(window.__antiPetOnModeChange)window.__antiPetOnModeChange('compact');",
+                                );
                             } else {
                                 window.set_inner_size(LogicalSize::new(mw, mh));
                                 window.set_outer_position(LogicalPosition::new(0.0, 0.0));
+                                #[cfg(target_os = "macos")]
+                                {
+                                    let _ = macos_native::sync_fullscreen_overlay_and_query_dock(
+                                        window.ns_window(),
+                                        true,
+                                    );
+                                }
                                 #[cfg(target_os = "windows")]
                                 windows_native::strip_window_decorations(window.hwnd());
-                                let _ = item_toggle_mode.set_text("切换为: 紧凑挂件模式 (省资源)");
-                                let _ = webview.evaluate_script("if(window.__antiPetOnModeChange)window.__antiPetOnModeChange('fullscreen');");
+                                let _ =
+                                    item_toggle_mode.set_text("切换为: 紧凑挂件模式 (省资源)");
+                                let _ = webview.evaluate_script(
+                                    "if(window.__antiPetOnModeChange)window.__antiPetOnModeChange('fullscreen');",
+                                );
                             }
                         } else if menu_event.id == item_dnd.id() {
                             let _ = webview.evaluate_script(
@@ -890,30 +1035,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     // Drain System Tray Icon Direct Clicks
                     while let Ok(tray_event) = TrayIconEvent::receiver().try_recv() {
-                        match tray_event {
-                            TrayIconEvent::Click {
-                                button: MouseButton::Left,
-                                button_state: MouseButtonState::Up,
-                                ..
-                            } => {
-                                let vis = !is_window_visible.load(Ordering::Relaxed);
-                                is_window_visible.store(vis, Ordering::Relaxed);
-                                window.set_visible(vis);
-                            }
-                            _ => {}
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = tray_event
+                        {
+                            let vis = !is_window_visible.load(Ordering::Relaxed);
+                            is_window_visible.store(vis, Ordering::Relaxed);
+                            window.set_visible(vis);
                         }
                     }
 
                     #[cfg(target_os = "macos")]
                     let dock = macos_native::sync_fullscreen_overlay_and_query_dock(
                         window.ns_window(),
-                        tick_counter % 20 == 0,
+                        !is_compact_mode && (tick_counter % 20 == 0),
                     );
                     #[cfg(target_os = "macos")]
                     let is_typing = macos_native::is_user_typing_globally();
 
                     #[cfg(target_os = "windows")]
-                    let dock = windows_native::query_taskbar_insets(window.hwnd(), window.scale_factor());
+                    let dock =
+                        windows_native::query_taskbar_insets(window.hwnd(), window.scale_factor());
                     #[cfg(target_os = "windows")]
                     let is_typing = false;
                     #[cfg(target_os = "windows")]
@@ -930,7 +1074,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let dock_tuple = (dock.bottom, dock.left, dock.right);
 
                     #[cfg(target_os = "macos")]
-                    let cursor_opt = macos_native::get_mouse_location_in_window(window.ns_window());
+                    let cursor_opt =
+                        macos_native::get_mouse_location_in_window(window.ns_window());
 
                     #[cfg(not(target_os = "macos"))]
                     let cursor_opt = if let Ok(cursor_phys) = window.cursor_position() {
@@ -939,7 +1084,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .or_else(|_| window.outer_position())
                             .unwrap_or(PhysicalPosition::new(0, 0));
                         let scale = window.scale_factor();
-                        Some(((cursor_phys.x - win_pos.x as f64) / scale, (cursor_phys.y - win_pos.y as f64) / scale))
+                        Some((
+                            (cursor_phys.x - win_pos.x as f64) / scale,
+                            (cursor_phys.y - win_pos.y as f64) / scale,
+                        ))
                     } else {
                         None
                     };
@@ -1023,7 +1171,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if window_id == settings_window.id() {
                         settings_window.set_visible(false);
                     } else if window_id == window.id() {
-                        // Minimize/Hide pet window to tray instead of terminating
                         is_window_visible.store(false, Ordering::Relaxed);
                         window.set_visible(false);
                     }

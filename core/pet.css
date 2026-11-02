@@ -55,38 +55,6 @@ body.pet-body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
-/* Floating DND Wake Pill */
-.dnd-wake-pill {
-  position: fixed;
-  bottom: 12px;
-  right: 16px;
-  display: flex;
-  align-items: center;
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: var(--thought-bg);
-  border: 2px solid var(--thought-border);
-  box-shadow: 0 4px 14px var(--thought-shadow);
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-primary);
-  cursor: pointer;
-  pointer-events: auto;
-  z-index: 120;
-  opacity: 0.88;
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-
-.dnd-wake-pill:hover {
-  opacity: 1;
-  transform: scale(1.04);
-}
-
-.dnd-wake-pill.hidden {
-  display: none !important;
-  pointer-events: none;
-}
-
 /* Floating Zoom Scale Pill */
 .zoom-pill {
   position: absolute;
@@ -137,10 +105,10 @@ body.pet-body {
   transition: none;
 }
 
+/* In DND mode, pet stays semi-transparent & silent, but still allows right-click context menu */
 .pet-container.dnd-ghost {
-  opacity: 0.35;
-  pointer-events: none !important;
-  filter: saturate(0.7);
+  opacity: 0.55;
+  filter: saturate(0.75);
 }
 
 .pet-container.ide-hidden {
@@ -287,7 +255,6 @@ body.pet-body {
 
 /* =========================================================================
    Cat Thought Cloud Bubble ("像是小猫挂件在想的东西")
-   Matches skins/fat-cat/ui/thought-speech.svg & thought-quota.svg style
    ========================================================================= */
 .speech-bubble {
   position: absolute;
@@ -308,7 +275,6 @@ body.pet-body {
   pointer-events: none;
 }
 
-/* When pet is near top of screen, flip thought bubble below the pet */
 .speech-bubble.flip-below {
   bottom: auto;
   top: calc(100% + 18px);
@@ -334,7 +300,6 @@ body.pet-body {
   50% { margin-top: -3px; }
 }
 
-/* Two floating thought circles (o -> O) anchored above cat's head */
 .thought-trail {
   position: absolute;
   left: 50%;
@@ -505,25 +470,20 @@ body.pet-body {
   margin: 3px 0;
 }
 
-/* Zero-scrollbar and seamless borderless styling */
 ::-webkit-scrollbar {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
 }
 
+/* In Compact Widget Mode, center the pet horizontally at the bottom of the 340x400 window without !important locks */
 body.compact-mode .pet-container {
-  right: calc(50% - (var(--pet-width) / 2)) !important;
-  left: auto !important;
-  bottom: 0px !important;
+  left: calc(50% - (var(--pet-width) / 2));
+  right: auto;
+  top: auto;
+  bottom: 0px;
 }
 
-body.compact-mode .dnd-wake-pill {
-  right: 8px;
-  bottom: 8px;
-}
-
-/* =========================================================================
 /* Toast Message */
 .settings-toast {
   position: fixed;

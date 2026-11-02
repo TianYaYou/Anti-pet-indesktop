@@ -1,9 +1,9 @@
 /**
  * Anti-Pet Core Engine
  * - Cloud Thought Bubble ("小猫挂件在想的东西") with Dynamic Screen-Edge Clamping
- * - Cursor-Anchored Right-Click Context Menu
+ * - Cursor-Anchored Right-Click Context Menu (Always accessible even in DND mode)
  * - Auto-Hide Thought Bubble when Cursor Leaves, Window Blurs, or User Types
- * - Dual-Ledge Gravity Physics (Mac Dock Bar & 0px Fullscreen Bottom) + Side Edges
+ * - Dual-Mode Physics: Fullscreen Canvas DOM Physics + Compact Widget Mode Native Window Physics
  */
 (function () {
   const container = document.getElementById('pet-container');
@@ -23,7 +23,6 @@
   const ideOnlyStatus = document.getElementById('ide-only-status');
   const gravityStatus = document.getElementById('gravity-status');
   const skinStatus = document.getElementById('skin-status');
-  const dndWakePill = document.getElementById('dnd-wake-pill');
   const zoomPill = document.getElementById('zoom-pill');
   const zoomStatus = document.getElementById('zoom-status');
 
@@ -31,7 +30,7 @@
   let bridge = null;
 
   let pendingSettings = {};
-  
+
   function saveSettingsImmediately(partial) {
     if (!partial || typeof partial !== 'object') return;
     Object.assign(pendingSettings, partial);
@@ -82,6 +81,7 @@
     dialogueBank: {},
     dialogues: [],
     currentState: 'idle',
+    windowMode: window.__ANTI_PET_INITIAL_MODE__ === 'compact' ? 'compact' : 'fullscreen',
     soundEnabled: true,
     dndPassthrough: false,
     ideOnlyMode: false,
@@ -99,6 +99,9 @@
     dragStartX: 0,
     dragStartY: 0,
     lastDragX: 0,
+    dragLastScreenX: 0,
+    dragLastScreenY: 0,
+    dragTotalMove: 0,
     petInitialX: 0,
     petInitialY: 0,
     hasMoved: false,
@@ -125,6 +128,10 @@
     showQuota: true,
     bubbleDurationMs: 4000
   };
+
+  if (state.windowMode === 'compact') {
+    document.body.classList.add('compact-mode');
+  }
 
   // =========================================================================
   // 1. Pixel-Level Alpha Hit-Testing & Desktop IPC Synchronization
@@ -203,34 +210,29 @@
 
   function evaluateInteractiveHit(clientX, clientY) {
     if (state.isDragging) return true;
-    if (state.dndPassthrough) {
-      return isPointInElement(clientX, clientY, dndWakePill);
-    }
     if (container.classList.contains('ide-hidden')) {
       return false;
     }
     if (!contextMenu.classList.contains('hidden')) {
       const mRect = contextMenu.getBoundingClientRect();
       const catRect = petFrame.getBoundingClientRect();
-      const dist = Math.min(distanceToRect(clientX, clientY, mRect), distanceToRect(clientX, clientY, catRect));
+      const dist = Math.min(
+        distanceToRect(clientX, clientY, mRect),
+        distanceToRect(clientX, clientY, catRect)
+      );
       if (dist <= 300) return true;
     }
-    if (isPointInElement(clientX, clientY, bubbleCloud || speechBubble)) return true;
+    if (!state.dndPassthrough && isPointInElement(clientX, clientY, bubbleCloud || speechBubble)) {
+      return true;
+    }
+    // Always allow cursor hit on the cat body itself so the user can right-click to open the menu & exit DND
     return isOpaquePixelOnCat(clientX, clientY);
   }
 
   function syncHitRectsToDesktop() {
     if (!ipc) return;
-    if (state.dndPassthrough) {
-      const pillRect = dndWakePill.getBoundingClientRect();
-      ipc.setDndPassthrough(true, {
-        x: pillRect.left - 4,
-        y: pillRect.top - 4,
-        w: pillRect.width + 8,
-        h: pillRect.height + 8
-      });
-      return;
-    }
+    // Never lock Rust into full window passthrough; keep the cat's bounding box active for right-click menu
+    ipc.setDndPassthrough(false);
 
     const rects = [];
     if (!container.classList.contains('ide-hidden')) {
@@ -242,7 +244,7 @@
         h: catRect.height + 12
       });
 
-      if (!speechBubble.classList.contains('hidden')) {
+      if (!state.dndPassthrough && !speechBubble.classList.contains('hidden')) {
         const bRect = (bubbleCloud || speechBubble).getBoundingClientRect();
         rects.push({
           x: bRect.left - 6,
@@ -275,10 +277,6 @@
   // 2. Dynamic Screen-Edge Clamping for Thought Bubble & Context Menu
   // =========================================================================
 
-  /**
-   * Automatically shifts the cloud thought bubble horizontally & vertically
-   * when the cat is close to the left, right, or top edges of the screen.
-   */
   function adjustBubblePosition() {
     if (!speechBubble || speechBubble.classList.contains('hidden')) return;
 
@@ -286,10 +284,10 @@
     const bubbleW = speechBubble.offsetWidth || 204;
     const bubbleH = (bubbleCloud || speechBubble).offsetHeight || 96;
     const screenMargin = 10;
-    const minLeft = state.dockLeft + screenMargin;
-    const maxRight = window.innerWidth - state.dockRight - screenMargin;
+    const minLeft = (state.windowMode === 'compact' ? 0 : state.dockLeft) + screenMargin;
+    const maxRight =
+      window.innerWidth - (state.windowMode === 'compact' ? 0 : state.dockRight) - screenMargin;
 
-    // Centered bubble left & right in viewport coordinates
     const catCenterX = catRect.left + catRect.width * 0.5;
     const idealLeft = catCenterX - bubbleW * 0.5;
     const idealRight = catCenterX + bubbleW * 0.5;
@@ -302,7 +300,6 @@
     }
     document.documentElement.style.setProperty('--bubble-shift-x', `${Math.round(shiftX)}px`);
 
-    // Flip thought bubble below the cat if the cat is dragged too close to the top of the screen
     if (catRect.top < bubbleH + 28) {
       speechBubble.classList.add('flip-below');
     } else {
@@ -342,7 +339,6 @@
         state.leaveHideTimer = null;
       }
     } else {
-      // Cursor left the pet & bubble: fade out thought bubble shortly after (do not close context menu here)
       if (state.leaveHideTimer) clearTimeout(state.leaveHideTimer);
       state.leaveHideTimer = setTimeout(() => {
         if (!state.isHoveringPet && !state.isDragging) {
@@ -352,7 +348,6 @@
     }
   }
 
-  // Window blur (user clicked into IDE / browser / another app)
   window.__antiPetOnWindowBlur = function () {
     hideBubbleImmediately();
   };
@@ -366,7 +361,9 @@
   // =========================================================================
 
   function updateCursorGaze(clientX, clientY) {
-    if (state.isDragging || container.classList.contains('ide-hidden')) return;
+    if (state.isDragging || state.dndPassthrough || container.classList.contains('ide-hidden')) {
+      return;
+    }
     const rect = petFrame.getBoundingClientRect();
     if (rect.width <= 0) return;
 
@@ -473,6 +470,7 @@
       state.dockRight = Math.max(0, dockRight || 0);
 
       if (
+        state.windowMode !== 'compact' &&
         !state.isDragging &&
         !state.dockedEdge &&
         state.gravityEnabled &&
@@ -493,7 +491,6 @@
     handleHoverChange(shouldIntercept);
     ipc.setIgnoreCursorEvents(!shouldIntercept);
 
-    // If context menu is open and cursor moved far away from both menu and cat (> 300px), close it
     if (!contextMenu.classList.contains('hidden')) {
       const mRect = contextMenu.getBoundingClientRect();
       const catRect = petFrame.getBoundingClientRect();
@@ -503,6 +500,36 @@
         closeContextMenu();
       }
     }
+  };
+
+  // Hooks called by Rust when Compact Mode native window bounces or docks on screen edge
+  window.__antiPetOnCompactBounce = function () {
+    playSound('release');
+    setState('rebound', getRandomDialogue('release'), 500);
+    adjustBubblePosition();
+    syncHitRectsToDesktop();
+  };
+
+  window.__antiPetOnCompactEdgeDock = function (edge) {
+    state.dockedEdge = edge;
+    container.classList.remove('docked-left', 'docked-right');
+    if (edge === 'left') {
+      state.facing = 'right';
+      container.classList.remove('facing-left');
+      container.classList.add('facing-right', 'docked-left');
+      playSoftBumpSound();
+      setState('idle');
+      showBubble('贴在左边栏观察你写代码~', 2800);
+    } else if (edge === 'right') {
+      state.facing = 'left';
+      container.classList.remove('facing-right');
+      container.classList.add('facing-left', 'docked-right');
+      playSoftBumpSound();
+      setState('idle');
+      showBubble('贴在右边栏偷看你，不许写 Bug 哦！', 2800);
+    }
+    adjustBubblePosition();
+    syncHitRectsToDesktop();
   };
 
   window.addEventListener('pointermove', (e) => {
@@ -702,7 +729,6 @@
     container.className = classes.join(' ');
 
     const displayMsg = text || cfg.bubbleText;
-    // Do not interrupt with ambient bubbles if the user is actively typing or if pet is in silent DND mode
     if (displayMsg && !state.dndPassthrough && (!state.isUserTyping || state.isHoveringPet || newState === 'error')) {
       showBubble(displayMsg, durationMs || 3200);
     }
@@ -750,7 +776,7 @@
   }
 
   // =========================================================================
-  // 6. Dual-Ledge Gravity Drop & Adaptive Screen-Edge Snapping
+  // 6. Dual-Mode Dragging & Gravity Drop Physics (Fullscreen & Compact Modes)
   // =========================================================================
 
   function cancelGravityAnimation() {
@@ -770,7 +796,7 @@
     if (state.floorMode === 'bottom') {
       return trueBottomY;
     }
-    if (state.floorMode === 'taskbar') {
+    if (state.floorMode === 'taskbar' || state.floorMode === 'dock') {
       return dockLedgeY;
     }
     if (state.floorMode === 'free') {
@@ -778,22 +804,28 @@
       return rect.top;
     }
 
-    // 1. Fullscreen mode or no bottom taskbar: fall to the screen bottom edge
     if (dockBottom <= 2) {
       return trueBottomY;
     }
 
-    // 2. If user dragged Hakimi down into/past the taskbar: fall to screen bottom edge
     const rect = currentRect || container.getBoundingClientRect();
     if (rect.top >= dockLedgeY + Math.min(16, dockBottom * 0.4)) {
       return trueBottomY;
     }
 
-    // 3. Default: fall on top of the taskbar
     return dockLedgeY;
   }
 
   function snapToCurrentFloor() {
+    if (state.windowMode === 'compact') {
+      container.style.left = '';
+      container.style.top = '';
+      container.style.bottom = '0px';
+      container.style.right = 'auto';
+      adjustBubblePosition();
+      syncHitRectsToDesktop();
+      return;
+    }
     const rect = container.getBoundingClientRect();
     const targetY = computeTargetFloorY(rect);
     const curX = Math.max(
@@ -810,6 +842,11 @@
 
   function startReleasePhysics(silent = false) {
     cancelGravityAnimation();
+
+    if (state.windowMode === 'compact') {
+      snapToCurrentFloor();
+      return;
+    }
 
     const rect = container.getBoundingClientRect();
     const winW = window.innerWidth;
@@ -864,7 +901,6 @@
     state.dockedEdge = null;
     container.classList.remove('docked-left', 'docked-right');
 
-    // Automatically adjust X near screen edges so pet & bubble sit cleanly inside bounds
     let curX = rect.left;
     if (curX <= leftBound + edgeSnapThreshold) {
       curX = leftBound;
@@ -966,7 +1002,7 @@
   }
 
   container.addEventListener('pointerdown', (e) => {
-    if (e.button === 2 || state.dndPassthrough) return;
+    if (e.button === 2) return;
     if (e.target.closest('#speech-bubble')) return;
 
     closeContextMenu();
@@ -978,6 +1014,9 @@
     state.dragStartX = e.clientX;
     state.dragStartY = e.clientY;
     state.lastDragX = e.clientX;
+    state.dragLastScreenX = e.screenX;
+    state.dragLastScreenY = e.screenY;
+    state.dragTotalMove = 0;
     state.vx = 0;
 
     if (state.dockedEdge) {
@@ -1003,6 +1042,39 @@
 
   window.addEventListener('pointermove', (e) => {
     if (!state.isDragging) return;
+
+    if (state.windowMode === 'compact' && ipc && ipc.isDesktop) {
+      const dxScreen = e.screenX - state.dragLastScreenX;
+      const dyScreen = e.screenY - state.dragLastScreenY;
+      state.dragLastScreenX = e.screenX;
+      state.dragLastScreenY = e.screenY;
+      state.vx = dxScreen;
+      state.dragTotalMove += Math.hypot(dxScreen, dyScreen);
+
+      if (state.dragTotalMove > 4) {
+        if (!state.hasMoved) {
+          state.hasMoved = true;
+          playSound('clickPress');
+          setState('dragging', getRandomDialogue('dragged'));
+        }
+
+        const swingDeg = Math.max(-14, Math.min(14, -dxScreen * 0.75));
+        document.documentElement.style.setProperty('--drag-swing', `${swingDeg.toFixed(1)}deg`);
+
+        if (dxScreen > 2.0 && state.facing !== 'right') {
+          state.facing = 'right';
+          container.classList.remove('facing-left');
+          container.classList.add('facing-right');
+        } else if (dxScreen < -2.0 && state.facing !== 'left') {
+          state.facing = 'left';
+          container.classList.remove('facing-right');
+          container.classList.add('facing-left');
+        }
+
+        ipc.moveWindowBy(dxScreen, dyScreen);
+      }
+      return;
+    }
 
     const dx = e.clientX - state.dragStartX;
     const dy = e.clientY - state.dragStartY;
@@ -1057,6 +1129,9 @@
       playSound('clickRelease');
       setState('rebound', null, 500);
       showBubble(getRandomDialogue('idle'), 3200);
+      syncHitRectsToDesktop();
+    } else if (state.windowMode === 'compact' && ipc && ipc.isDesktop) {
+      ipc.releaseWindow(state.vx, state.gravityEnabled, state.floorMode || 'auto');
       syncHitRectsToDesktop();
     } else {
       startReleasePhysics(false);
@@ -1122,24 +1197,25 @@
     showBubble('已重置桌宠大小为 100%~', 2400);
   };
 
-  // Continuous wheel scaling (Mac trackpad 2-finger scroll, mouse wheel, or pinch)
-  container.addEventListener('wheel', (e) => {
-    if (state.dndPassthrough) return;
-    e.preventDefault();
-    e.stopPropagation();
+  container.addEventListener(
+    'wheel',
+    (e) => {
+      if (state.dndPassthrough) return;
+      e.preventDefault();
+      e.stopPropagation();
 
-    let delta = e.deltaY;
-    if (e.deltaMode === 1) delta *= 20; // lines
-    else if (e.deltaMode === 2) delta *= 300; // pages
+      let delta = e.deltaY;
+      if (e.deltaMode === 1) delta *= 20;
+      else if (e.deltaMode === 2) delta *= 300;
 
-    // If ctrlKey is true (Mac trackpad pinch gesture), delta is naturally finer
-    const zoomSensitivity = e.ctrlKey ? 0.006 : 0.0018;
-    const zoomFactor = Math.exp(-delta * zoomSensitivity);
-    const clampedFactor = Math.max(0.85, Math.min(1.15, zoomFactor));
-    smoothZoomTo(state.targetScale * clampedFactor);
-  }, { passive: false });
+      const zoomSensitivity = e.ctrlKey ? 0.006 : 0.0018;
+      const zoomFactor = Math.exp(-delta * zoomSensitivity);
+      const clampedFactor = Math.max(0.85, Math.min(1.15, zoomFactor));
+      smoothZoomTo(state.targetScale * clampedFactor);
+    },
+    { passive: false }
+  );
 
-  // WebKit native gesture listeners for macOS trackpad pinch-to-zoom
   let initialPinchScale = 1.0;
   container.addEventListener('gesturestart', (e) => {
     if (state.dndPassthrough) return;
@@ -1181,13 +1257,10 @@
     adjustBubblePosition();
   }
 
-  
-
   function toggleDndPassthrough(forceVal = null) {
     state.dndPassthrough = typeof forceVal === 'boolean' ? forceVal : !state.dndPassthrough;
     if (dndStatus) dndStatus.textContent = state.dndPassthrough ? '开启' : '关闭';
     container.classList.toggle('dnd-ghost', state.dndPassthrough);
-    dndWakePill.classList.toggle('hidden', !state.dndPassthrough);
     closeContextMenu();
 
     if (state.dndPassthrough) {
@@ -1227,15 +1300,32 @@
     }
   }
 
-  window.__antiPetCycleSkin = () => { cycleSkin(); };
-  window.__antiPetToggleDnd = () => { toggleDndPassthrough(); };
+  window.__antiPetCycleSkin = () => {
+    cycleSkin();
+  };
+  window.__antiPetToggleDnd = () => {
+    toggleDndPassthrough();
+  };
 
-  dndWakePill.addEventListener('click', (e) => {
-    e.stopPropagation();
-    initAudio();
-    playSound('clickRelease');
-    toggleDndPassthrough(false);
-  });
+  window.__antiPetOnModeChange = function (mode) {
+    state.windowMode = mode === 'compact' ? 'compact' : 'fullscreen';
+    if (state.windowMode === 'compact') {
+      document.body.classList.add('compact-mode');
+      state.dockedEdge = null;
+      container.classList.remove('docked-left', 'docked-right');
+      snapToCurrentFloor();
+    } else {
+      document.body.classList.remove('compact-mode');
+      const maxW = window.innerWidth - (container.offsetWidth || 136) - 24;
+      const targetY = computeTargetFloorY();
+      container.style.left = `${Math.max(0, maxW)}px`;
+      container.style.top = `${targetY}px`;
+      container.style.bottom = 'auto';
+      container.style.right = 'auto';
+      adjustBubblePosition();
+      syncHitRectsToDesktop();
+    }
+  };
 
   window.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'p') {
@@ -1252,18 +1342,18 @@
       closeContextMenu();
       return;
     }
-    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) {
+    if (
+      e.target &&
+      (e.target.tagName === 'INPUT' ||
+        e.target.tagName === 'SELECT' ||
+        e.target.tagName === 'TEXTAREA')
+    ) {
       return;
     }
-    // Hide bubble & menu immediately when user presses Escape or types
     closeContextMenu();
     hideBubbleImmediately();
   });
 
-  /**
-   * Open the right-click context menu anchored directly at the mouse cursor (e.clientX, e.clientY).
-   * Automatically flips upward/leftward when near screen edges or Mac Dock so it is never cut off.
-   */
   async function updateContextMenuVisibility() {
     const config = state.menuConfig || {};
     const items = contextMenu.querySelectorAll('[data-menu-key]');
@@ -1280,6 +1370,10 @@
         else if (key === 'gravity') shouldShow = state.gravityEnabled;
         else if (key === 'quota') shouldShow = state.showQuota;
       }
+      // Always show DND menu item when DND is active so user can exit DND via right-click
+      if (key === 'dnd' && state.dndPassthrough) {
+        shouldShow = true;
+      }
       item.classList.toggle('hidden', !shouldShow);
     });
 
@@ -1291,7 +1385,6 @@
       } else if (agVal === 'always') {
         agItem.classList.remove('hidden');
       } else {
-        // 'auto' or true (default): auto-hide if Antigravity is already running
         try {
           const res = await fetch('/api/antigravity/status');
           if (res.ok) {
@@ -1306,7 +1399,6 @@
       }
     }
 
-    // Clean up redundant dividers
     const children = Array.from(contextMenu.children);
     let prevWasItem = false;
     children.forEach((el) => {
@@ -1331,30 +1423,32 @@
     }
   }
 
+  // Right-click on the cat ALWAYS opens the context menu (including in DND mode to exit DND)
   container.addEventListener('contextmenu', async (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (state.dndPassthrough) return;
 
     await updateContextMenuVisibility();
 
-    // Make visible first so offsetWidth and offsetHeight are accurately measured
     contextMenu.classList.remove('hidden');
     const menuW = contextMenu.offsetWidth || 196;
     const menuH = contextMenu.offsetHeight || 275;
 
-    const minX = state.dockLeft + 8;
-    const maxX = window.innerWidth - state.dockRight - menuW - 8;
-    const minY = 8;
-    const maxY = window.innerHeight - state.dockBottom - menuH - 8;
+    const effDockLeft = state.windowMode === 'compact' ? 0 : state.dockLeft;
+    const effDockRight = state.windowMode === 'compact' ? 0 : state.dockRight;
+    const effDockBottom = state.windowMode === 'compact' ? 0 : state.dockBottom;
 
-    // Anchor at cursor; flip left if overflowing right edge, flip up if overflowing bottom/Dock edge
+    const minX = effDockLeft + 8;
+    const maxX = Math.max(minX, window.innerWidth - effDockRight - menuW - 8);
+    const minY = 8;
+    const maxY = Math.max(minY, window.innerHeight - effDockBottom - menuH - 8);
+
     let x = e.clientX;
     let y = e.clientY;
-    if (x + menuW > window.innerWidth - state.dockRight - 8) {
+    if (x + menuW > window.innerWidth - effDockRight - 8) {
       x = e.clientX - menuW;
     }
-    if (y + menuH > window.innerHeight - state.dockBottom - 8) {
+    if (y + menuH > window.innerHeight - effDockBottom - 8) {
       y = e.clientY - menuH;
     }
 
@@ -1473,7 +1567,6 @@
   }
 
   async function initSettings() {
-    // 1. Local storage fast path
     try {
       const savedScale = localStorage.getItem('anti-pet-scale');
       if (savedScale) {
@@ -1508,7 +1601,6 @@
       }
     } catch (e) {}
 
-    // 2. Load persistent settings from Server API
     if (bridge && typeof bridge.fetchSettings === 'function') {
       const remote = await bridge.fetchSettings();
       if (remote) {
@@ -1532,7 +1624,7 @@
           state.gravityEnabled = remote.gravityEnabled;
           if (gravityStatus) gravityStatus.textContent = state.gravityEnabled ? '开启' : '关闭';
         }
-        
+
         if (typeof remote.ideOnlyMode === 'boolean') {
           state.ideOnlyMode = remote.ideOnlyMode;
           if (ideOnlyStatus) ideOnlyStatus.textContent = state.ideOnlyMode ? '开启' : '关闭';
@@ -1546,7 +1638,11 @@
         if (remote.menuConfig && typeof remote.menuConfig === 'object') {
           state.menuConfig = remote.menuConfig;
         }
-        if (typeof remote.posX === 'number' && typeof remote.posY === 'number') {
+        if (
+          state.windowMode !== 'compact' &&
+          typeof remote.posX === 'number' &&
+          typeof remote.posY === 'number'
+        ) {
           const maxW = window.innerWidth - (container.offsetWidth || 136);
           const maxH = window.innerHeight - (container.offsetHeight || 136);
           const clampedX = Math.max(0, Math.min(remote.posX, maxW));
@@ -1619,10 +1715,6 @@
   });
   bridge.start();
 
-  // =========================================================================
-  // 9. Settings Center Controller (Tabs, Autostart, Updates, Skins, Dialogue)
-  // =========================================================================
-
   function openSettings() {
     closeContextMenu();
     if (ipc && ipc.isDesktop) {
@@ -1634,7 +1726,6 @@
 
   window.__openSettings = openSettings;
 
-  // Periodic check for IDE-only visibility; only show idle thought bubble if user is hovering the pet
   setInterval(async () => {
     if (state.ideOnlyMode) {
       if (bridge && typeof bridge.fetchIdeStatus === 'function') {
@@ -1679,12 +1770,3 @@
     });
   });
 })();
-
-  window.__antiPetOnModeChange = function (mode) {
-    if (mode === 'compact') {
-      document.body.classList.add('compact-mode');
-    } else {
-      document.body.classList.remove('compact-mode');
-    }
-    snapToCurrentFloor();
-  };

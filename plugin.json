@@ -1,7 +1,7 @@
 {
   "name": "anti-pet-indesktop",
   "displayName": "大肥猫桌宠挂件",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "轻量跨平台桌面/内置伴侣桌宠，实时联动 Agent 思考与执行状态，支持滚轮丝滑缩放、系统托盘常驻、额度气泡、傲娇台词与皮肤扩展。",
   "logo": "assets/icon.png",
   "author": "TianYa",
