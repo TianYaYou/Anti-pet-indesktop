@@ -293,6 +293,131 @@ mod cpu_2d_app {
     }
 
 
+
+    #[cfg(target_os = "windows")]
+    mod windows_window {
+        use windows::Win32::Foundation::{HWND, POINT};
+        use windows::Win32::Graphics::Gdi::{
+            GetMonitorInfoW, MonitorFromWindow, ScreenToClient, MONITORINFO,
+            MONITOR_DEFAULTTOPRIMARY,
+        };
+        use windows::Win32::Graphics::Dwm::{
+            DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
+        };
+        use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetCursorPos, SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+        };
+
+        extern "system" {
+            fn GetTickCount() -> u32;
+        }
+
+        #[derive(Clone, Copy, Debug, Default)]
+        pub struct TaskbarInsets {
+            pub bottom: f64,
+            pub left: f64,
+            pub right: f64,
+        }
+
+        pub fn strip_window_decorations(hwnd_isize: isize) {
+            unsafe {
+                let hwnd = HWND(hwnd_isize as *mut _);
+                let corner_pref: u32 = 1; // DWMWCP_DONOTROUND
+                let _ = DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                    &corner_pref as *const _ as *const _,
+                    std::mem::size_of::<u32>() as u32,
+                );
+                let border_color: u32 = 0xFFFFFFFE; // DWMWA_COLOR_NONE
+                let _ = DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_BORDER_COLOR,
+                    &border_color as *const _ as *const _,
+                    std::mem::size_of::<u32>() as u32,
+                );
+            }
+        }
+
+        pub fn enforce_topmost(hwnd_isize: isize) {
+            unsafe {
+                let hwnd = HWND(hwnd_isize as *mut _);
+                let _ = SetWindowPos(
+                    hwnd,
+                    Some(HWND_TOPMOST),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE,
+                );
+            }
+        }
+
+        pub fn query_taskbar_insets(hwnd_isize: isize, scale_factor: f64) -> TaskbarInsets {
+            unsafe {
+                let hwnd = HWND(hwnd_isize as *mut _);
+                let mut mi = MONITORINFO {
+                    cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                    ..Default::default()
+                };
+                let hmon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY);
+                if GetMonitorInfoW(hmon, &mut mi).as_bool() {
+                    let rc_mon = mi.rcMonitor;
+                    let rc_work = mi.rcWork;
+
+                    let scale = if scale_factor > 0.1 { scale_factor } else { 1.0 };
+                    let bottom = ((rc_mon.bottom - rc_work.bottom).max(0) as f64) / scale;
+                    let left = ((rc_work.left - rc_mon.left).max(0) as f64) / scale;
+                    let right = ((rc_mon.right - rc_work.right).max(0) as f64) / scale;
+
+                    TaskbarInsets {
+                        bottom,
+                        left,
+                        right,
+                    }
+                } else {
+                    TaskbarInsets::default()
+                }
+            }
+        }
+
+        pub fn is_user_typing_globally() -> bool {
+            unsafe {
+                let mut lii = LASTINPUTINFO {
+                    cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
+                    dwTime: 0,
+                };
+                if GetLastInputInfo(&mut lii).as_bool() {
+                    let now = GetTickCount();
+                    now.saturating_sub(lii.dwTime) < 1200
+                } else {
+                    false
+                }
+            }
+        }
+
+        pub fn get_cursor_state(hwnd_isize: isize, scale_factor: f64) -> Option<(f64, f64, f64, f64)> {
+            unsafe {
+                let hwnd = HWND(hwnd_isize as *mut _);
+                let mut pt = POINT::default();
+                if GetCursorPos(&mut pt).is_ok() {
+                    let mut client_pt = pt;
+                    let _ = ScreenToClient(hwnd, &mut client_pt);
+                    let scale = if scale_factor > 0.1 { scale_factor } else { 1.0 };
+                    let screen_x = (pt.x as f64) / scale;
+                    let screen_y = (pt.y as f64) / scale;
+                    let local_x = (client_pt.x as f64) / scale;
+                    let local_y = (client_pt.y as f64) / scale;
+                    Some((screen_x, screen_y, local_x, local_y))
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
     pub fn run_cpu_2d() -> Result<(), Box<dyn std::error::Error>> {
         let mut state_watcher = NativeStateWatcher::new();
         let mut settings = state_watcher.load_settings();
@@ -300,7 +425,7 @@ mod cpu_2d_app {
         let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
         let proxy = event_loop.create_proxy();
 
-        let (mon_width, mon_height, _mon_scale) =
+        let (mon_width, mon_height, mon_scale) =
             if let Some(monitor) = event_loop.primary_monitor() {
                 let scale = monitor.scale_factor();
                 let size = monitor.size().to_logical::<f64>(scale);
@@ -310,17 +435,23 @@ mod cpu_2d_app {
             };
 
         #[cfg(target_os = "macos")]
-        let init_dock = macos_window::query_dock_insets_global();
-        #[cfg(not(target_os = "macos"))]
+        let init_dock = {
+            let d = macos_window::query_dock_insets_global();
+            (d.bottom, d.left, d.right)
+        };
+        #[cfg(target_os = "windows")]
+        let init_dock = {
+            let insets = windows_window::query_taskbar_insets(0, mon_scale);
+            (insets.bottom, insets.left, insets.right)
+        };
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let init_dock = (0.0_f64, 0.0_f64, 0.0_f64);
-        #[cfg(target_os = "macos")]
-        let init_dock = (init_dock.bottom, init_dock.left, init_dock.right);
 
         let safe_dock_bottom = init_dock.0.max(0.0);
         let safe_dock_left = init_dock.1.max(0.0);
         let safe_dock_right = init_dock.2.max(0.0);
 
-        let floor_baseline_y = if settings.floor_mode == "bottom" || safe_dock_bottom <= 2.0 {
+        let floor_baseline_y = if safe_dock_bottom <= 2.0 {
             (mon_height - COMPACT_WIN_H).max(0.0)
         } else {
             (mon_height - COMPACT_WIN_H - safe_dock_bottom).max(0.0)
@@ -385,6 +516,11 @@ mod cpu_2d_app {
         }
 
         let window = win_builder.build(&event_loop)?;
+        #[cfg(target_os = "windows")]
+        {
+            windows_window::strip_window_decorations(window.hwnd());
+            windows_window::enforce_topmost(window.hwnd());
+        }
         let _ = window.set_ignore_cursor_events(true);
 
         let mut settings_win_builder = WindowBuilder::new()
@@ -426,7 +562,10 @@ mod cpu_2d_app {
         };
 
         #[cfg(target_os = "windows")]
-        let surface = SoftwareSurface::new_windows(window.hwnd());
+        let surface = {
+            windows_window::enforce_topmost(window.hwnd());
+            SoftwareSurface::new_windows(window.hwnd())
+        };
 
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let surface = SoftwareSurface::new_unix();
@@ -465,7 +604,6 @@ mod cpu_2d_app {
 
         let mut hit_tester = PixelHitTester::default();
         hit_tester.cat_rect = Some(physics.cat_bounding_rect());
-        #[cfg(target_os = "macos")]
         let mut last_cursor_local = (150.0_f64, 320.0_f64);
         let mut audio = NativeAudioPlayer::new(settings.sound_enabled);
         let mut menu_mgr = NativeMenuManager::new(&settings);
@@ -541,7 +679,9 @@ mod cpu_2d_app {
                 Event::NewEvents(StartCause::Init) => {
                     #[cfg(target_os = "macos")]
                     macos_window::enforce_topmost(window.ns_window());
-                    #[cfg(not(target_os = "macos"))]
+                    #[cfg(target_os = "windows")]
+                    windows_window::enforce_topmost(window.hwnd());
+                    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
                     window.set_always_on_top(true);
 
                     window.set_visible_on_all_workspaces(true);
@@ -778,6 +918,12 @@ mod cpu_2d_app {
                                                 .args(["-a", "Antigravity"])
                                                 .spawn();
                                         }
+                                        #[cfg(target_os = "windows")]
+                                        {
+                                            let _ = std::process::Command::new("cmd")
+                                                .args(["/C", "start", "", "antigravity:"])
+                                                .spawn();
+                                        }
                                     }
                                     PetMenuAction::Quit => {
                                         *control_flow = ControlFlow::Exit;
@@ -847,7 +993,15 @@ mod cpu_2d_app {
                             ((d.bottom, d.left, d.right), typing, cur)
                         };
 
-                        #[cfg(not(target_os = "macos"))]
+                        #[cfg(target_os = "windows")]
+                        let (dock, is_typing, cursor_state) = {
+                            let insets = windows_window::query_taskbar_insets(window.hwnd(), window.scale_factor());
+                            let typing = windows_window::is_user_typing_globally();
+                            let cur = windows_window::get_cursor_state(window.hwnd(), window.scale_factor());
+                            ((insets.bottom, insets.left, insets.right), typing, cur)
+                        };
+
+                        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
                         let (dock, is_typing, cursor_state) =
                             ((0.0, 0.0, 0.0), false, None::<(f64, f64, f64, f64)>);
 
@@ -870,10 +1024,7 @@ mod cpu_2d_app {
 
                         // 4. Cursor tracking, drag handling & < 1μs pixel-level alpha hit-testing
                         if let Some((screen_x, screen_y, local_x, local_y)) = cursor_state {
-                            #[cfg(target_os = "macos")]
-                            {
-                                last_cursor_local = (local_x, local_y);
-                            }
+                            last_cursor_local = (local_x, local_y);
                             if pointer_down {
                                 let dx = screen_x - drag_last_screen.0;
                                 let dy = screen_y - drag_last_screen.1;
@@ -1079,7 +1230,11 @@ mod cpu_2d_app {
                                     }
                                     #[cfg(target_os = "windows")]
                                     {
-                                        menu_mgr.show_context_menu_windows(window.hwnd(), None);
+                                        let pos = muda::dpi::LogicalPosition::new(
+                                            last_cursor_local.0.clamp(10.0, (COMPACT_WIN_W - 10.0) as f64),
+                                            last_cursor_local.1.clamp(10.0, (COMPACT_WIN_H - 10.0) as f64),
+                                        );
+                                        menu_mgr.show_context_menu_windows(window.hwnd(), Some(pos));
                                         hit_tester.is_menu_open = false;
                                     }
                                 }
@@ -1097,6 +1252,12 @@ mod cpu_2d_app {
                                     #[cfg(target_os = "macos")]
                                     if let Some((sx, sy, _, _)) =
                                         macos_window::get_cursor_state(window.ns_window(), mon_height)
+                                    {
+                                        drag_last_screen = (sx, sy);
+                                    }
+                                    #[cfg(target_os = "windows")]
+                                    if let Some((sx, sy, _, _)) =
+                                        windows_window::get_cursor_state(window.hwnd(), window.scale_factor())
                                     {
                                         drag_last_screen = (sx, sy);
                                     }
@@ -1121,6 +1282,8 @@ mod cpu_2d_app {
                                         ));
                                         #[cfg(target_os = "macos")]
                                         macos_window::enforce_topmost(window.ns_window());
+                                        #[cfg(target_os = "windows")]
+                                        windows_window::enforce_topmost(window.hwnd());
 
                                         settings.pos_x = Some(physics.win_x);
                                         settings.pos_y = Some(physics.win_y);
