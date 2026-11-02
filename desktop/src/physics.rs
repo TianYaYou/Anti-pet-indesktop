@@ -341,19 +341,11 @@ impl PetPhysics {
 
             if self.win_y >= self.target_floor_y {
                 self.win_y = self.target_floor_y;
-                if self.vy.abs() > 2.8 && self.bounces < 2 {
-                    self.vy *= -0.34;
-                    self.bounces += 1;
-                    // Impact squish on first bounce
-                    self.vel_scale_x = 0.34;
-                    self.vel_scale_y = -0.36;
-                } else {
-                    self.falling = false;
-                    self.vy = 0.0;
-                    self.vx = 0.0;
-                    self.target_scale_x = 1.0;
-                    self.target_scale_y = 1.0;
-                }
+                self.falling = false;
+                self.vy = 0.0;
+                self.vx = 0.0;
+                self.bounces = 0;
+                self.trigger_duang_rebound(480);
             }
             window_moved = true;
         }
@@ -454,5 +446,27 @@ impl PetPhysics {
             opacity: if dnd_enabled { 0.88 } else { 1.0 },
             draw_ground_shadow: self.edge_dock.is_none() && !self.falling,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_single_landing_duang_rebound() {
+        let mut physics = PetPhysics::new(100.0, 200.0);
+        physics.falling = true;
+        physics.vy = 10.0;
+        physics.target_floor_y = 500.0;
+        physics.win_y = 495.0;
+
+        // Step frame: moves win_y to 495 + 10 + 1.15 = 506.15 >= 500.0
+        let (moved, _) = physics.step_frame(1440.0, 0.0, 0.0);
+        assert!(moved);
+        assert_eq!(physics.win_y, 500.0);
+        assert!(!physics.falling, "Falling must stop immediately on floor landing");
+        assert_eq!(physics.bounces, 0, "No double physical bounces allowed");
+        assert_eq!(physics.motion, PetMotionState::Rebound);
     }
 }

@@ -241,6 +241,49 @@ mod cpu_2d_app {
         }
     }
 
+    fn open_settings_page() {
+        let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 4199));
+        let server_alive = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(150)).is_ok();
+        if !server_alive {
+            let mut server_path = std::path::PathBuf::from("server/index.js");
+            if !server_path.exists() {
+                if let Ok(exe) = std::env::current_exe() {
+                    let bundle_path = exe.parent().and_then(|p| p.parent()).map(|p| p.join("Resources/server/index.js"));
+                    if let Some(bp) = bundle_path {
+                        if bp.exists() {
+                            server_path = bp;
+                        }
+                    }
+                }
+            }
+            if server_path.exists() {
+                let _ = std::process::Command::new("node")
+                    .arg(server_path)
+                    .spawn();
+                std::thread::sleep(Duration::from_millis(500));
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            let _ = std::process::Command::new("/usr/bin/open")
+                .arg("http://127.0.0.1:4199/settings.html")
+                .spawn();
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("cmd")
+                .args(["/C", "start", "http://127.0.0.1:4199/settings.html"])
+                .spawn();
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let _ = std::process::Command::new("xdg-open")
+                .arg("http://127.0.0.1:4199/settings.html")
+                .spawn();
+        }
+    }
+
     pub fn run_cpu_2d() -> Result<(), Box<dyn std::error::Error>> {
         let state_watcher = NativeStateWatcher::new();
         let mut settings = state_watcher.load_settings();
@@ -467,6 +510,16 @@ mod cpu_2d_app {
                         while let Ok(menu_evt) = MenuEvent::receiver().try_recv() {
                             if let Some(action) = menu_mgr.resolve_event(&menu_evt.id) {
                                 match action {
+                                    PetMenuAction::OpenSettings => {
+                                        audio.play(SoundEffect::ClickRelease);
+                                        bubble.text = "已为你打开偏好设置~".to_string();
+                                        bubble.visible = !settings.dnd_passthrough;
+                                        bubble.opacity = 1.0;
+                                        bubble_hide_deadline =
+                                            Some(Instant::now() + Duration::from_millis(3500));
+                                        open_settings_page();
+                                        dirty_frame = true;
+                                    }
                                     PetMenuAction::NextDialogue => {
                                         audio.play(SoundEffect::ClickRelease);
                                         bubble.text = pick_random_line(IDLE_DIALOGUES).to_string();
@@ -763,15 +816,54 @@ mod cpu_2d_app {
                         }
                     }
 
+                    WindowEvent::MouseWheel { delta, .. } => {
+                        if settings.dnd_passthrough {
+                            return;
+                        }
+                        if last_over_cat {
+                            let delta_y = match delta {
+                                tao::event::MouseScrollDelta::LineDelta(_, y) => (y as f64) * 16.0,
+                                tao::event::MouseScrollDelta::PixelDelta(pos) => pos.y,
+                                _ => 0.0,
+                            };
+                            if delta_y.abs() > 0.1 {
+                                let zoom_factor = (-delta_y * 0.003).exp() as f32;
+                                let new_scale = (physics.zoom_scale * zoom_factor).clamp(0.60, 1.80);
+                                let rounded_scale = (new_scale * 100.0).round() / 100.0;
+                                if (rounded_scale - physics.zoom_scale).abs() >= 0.01 {
+                                    physics.zoom_scale = rounded_scale;
+                                    settings.scale = rounded_scale;
+                                    physics.trigger_duang_rebound(300);
+                                    bubble.text = format!("体型缩放: {:.0}%", rounded_scale * 100.0);
+                                    bubble.visible = true;
+                                    bubble.opacity = 1.0;
+                                    bubble_hide_deadline =
+                                        Some(Instant::now() + Duration::from_millis(2400));
+                                    state_watcher.save_settings(&settings);
+                                    dirty_frame = true;
+                                }
+                            }
+                        }
+                    }
+
                     WindowEvent::MouseInput { state, button, .. } => match button {
                         TaoMouseButton::Right => {
                             if state == ElementState::Pressed {
                                 pointer_down = false;
                                 is_dragging = false;
+                                audio.play(SoundEffect::ClickPress);
+
                                 #[cfg(target_os = "macos")]
-                                menu_mgr.show_context_menu_macos(window.ns_view());
+                                {
+                                    let mouse_pos = macos_window::get_cursor_state(
+                                        window.ns_window(),
+                                        mon_height,
+                                    )
+                                    .map(|(_, _, lx, ly)| muda::dpi::LogicalPosition::new(lx, ly));
+                                    menu_mgr.show_context_menu_macos(window.ns_view(), mouse_pos);
+                                }
                                 #[cfg(target_os = "windows")]
-                                menu_mgr.show_context_menu_windows(window.hwnd());
+                                menu_mgr.show_context_menu_windows(window.hwnd(), None);
                             }
                         }
 

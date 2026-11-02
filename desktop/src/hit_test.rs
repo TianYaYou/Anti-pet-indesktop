@@ -62,6 +62,11 @@ impl PixelHitTester {
         if logical_x < 0.0 || logical_y < 0.0 {
             return false;
         }
+        let max_w = (pixmap.width as f64) / dpi_scale.max(1.0);
+        let max_h = (pixmap.height as f64) / dpi_scale.max(1.0);
+        if logical_x > max_w || logical_y > max_h {
+            return false;
+        }
 
         // Check active thought bubble rectangle first (when not in DND mode)
         if !dnd_mode {

@@ -24,7 +24,6 @@ impl Default for QuotaSnapshot {
 
 #[derive(Clone, Debug)]
 struct EndpointCandidate {
-    pid: u32,
     csrf_token: String,
     ports: Vec<u16>,
     priority: u8,
@@ -179,7 +178,6 @@ fn discover_language_servers() -> Vec<EndpointCandidate> {
 
             if !ports.is_empty() {
                 out_list.push(EndpointCandidate {
-                    pid,
                     csrf_token,
                     ports,
                     priority,
@@ -289,72 +287,233 @@ fn call_connect_rpc(port: u16, is_https: bool, csrf_token: &str, rpc_method: &st
     }
 }
 
+/// Parses an ISO-8601 UTC timestamp (e.g. `2026-11-08T14:21:23Z`) into unix epoch seconds.
+pub fn parse_iso8601_to_unix(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if s.len() < 19 {
+        return None;
+    }
+    let year: i32 = s.get(0..4)?.parse().ok()?;
+    let month: u32 = s.get(5..7)?.parse().ok()?;
+    let day: u32 = s.get(8..10)?.parse().ok()?;
+    let hour: u32 = s.get(11..13)?.parse().ok()?;
+    let min: u32 = s.get(14..16)?.parse().ok()?;
+    let sec: u32 = s.get(17..19)?.parse().ok()?;
+
+    if month < 1 || month > 12 || day < 1 || day > 31 || hour > 23 || min > 59 || sec > 59 {
+        return None;
+    }
+
+    // Howard Hinnant algorithm for civil calendar days to unix epoch days
+    let y = if month <= 2 { year - 1 } else { year } as i64;
+    let m = if month <= 2 { month + 12 } else { month } as i64;
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (m - 3) + 2) / 5 + (day as i64) - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146097 + doe - 719468;
+
+    Some(days * 86400 + (hour as i64) * 3600 + (min as i64) * 60 + (sec as i64))
+}
+
+/// Formats a target ISO-8601 timestamp string into a concise reset countdown (e.g. `4h 11m`, `6d 6h`).
+pub fn format_reset_countdown(reset_time_raw: &str) -> String {
+    let target_unix = if let Some(sec) = parse_iso8601_to_unix(reset_time_raw) {
+        sec
+    } else if let Ok(num) = reset_time_raw.trim().parse::<i64>() {
+        if num > 1_000_000_000_000 {
+            num / 1000
+        } else {
+            num
+        }
+    } else {
+        return String::new();
+    };
+
+    let now_unix = match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(dur) => dur.as_secs() as i64,
+        Err(_) => return String::new(),
+    };
+
+    let diff_sec = (target_unix - now_unix).max(0);
+    if diff_sec <= 0 {
+        return "即将重置".to_string();
+    }
+
+    let days = diff_sec / 86400;
+    let hours = (diff_sec % 86400) / 3600;
+    let mins = (diff_sec % 3600) / 60;
+
+    if days > 0 {
+        format!("{}d {}h", days, hours)
+    } else if hours > 0 {
+        format!("{}h {}m", hours, mins)
+    } else {
+        format!("{}m", mins)
+    }
+}
+
+/// Extracts a string property value enclosed in quotes: `"key": "value"`
+fn extract_string_prop(obj_str: &str, key: &str) -> Option<String> {
+    let pattern = format!("\"{}\"", key);
+    let idx = obj_str.find(&pattern)?;
+    let after_key = &obj_str[idx + pattern.len()..];
+    let colon = after_key.find(':')?;
+    let after_colon = after_key[colon + 1..].trim_start();
+    let quote_start = after_colon.find('"')?;
+    let rest = &after_colon[quote_start + 1..];
+    let quote_end = rest.find('"')?;
+    Some(rest[..quote_end].to_string())
+}
+
+/// Extracts a float property value: `"key": 0.85` or `"key": "0.85"`
+fn extract_float_prop(obj_str: &str, key: &str) -> Option<f32> {
+    let pattern = format!("\"{}\"", key);
+    let idx = obj_str.find(&pattern)?;
+    let after_key = &obj_str[idx + pattern.len()..];
+    let colon = after_key.find(':')?;
+    let after_colon = after_key[colon + 1..].trim_start();
+    let num_str: String = after_colon
+        .trim_start_matches('"')
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
+        .collect();
+    num_str.parse::<f32>().ok()
+}
+
 /// Zero-dependency parser for `RetrieveUserQuotaSummary` and `GetUserStatus` JSON responses.
+/// Faithfully reproduces the logic in `server/quota-probe.js`.
 pub fn parse_quota_json(json: &str) -> Option<QuotaSnapshot> {
     if !json.contains("remainingFraction") && !json.contains("remaining_fraction") {
         return None;
     }
 
-    let mut five_hour: Option<f32> = None;
-    let mut weekly: Option<f32> = None;
+    let mut gemini_5h: Option<(f32, String)> = None; // (pct, reset_label)
+    let mut gemini_weekly: Option<(f32, String)> = None;
+    let mut fallback_5h: Option<(f32, String)> = None;
+    let mut fallback_weekly: Option<(f32, String)> = None;
 
-    // Scan JSON object segments around each `remainingFraction` / `remaining_fraction`
+    // Scan individual JSON bucket objects delimited by '{' and '}'
     for key in ["\"remainingFraction\"", "\"remaining_fraction\""] {
         let mut search_from = 0usize;
         while let Some(rel_pos) = json[search_from..].find(key) {
             let pos = search_from + rel_pos;
             search_from = pos + key.len();
 
-            let after_key = &json[search_from..];
-            let Some(colon) = after_key.find(':') else {
+            // Find the opening '{' before pos and closing '}' after pos
+            let Some(open_brace) = json[..pos].rfind('{') else {
                 continue;
             };
-            let val_part = after_key[colon + 1..].trim_start();
-            let num_str: String = val_part
-                .trim_start_matches('"')
-                .chars()
-                .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
-                .collect();
-            let Ok(frac) = num_str.parse::<f32>() else {
+            let Some(close_offset) = json[pos..].find('}') else {
                 continue;
             };
-            let pct = (frac.clamp(0.0, 1.0) * 1000.0).round() / 10.0;
+            let close_brace = pos + close_offset;
+            let bucket_obj = &json[open_brace..=close_brace];
 
-            let ctx_start = pos.saturating_sub(260);
-            let ctx_end = (pos + 260).min(json.len());
-            let context = json[ctx_start..ctx_end].to_lowercase();
-
-            if context.contains("claude") || context.contains("gpt") || context.contains("3p") {
+            let frac = extract_float_prop(bucket_obj, "remainingFraction")
+                .or_else(|| extract_float_prop(bucket_obj, "remaining_fraction"))
+                .or_else(|| extract_float_prop(bucket_obj, "fraction"));
+            let Some(f) = frac else {
                 continue;
-            }
+            };
+            let pct = (f.clamp(0.0, 1.0) * 1000.0).round() / 10.0;
 
-            if context.contains("week") || context.contains("7d") {
-                weekly = Some(weekly.map_or(pct, |prev| prev.min(pct)));
-            } else if context.contains("5h")
-                || context.contains("five")
-                || context.contains("session")
-                || context.contains("gemini")
-            {
-                five_hour = Some(five_hour.map_or(pct, |prev| prev.min(pct)));
-            } else if five_hour.is_none() {
-                five_hour = Some(pct);
-            } else if weekly.is_none() {
-                weekly = Some(pct);
+            let bucket_id = extract_string_prop(bucket_obj, "bucketId")
+                .or_else(|| extract_string_prop(bucket_obj, "bucket_id"))
+                .or_else(|| extract_string_prop(bucket_obj, "id"))
+                .unwrap_or_default()
+                .to_lowercase();
+
+            let window = extract_string_prop(bucket_obj, "window")
+                .or_else(|| extract_string_prop(bucket_obj, "cadence"))
+                .or_else(|| extract_string_prop(bucket_obj, "windowType"))
+                .unwrap_or_default()
+                .to_lowercase();
+
+            let reset_time = extract_string_prop(bucket_obj, "resetTime")
+                .or_else(|| extract_string_prop(bucket_obj, "reset_time"))
+                .unwrap_or_default();
+            let reset_label = format_reset_countdown(&reset_time);
+
+            let is_third_party = bucket_id.contains("3p")
+                || bucket_id.contains("claude")
+                || bucket_id.contains("gpt");
+            let is_gemini = !is_third_party
+                || bucket_id.contains("gemini")
+                || bucket_obj.to_lowercase().contains("gemini models");
+
+            let is_5h = bucket_id.contains("5h")
+                || bucket_id.contains("session")
+                || window.contains("5h")
+                || window.contains("five")
+                || window.contains("session");
+
+            let is_weekly = bucket_id.contains("week")
+                || bucket_id.contains("7d")
+                || window.contains("week")
+                || window.contains("7d");
+
+            if is_gemini && is_5h {
+                if gemini_5h.is_none() || bucket_id == "gemini-5h" || pct < gemini_5h.as_ref().unwrap().0 {
+                    gemini_5h = Some((pct, reset_label));
+                }
+            } else if is_gemini && is_weekly {
+                if gemini_weekly.is_none() || bucket_id == "gemini-weekly" || pct < gemini_weekly.as_ref().unwrap().0 {
+                    gemini_weekly = Some((pct, reset_label));
+                }
+            } else if is_5h && fallback_5h.is_none() {
+                fallback_5h = Some((pct, reset_label));
+            } else if is_weekly && fallback_weekly.is_none() {
+                fallback_weekly = Some((pct, reset_label));
             }
         }
     }
 
-    let fh = five_hour.or(weekly)?;
-    let wk = weekly.unwrap_or(fh);
+    let chosen_5h = gemini_5h.or(fallback_5h);
+    let chosen_weekly = gemini_weekly.or(fallback_weekly);
+
+    if chosen_5h.is_none() && chosen_weekly.is_none() {
+        return None;
+    }
+
+    let fh = chosen_5h.as_ref().map(|x| x.0).or_else(|| chosen_weekly.as_ref().map(|x| x.0))?;
+    let wk = chosen_weekly.as_ref().map(|x| x.0).unwrap_or(fh);
+
+    let reset_5h = chosen_5h.as_ref().map(|x| x.1.as_str()).unwrap_or("");
+    let reset_wk = chosen_weekly.as_ref().map(|x| x.1.as_str()).unwrap_or("");
+
+    let meta = match (!reset_5h.is_empty(), !reset_wk.is_empty()) {
+        (true, true) => format!("5h重置 {} · 周重置 {}", reset_5h, reset_wk),
+        (true, false) => format!("5h重置 {}", reset_5h),
+        (false, true) => format!("周重置 {}", reset_wk),
+        (false, false) => "Antigravity 实时额度已同步".to_string(),
+    };
 
     Some(QuotaSnapshot {
         five_hour: fh,
         weekly: wk,
-        meta: "Antigravity 实时额度已同步".to_string(),
-        source: if weekly.is_some() {
-            "antigravity-live".to_string()
-        } else {
-            "antigravity-user-status".to_string()
-        },
+        meta,
+        source: "antigravity-live".to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_iso8601() {
+        assert_eq!(parse_iso8601_to_unix("1970-01-01T00:00:00Z"), Some(0));
+        assert!(parse_iso8601_to_unix("2026-11-08T14:21:23Z").is_some());
+    }
+
+    #[test]
+    fn test_parse_real_antigravity_quota_json() {
+        let json = r#"{"response":{"groups":[{"displayName":"Gemini Models", "description":"Models within this group: Gemini Flash, Gemini Pro", "buckets":[{"bucketId":"gemini-weekly", "displayName":"Weekly Limit Remaining", "description":"You have used some of your weekly limit, it will fully refresh in 6 days, 6 hours.", "window":"weekly", "remainingFraction":0.80794483, "resetTime":"2026-11-08T14:21:23Z"}, {"bucketId":"gemini-5h", "displayName":"Five Hour Limit Remaining", "description":"You have used some of your 5-hour limit, it will fully refresh in 4 hours, 12 minutes.", "window":"5h", "remainingFraction":0.9409432, "resetTime":"2026-11-02T11:55:01Z"}]}, {"displayName":"Claude and GPT models", "description":"Models within this group: Claude Opus, Claude Sonnet, GPT-OSS", "buckets":[{"bucketId":"3p-weekly", "displayName":"Weekly Limit Remaining", "description":"You have used some of your weekly limit, it will fully refresh in 6 days, 17 hours.", "window":"weekly", "remainingFraction":0.5344932, "resetTime":"2026-11-09T01:28:46Z"}, {"bucketId":"3p-5h", "displayName":"Five Hour Limit Remaining", "window":"5h", "remainingFraction":1, "resetTime":"2026-11-02T12:42:05Z"}]}]}}"#;
+        let snap = parse_quota_json(json).expect("should parse real response");
+        assert_eq!(snap.five_hour, 94.1);
+        assert_eq!(snap.weekly, 80.8);
+        assert!(snap.meta.contains("5h重置"));
+        assert!(snap.meta.contains("周重置"));
+    }
 }

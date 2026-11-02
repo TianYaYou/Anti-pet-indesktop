@@ -50,35 +50,35 @@ impl ThoughtBubble {
 
         let alpha_scale = self.opacity.clamp(0.0, 1.0);
         let char_count = self.text.chars().count();
-        let text_lines = ((char_count as f32) / 15.0).ceil().max(1.0) as usize;
+        let text_lines = ((char_count as f32) / 14.0).ceil().max(1.0) as usize;
 
-        let card_w: f32 = 244.0;
-        let text_block_h: f32 = (text_lines as f32) * 19.0 + 18.0;
+        let card_w: f32 = 220.0;
+        let text_block_h: f32 = (text_lines as f32) * 18.0 + 16.0;
         let quota_block_h: f32 = if self.show_quota { 54.0 } else { 0.0 };
-        let card_h: f32 = (text_block_h + quota_block_h + 12.0).clamp(52.0, 165.0);
+        let card_h: f32 = (text_block_h + quota_block_h + 10.0).clamp(48.0, 160.0);
 
         let win_logical_w = (pixmap.width as f32) / dpi_scale.max(1.0);
 
         // Ideal centered X above the cat, clamped inside both window and monitor bounds
-        let mut card_x = (cat_anchor_x - card_w * 0.5).clamp(10.0, (win_logical_w - card_w - 10.0).max(10.0));
+        let mut card_x = (cat_anchor_x - card_w * 0.5).clamp(8.0, (win_logical_w - card_w - 8.0).max(8.0));
 
         // Screen-edge horizontal shift if the window itself is near left or right screen edges
         let screen_card_left = (win_x as f32) + card_x;
         let screen_card_right = screen_card_left + card_w;
-        if screen_card_left < 12.0 {
-            card_x = (12.0 - (win_x as f32)).clamp(6.0, (win_logical_w - card_w - 6.0).max(6.0));
-        } else if screen_card_right > (mon_w as f32) - 12.0 {
-            let shift = screen_card_right - ((mon_w as f32) - 12.0);
+        if screen_card_left < 10.0 {
+            card_x = (10.0 - (win_x as f32)).clamp(6.0, (win_logical_w - card_w - 6.0).max(6.0));
+        } else if screen_card_right > (mon_w as f32) - 10.0 {
+            let shift = screen_card_right - ((mon_w as f32) - 10.0);
             card_x = (card_x - shift).clamp(6.0, (win_logical_w - card_w - 6.0).max(6.0));
         }
 
         // Place bubble above the cat's head; if near the top of the screen, place slightly lower
         let space_above_screen = (win_y as f32) + cat_top_y;
-        let place_below_head = space_above_screen < (card_h + 36.0);
+        let place_below_head = space_above_screen < (card_h + 34.0);
         let card_y = if place_below_head {
-            (cat_top_y + 18.0).clamp(8.0, 190.0)
+            (cat_top_y + 16.0).clamp(6.0, 190.0)
         } else {
-            (cat_top_y - card_h - 24.0).max(8.0)
+            (cat_top_y - card_h - 22.0).max(6.0)
         };
 
         let s = dpi_scale;
@@ -86,105 +86,75 @@ impl ThoughtBubble {
         let px_y = card_y * s;
         let px_w = card_w * s;
         let px_h = card_h * s;
-        let radius = 20.0 * s;
+        let radius = 24.0 * s;
 
-        let shadow_a = (38.0 * alpha_scale).round() as u8;
-        let fill_a = (248.0 * alpha_scale).round() as u8;
-        let border_a = (225.0 * alpha_scale).round() as u8;
+        let shadow_a = (36.0 * alpha_scale).round() as u8;
+        let fill_a = (246.0 * alpha_scale).round() as u8;
+        let border_a = (220.0 * alpha_scale).round() as u8;
 
         // 1. Draw the two thought-cloud connector dots (`o -> O`) between cat head and cloud card
-        let dot_anchor_x = cat_anchor_x.clamp(card_x + 28.0, card_x + card_w - 28.0);
+        let dot_anchor_x = cat_anchor_x.clamp(card_x + 24.0, card_x + card_w - 24.0);
         let (small_dot_y, big_dot_y) = if place_below_head {
             (cat_top_y + 4.0, card_y - 6.0)
         } else {
-            (cat_top_y - 6.0, card_y + card_h + 7.0)
+            (cat_top_y - 5.0, card_y + card_h + 6.0)
         };
-        let small_dot_x = dot_anchor_x + if dot_anchor_x >= card_x + card_w * 0.5 { 6.0 } else { -6.0 };
+        let small_dot_x = dot_anchor_x + if dot_anchor_x >= card_x + card_w * 0.5 { 5.0 } else { -5.0 };
         let big_dot_x = dot_anchor_x;
 
-        // Small dot `o` (radius 4.5px)
+        // Small dot `o` (radius 3.8px)
         pixmap.draw_rounded_rect_shadow(
-            (small_dot_x - 4.5) * s,
-            (small_dot_y - 4.5) * s,
-            9.0 * s,
-            9.0 * s,
-            4.5 * s,
-            5.0 * s,
-            2.0 * s,
+            (small_dot_x - 3.8) * s,
+            (small_dot_y - 3.8) * s,
+            7.6 * s,
+            7.6 * s,
+            3.8 * s,
+            4.0 * s,
+            1.5 * s,
             [15, 23, 42, shadow_a / 2],
         );
         pixmap.fill_circle_sdf(
             small_dot_x * s,
             small_dot_y * s,
-            4.5 * s,
+            3.8 * s,
             [255, 255, 255, fill_a],
             1.4 * s,
             [203, 213, 225, border_a],
         );
 
-        // Medium dot `O` (radius 7.5px)
+        // Medium dot `O` (radius 6.5px)
         pixmap.draw_rounded_rect_shadow(
-            (big_dot_x - 7.5) * s,
-            (big_dot_y - 7.5) * s,
-            15.0 * s,
-            15.0 * s,
-            7.5 * s,
-            6.0 * s,
-            2.5 * s,
+            (big_dot_x - 6.5) * s,
+            (big_dot_y - 6.5) * s,
+            13.0 * s,
+            13.0 * s,
+            6.5 * s,
+            5.0 * s,
+            2.0 * s,
             [15, 23, 42, shadow_a / 2],
         );
         pixmap.fill_circle_sdf(
             big_dot_x * s,
             big_dot_y * s,
-            7.5 * s,
+            6.5 * s,
             [255, 255, 255, fill_a],
             1.5 * s,
             [203, 213, 225, border_a],
         );
 
-        // 2. Draw soft drop shadow + main cloud bubble card
+        // 2. Draw soft drop shadow + clean rounded thought card
         pixmap.draw_rounded_rect_shadow(
             px_x,
             px_y,
             px_w,
             px_h,
             radius,
-            12.0 * s,
-            4.0 * s,
+            14.0 * s,
+            4.5 * s,
             [15, 23, 42, shadow_a],
         );
 
-        // Decorative cloud puffs along top edge for a soft cartoon cloud silhouette
-        let puff1_cx = (card_x + card_w * 0.28) * s;
-        let puff2_cx = (card_x + card_w * 0.56) * s;
-        let puff3_cx = (card_x + card_w * 0.78) * s;
-        let puff_cy = (card_y + 3.0) * s;
-        pixmap.fill_circle_sdf(
-            puff1_cx,
-            puff_cy,
-            14.0 * s,
-            [255, 255, 255, fill_a],
-            1.2 * s,
-            [216, 224, 235, border_a],
-        );
-        pixmap.fill_circle_sdf(
-            puff2_cx,
-            puff_cy - 2.0 * s,
-            17.0 * s,
-            [255, 255, 255, fill_a],
-            1.2 * s,
-            [216, 224, 235, border_a],
-        );
-        pixmap.fill_circle_sdf(
-            puff3_cx,
-            puff_cy + 1.0 * s,
-            13.0 * s,
-            [255, 255, 255, fill_a],
-            1.2 * s,
-            [216, 224, 235, border_a],
-        );
-
-        // Main rounded cloud body
+        // Main rounded card body
         pixmap.fill_rounded_rect_sdf(
             px_x,
             px_y,
@@ -192,7 +162,7 @@ impl ThoughtBubble {
             px_h,
             radius,
             [255, 255, 255, fill_a],
-            1.5 * s,
+            1.6 * s,
             [214, 222, 234, border_a],
         );
 
@@ -674,5 +644,32 @@ mod macos_text {
 
         CGContextRelease(cg_ctx);
         CGColorSpaceRelease(color_space);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bubble_draw() {
+        let mut pixmap = Pixmap::new(400, 400);
+        let bubble = ThoughtBubble {
+            visible: true,
+            text: "本喵随时待命~".to_string(),
+            show_quota: true,
+            five_hour_pct: 95.0,
+            weekly_pct: 80.0,
+            quota_meta: "5h重置 4h 11m · 周重置 6d 6h".to_string(),
+            opacity: 1.0,
+        };
+        let rect = bubble.draw(&mut pixmap, 200.0, 300.0, 100.0, 100.0, 1440.0, 1.0);
+        assert!(rect.is_some());
+        let r = rect.unwrap();
+        assert!(r.w > 180.0);
+        assert!(r.h > 45.0);
+        let center_px = (r.x + r.w * 0.5) as i32;
+        let center_py = (r.y + r.h * 0.5) as i32;
+        assert!(pixmap.alpha_at_physical(center_px, center_py) > 200);
     }
 }

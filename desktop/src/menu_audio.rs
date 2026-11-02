@@ -130,6 +130,7 @@ impl NativeAudioPlayer {
 /// High-level action decoded from either the Tray Menu or the Right-Click Context Menu.
 #[derive(Clone, Debug, PartialEq)]
 pub enum PetMenuAction {
+    OpenSettings,
     NextDialogue,
     PetHead,
     RefreshQuota,
@@ -147,6 +148,7 @@ pub enum PetMenuAction {
 /// Native OS Menu Manager (`muda`) serving both the System Tray Menu and the Right-Click Context Menu.
 pub struct NativeMenuManager {
     pub menu: Menu,
+    id_settings: MenuId,
     id_next_dialogue: MenuId,
     id_pet_head: MenuId,
     id_refresh_quota: MenuId,
@@ -175,6 +177,9 @@ impl NativeMenuManager {
         sound_enabled: bool,
     ) -> Self {
         let menu = Menu::new();
+
+        let item_settings = MenuItem::new("偏好设置...", true, None);
+        let sep0 = PredefinedMenuItem::separator();
 
         let item_next_dialogue = MenuItem::new("换一句傲娇台词", true, None);
         let item_pet_head = MenuItem::new("摸摸猫猫头", true, None);
@@ -229,6 +234,8 @@ impl NativeMenuManager {
         let item_quit = MenuItem::new("退出", true, None);
 
         let _ = menu.append_items(&[
+            &item_settings,
+            &sep0,
             &item_next_dialogue,
             &item_pet_head,
             &item_refresh_quota,
@@ -249,6 +256,7 @@ impl NativeMenuManager {
 
         Self {
             menu,
+            id_settings: item_settings.id().clone(),
             id_next_dialogue: item_next_dialogue.id().clone(),
             id_pet_head: item_pet_head.id().clone(),
             id_refresh_quota: item_refresh_quota.id().clone(),
@@ -271,24 +279,28 @@ impl NativeMenuManager {
 
     /// Pops up the native OS context menu right at the current cursor position on right-click!
     #[cfg(target_os = "macos")]
-    pub fn show_context_menu_macos(&self, ns_view: *mut c_void) {
+    pub fn show_context_menu_macos(&self, ns_view: *mut c_void, pos: Option<muda::dpi::LogicalPosition<f64>>) {
         if ns_view.is_null() {
             return;
         }
         unsafe {
-            let _ = self.menu.show_context_menu_for_nsview(ns_view, None);
+            let pos_muda = pos.map(muda::dpi::Position::Logical);
+            let _ = self.menu.show_context_menu_for_nsview(ns_view, pos_muda);
         }
     }
 
     #[cfg(target_os = "windows")]
-    pub fn show_context_menu_windows(&self, hwnd: isize) {
+    pub fn show_context_menu_windows(&self, hwnd: isize, pos: Option<muda::dpi::LogicalPosition<f64>>) {
         unsafe {
-            let _ = self.menu.show_context_menu_for_hwnd(hwnd, None);
+            let pos_muda = pos.map(muda::dpi::Position::Logical);
+            let _ = self.menu.show_context_menu_for_hwnd(hwnd, pos_muda);
         }
     }
 
     pub fn resolve_event(&self, id: &MenuId) -> Option<PetMenuAction> {
-        if *id == self.id_next_dialogue {
+        if *id == self.id_settings {
+            Some(PetMenuAction::OpenSettings)
+        } else if *id == self.id_next_dialogue {
             Some(PetMenuAction::NextDialogue)
         } else if *id == self.id_pet_head {
             Some(PetMenuAction::PetHead)
