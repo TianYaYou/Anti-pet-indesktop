@@ -70,6 +70,7 @@ mod cpu_2d_app {
         QuotaUpdated(QuotaSnapshot),
         HookStateChanged(HookStateUpdate),
         CloseSettings,
+        ResetPosition,
     }
 
 
@@ -241,6 +242,32 @@ mod cpu_2d_app {
                 }
             }
         }
+
+        pub fn query_dock_insets_global() -> DockInsets {
+            unsafe {
+                let cls = objc_getClass(b"NSScreen\0".as_ptr());
+                if cls.is_null() {
+                    return DockInsets::default();
+                }
+                let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+                    std::mem::transmute(objc_msgSend as *const ());
+                let screen = msg_ptr(cls, sel(b"mainScreen\0"));
+                if screen.is_null() {
+                    return DockInsets::default();
+                }
+
+                let full_frame = msg_send_rect(screen, sel(b"frame\0"));
+                let vis_frame = msg_send_rect(screen, sel(b"visibleFrame\0"));
+
+                DockInsets {
+                    bottom: (vis_frame.origin.y - full_frame.origin.y).max(0.0),
+                    left: (vis_frame.origin.x - full_frame.origin.x).max(0.0),
+                    right: ((full_frame.origin.x + full_frame.size.width)
+                        - (vis_frame.origin.x + vis_frame.size.width))
+                    .max(0.0),
+                }
+            }
+        }
     }
 
     fn ensure_backend_server() {
@@ -284,13 +311,43 @@ mod cpu_2d_app {
                 (1440.0, 900.0, 2.0)
             };
 
-        let foot_pad_bottom = (COMPACT_WIN_H - 386.0).max(0.0);
-        let default_x = settings
-            .pos_x
-            .unwrap_or_else(|| (mon_width - COMPACT_WIN_W - 28.0).max(0.0));
-        let default_y = settings
-            .pos_y
-            .unwrap_or_else(|| (mon_height - COMPACT_WIN_H + foot_pad_bottom).max(0.0));
+        #[cfg(target_os = "macos")]
+        let init_dock = macos_window::query_dock_insets_global();
+        #[cfg(not(target_os = "macos"))]
+        let init_dock = (0.0_f64, 0.0_f64, 0.0_f64);
+        #[cfg(target_os = "macos")]
+        let init_dock = (init_dock.bottom, init_dock.left, init_dock.right);
+
+        let safe_dock_bottom = init_dock.0.max(0.0);
+        let safe_dock_left = init_dock.1.max(0.0);
+        let safe_dock_right = init_dock.2.max(0.0);
+
+        let floor_baseline_y = if settings.floor_mode == "bottom" || safe_dock_bottom <= 2.0 {
+            (mon_height - COMPACT_WIN_H).max(0.0)
+        } else {
+            (mon_height - COMPACT_WIN_H - safe_dock_bottom).max(0.0)
+        };
+
+        let min_safe_x = safe_dock_left;
+        let max_safe_x = (mon_width - safe_dock_right - COMPACT_WIN_W).max(min_safe_x);
+
+        let default_x = match settings.pos_x {
+            Some(x) => x.clamp(min_safe_x, max_safe_x),
+            None => (max_safe_x - 24.0).max(min_safe_x),
+        };
+        let default_y = match settings.pos_y {
+            Some(y) => {
+                if settings.floor_mode == "free" || !settings.gravity_enabled {
+                    y.clamp(0.0, floor_baseline_y)
+                } else {
+                    y.min(floor_baseline_y).max(0.0)
+                }
+            }
+            None => floor_baseline_y,
+        };
+
+        settings.pos_x = Some(default_x);
+        settings.pos_y = Some(default_y);
 
         let tray_rgba = include_bytes!("../../assets/tray.rgba");
         let win_icon = tao::window::Icon::from_rgba(tray_rgba.to_vec(), 32, 32).ok();
@@ -351,6 +408,8 @@ mod cpu_2d_app {
                 let body = req.body();
                 if body == "close_settings" {
                     let _ = settings_ipc_proxy.send_event(AppEvent::CloseSettings);
+                } else if body == "reset_position" || body == "reset_center" {
+                    let _ = settings_ipc_proxy.send_event(AppEvent::ResetPosition);
                 }
             })
             .with_url("http://127.0.0.1:4199/settings.html")
@@ -524,6 +583,32 @@ mod cpu_2d_app {
                         settings_window.set_visible(false);
                     }
 
+                    AppEvent::ResetPosition => {
+                        let center_x = ((mon_width - COMPACT_WIN_W) * 0.5).max(0.0);
+                        let center_y = ((mon_height - COMPACT_WIN_H) * 0.5).max(0.0);
+
+                        physics.win_x = center_x;
+                        physics.win_y = center_y;
+                        physics.target_floor_y = center_y;
+                        physics.falling = false;
+                        physics.vx = 0.0;
+                        physics.vy = 0.0;
+                        physics.edge_dock = None;
+                        physics.trigger_duang_rebound(420);
+
+                        window.set_outer_position(LogicalPosition::new(center_x, center_y));
+                        settings.pos_x = Some(center_x);
+                        settings.pos_y = Some(center_y);
+                        state_watcher.save_settings(&settings);
+
+                        audio.play(SoundEffect::PopRelease);
+                        bubble.text = "已将本喵复位至屏幕中央啦~".to_string();
+                        bubble.visible = true;
+                        bubble.opacity = 1.0;
+                        bubble_hide_deadline = Some(Instant::now() + Duration::from_millis(3500));
+                        dirty_frame = true;
+                    }
+
                     AppEvent::Tick25ms => {
 
 
@@ -543,6 +628,10 @@ mod cpu_2d_app {
                                         settings_window.set_focus();
                                         let _ = settings_webview.load_url("http://127.0.0.1:4199/settings.html");
                                         dirty_frame = true;
+                                    }
+
+                                    PetMenuAction::ResetPosition => {
+                                        let _ = proxy.send_event(AppEvent::ResetPosition);
                                     }
 
                                     PetMenuAction::NextDialogue => {
@@ -682,6 +771,17 @@ mod cpu_2d_app {
                             physics.floor_mode = new_settings.floor_mode.clone();
                             audio.enabled = new_settings.sound_enabled;
                             bubble.show_quota = new_settings.show_quota;
+
+                            let should_reset = (new_settings.reset_seq.is_some()
+                                && new_settings.reset_seq != settings.reset_seq)
+                                || (new_settings.pos_x.is_none()
+                                    && new_settings.pos_y.is_none()
+                                    && (settings.pos_x.is_some() || settings.pos_y.is_some()));
+
+                            if should_reset {
+                                let _ = proxy.send_event(AppEvent::ResetPosition);
+                            }
+
                             settings = new_settings;
                             dirty_frame = true;
                         }

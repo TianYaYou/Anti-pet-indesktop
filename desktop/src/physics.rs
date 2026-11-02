@@ -94,7 +94,7 @@ impl PetPhysics {
             bounces: 0,
             target_floor_y: init_win_y,
             gravity_enabled: true,
-            floor_mode: "bottom".to_string(),
+            floor_mode: "taskbar".to_string(),
             zoom_scale: 1.0,
             scale_x: 1.0,
             scale_y: 1.0,
@@ -150,8 +150,9 @@ impl PetPhysics {
         self.motion = PetMotionState::Dragging;
         self.motion_until = None;
 
-        self.win_x = (self.win_x + dx).clamp(-120.0, mon_w - COMPACT_WIN_W + 120.0);
-        self.win_y = (self.win_y + dy).clamp(0.0, mon_h - COMPACT_WIN_H + 40.0);
+        let max_drag_y = (mon_h - COMPACT_WIN_H).max(0.0);
+        self.win_x = (self.win_x + dx).clamp(-80.0, mon_w - COMPACT_WIN_W + 80.0);
+        self.win_y = (self.win_y + dy).clamp(0.0, max_drag_y);
 
         self.vx = dx;
         self.vy = dy;
@@ -177,9 +178,8 @@ impl PetPhysics {
         self.target_scale_y = 1.0;
         self.target_rotation_rad = 0.0;
 
-        let foot_pad_bottom = (COMPACT_WIN_H as f32 - self.local_anchor_y).max(0.0) as f64;
-        let true_bottom_y = (mon_h - COMPACT_WIN_H + foot_pad_bottom).max(0.0);
-        let dock_ledge_y = (mon_h - COMPACT_WIN_H - dock_bottom.max(0.0) + foot_pad_bottom).max(0.0);
+        let true_bottom_y = (mon_h - COMPACT_WIN_H).max(0.0);
+        let dock_ledge_y = (mon_h - COMPACT_WIN_H - dock_bottom.max(0.0)).max(0.0);
 
         let target_floor_y = if self.floor_mode == "bottom" || dock_bottom <= 2.0 {
             true_bottom_y
@@ -468,5 +468,34 @@ mod tests {
         assert!(!physics.falling, "Falling must stop immediately on floor landing");
         assert_eq!(physics.bounces, 0, "No double physical bounces allowed");
         assert_eq!(physics.motion, PetMotionState::Rebound);
+    }
+
+    #[test]
+    fn test_floor_geometry_never_falls_out_of_screen() {
+        let mon_w = 1440.0;
+        let mon_h = 900.0;
+        let dock_bottom = 72.0;
+
+        let mut physics = PetPhysics::new(100.0, 100.0);
+        assert_eq!(physics.floor_mode, "taskbar");
+
+        // 1. Release in taskbar mode with 72px dock
+        physics.win_y = 200.0;
+        physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
+        let expected_dock_y = mon_h - COMPACT_WIN_H - dock_bottom; // 900 - 400 - 72 = 428.0
+        assert_eq!(physics.target_floor_y, expected_dock_y);
+        assert!(physics.target_floor_y + COMPACT_WIN_H <= mon_h - dock_bottom);
+
+        // 2. Release in bottom mode
+        physics.floor_mode = "bottom".to_string();
+        physics.win_y = 200.0;
+        physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
+        let expected_bottom_y = mon_h - COMPACT_WIN_H; // 900 - 400 = 500.0
+        assert_eq!(physics.target_floor_y, expected_bottom_y);
+        assert_eq!(physics.target_floor_y + COMPACT_WIN_H, mon_h);
+
+        // 3. Drag move never allows win_y past screen bottom
+        physics.on_drag_move(0.0, 1000.0, mon_w, mon_h);
+        assert!(physics.win_y <= mon_h - COMPACT_WIN_H);
     }
 }

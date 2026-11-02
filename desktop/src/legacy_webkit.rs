@@ -70,6 +70,7 @@ enum UserEvent {
     TickCursor,
     OpenSettings,
     CloseSettings,
+    ResetPosition,
 }
 
 #[cfg(target_os = "macos")]
@@ -298,6 +299,9 @@ fn parse_ipc_command(msg: &str) -> Option<UserEvent> {
     }
     if trimmed == "close_settings" {
         return Some(UserEvent::CloseSettings);
+    }
+    if trimmed == "reset_position" || trimmed == "reset_center" {
+        return Some(UserEvent::ResetPosition);
     }
     if let Some(val) = trimmed.strip_prefix("set_ignore_cursor_events:") {
         return Some(UserEvent::SetIgnoreCursorEvents(val.trim() == "true"));
@@ -600,6 +604,19 @@ pub fn run_legacy_webkit() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = window.drag_window();
                 }
                 UserEvent::OpenSettings | UserEvent::CloseSettings => {}
+                UserEvent::ResetPosition => {
+                    if is_compact_mode {
+                        compact_x = ((mon_width - COMPACT_W) * 0.5).max(0.0);
+                        compact_y = ((mon_height - COMPACT_H) * 0.5).max(0.0);
+                        compact_physics.active = false;
+                        compact_physics.x = compact_x;
+                        compact_physics.y = compact_y;
+                        window.set_outer_position(LogicalPosition::new(compact_x, compact_y));
+                        let _ = webview.evaluate_script(
+                            "if(window.__antiPetOnCompactBounce)window.__antiPetOnCompactBounce();",
+                        );
+                    }
+                }
                 UserEvent::TickCursor => {
                     tick_counter = tick_counter.wrapping_add(1);
                     if is_compact_mode && compact_physics.active {

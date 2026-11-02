@@ -247,6 +247,72 @@ impl Pixmap {
         }
     }
 
+    /// Draws an anti-aliased SDF rounded rectangle with horizontal linear gradient fill from start_rgba to end_rgba.
+    pub fn fill_rounded_rect_gradient_sdf(
+        &mut self,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        radius: f32,
+        start_rgba: [u8; 4],
+        end_rgba: [u8; 4],
+    ) {
+        if w <= 0.0 || h <= 0.0 {
+            return;
+        }
+        let r = radius.clamp(0.0, (w.min(h)) * 0.5);
+        let half_w = w * 0.5;
+        let half_h = h * 0.5;
+        let cx = x + half_w;
+        let cy = y + half_h;
+
+        let min_x = (x - 2.0).floor().max(0.0) as i32;
+        let max_x = (x + w + 2.0)
+            .ceil()
+            .min(self.width as f32 - 1.0) as i32;
+        let min_y = (y - 2.0).floor().max(0.0) as i32;
+        let max_y = (y + h + 2.0)
+            .ceil()
+            .min(self.height as f32 - 1.0) as i32;
+
+        let bx = half_w - r;
+        let by = half_h - r;
+        let inv_w = 1.0 / w.max(1.0);
+
+        for py in min_y..=max_y {
+            let fy = py as f32 + 0.5 - cy;
+            let qy = fy.abs() - by;
+            for px in min_x..=max_x {
+                let fx = px as f32 + 0.5 - cx;
+                let qx = fx.abs() - bx;
+
+                let out_x = qx.max(0.0);
+                let out_y = qy.max(0.0);
+                let dist_outside = (out_x * out_x + out_y * out_y).sqrt();
+                let dist_inside = qx.max(qy).min(0.0);
+                let sdf = dist_outside + dist_inside - r;
+
+                let outer_cov = (0.5 - sdf).clamp(0.0, 1.0);
+                if outer_cov <= 0.0 {
+                    continue;
+                }
+
+                let t = ((px as f32 + 0.5 - x) * inv_w).clamp(0.0, 1.0);
+                let inv_t = 1.0 - t;
+                let r_col = (start_rgba[0] as f32 * inv_t + end_rgba[0] as f32 * t).round() as u8;
+                let g_col = (start_rgba[1] as f32 * inv_t + end_rgba[1] as f32 * t).round() as u8;
+                let b_col = (start_rgba[2] as f32 * inv_t + end_rgba[2] as f32 * t).round() as u8;
+                let a_base = start_rgba[3] as f32 * inv_t + end_rgba[3] as f32 * t;
+                let fa = (a_base * outer_cov).round() as u8;
+
+                if fa > 0 {
+                    self.blend_pixel(px, py, r_col, g_col, b_col, fa);
+                }
+            }
+        }
+    }
+
     /// Draws an anti-aliased SDF circle with optional border.
     pub fn fill_circle_sdf(
         &mut self,

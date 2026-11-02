@@ -34,6 +34,7 @@
   const settingSound = document.getElementById('setting-sound');
   const settingVolume = document.getElementById('setting-volume');
   const settingVolumeVal = document.getElementById('setting-volume-val');
+  const btnResetPosition = document.getElementById('btn-reset-position');
 
   // Controls - System & Autostart
   const settingAutostart = document.getElementById('setting-autostart');
@@ -131,6 +132,30 @@
     });
   }
 
+  // Position Reset Action ("复位居中")
+  if (btnResetPosition) {
+    btnResetPosition.addEventListener('click', async () => {
+      btnResetPosition.disabled = true;
+      if (isDesktop) {
+        window.ipc.postMessage('reset_position');
+      }
+      try {
+        await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resetPosition: true, posX: null, posY: null })
+        });
+        showToast('已将桌宠复位至屏幕中央');
+      } catch (e) {
+        showToast('复位指令已发送');
+      } finally {
+        setTimeout(() => {
+          btnResetPosition.disabled = false;
+        }, 500);
+      }
+    });
+  }
+
   // Load Settings
   async function loadSettings() {
     try {
@@ -143,7 +168,7 @@
         settingScale.value = data.scale || 1.0;
         if (settingScaleVal) settingScaleVal.textContent = `${Math.round((data.scale || 1.0) * 100)}%`;
       }
-      if (settingFloorMode) settingFloorMode.value = data.floorMode || 'bottom';
+      if (settingFloorMode) settingFloorMode.value = data.floorMode || 'taskbar';
       if (settingGravity) settingGravity.checked = data.gravityEnabled !== false;
       if (settingShowQuota) settingShowQuota.checked = data.showQuota !== false;
       if (settingIdeOnly) settingIdeOnly.checked = !!data.ideOnlyMode;

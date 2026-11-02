@@ -131,6 +131,7 @@ impl NativeAudioPlayer {
 #[derive(Clone, Debug, PartialEq)]
 pub enum PetMenuAction {
     OpenSettings,
+    ResetPosition,
     NextDialogue,
     PetHead,
     RefreshQuota,
@@ -149,6 +150,7 @@ pub enum PetMenuAction {
 pub struct NativeMenuManager {
     pub menu: Menu,
     id_settings: MenuId,
+    id_reset_center: MenuId,
     id_next_dialogue: MenuId,
     id_pet_head: MenuId,
     id_refresh_quota: MenuId,
@@ -179,6 +181,7 @@ impl NativeMenuManager {
         let menu = Menu::new();
 
         let item_settings = MenuItem::new("偏好设置...", true, None);
+        let item_reset_center = MenuItem::new("复位居中", true, None);
         let sep0 = PredefinedMenuItem::separator();
 
         let item_next_dialogue = MenuItem::new("换一句傲娇台词", true, None);
@@ -235,6 +238,7 @@ impl NativeMenuManager {
 
         let _ = menu.append_items(&[
             &item_settings,
+            &item_reset_center,
             &sep0,
             &item_next_dialogue,
             &item_pet_head,
@@ -257,6 +261,7 @@ impl NativeMenuManager {
         Self {
             menu,
             id_settings: item_settings.id().clone(),
+            id_reset_center: item_reset_center.id().clone(),
             id_next_dialogue: item_next_dialogue.id().clone(),
             id_pet_head: item_pet_head.id().clone(),
             id_refresh_quota: item_refresh_quota.id().clone(),
@@ -300,6 +305,8 @@ impl NativeMenuManager {
     pub fn resolve_event(&self, id: &MenuId) -> Option<PetMenuAction> {
         if *id == self.id_settings {
             Some(PetMenuAction::OpenSettings)
+        } else if *id == self.id_reset_center {
+            Some(PetMenuAction::ResetPosition)
         } else if *id == self.id_next_dialogue {
             Some(PetMenuAction::NextDialogue)
         } else if *id == self.id_pet_head {

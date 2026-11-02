@@ -14,6 +14,7 @@ pub struct PetSettings {
     pub show_quota: bool,
     pub pos_x: Option<f64>,
     pub pos_y: Option<f64>,
+    pub reset_seq: Option<u64>,
 }
 
 impl Default for PetSettings {
@@ -22,11 +23,12 @@ impl Default for PetSettings {
             scale: 1.0,
             sound_enabled: true,
             gravity_enabled: true,
-            floor_mode: "bottom".to_string(),
+            floor_mode: "taskbar".to_string(),
             dnd_passthrough: false,
             show_quota: true,
             pos_x: None,
             pos_y: None,
+            reset_seq: None,
         }
     }
 }
@@ -95,6 +97,7 @@ impl NativeStateWatcher {
         }
         settings.pos_x = v.get("posX").and_then(|x| x.as_f64());
         settings.pos_y = v.get("posY").and_then(|x| x.as_f64());
+        settings.reset_seq = v.get("resetSeq").and_then(|x| x.as_u64());
         settings
     }
 
@@ -128,6 +131,9 @@ impl NativeStateWatcher {
         map.insert("showQuota".to_string(), serde_json::json!(s.show_quota));
         map.insert("posX".to_string(), pos_x_val);
         map.insert("posY".to_string(), pos_y_val);
+        if let Some(seq) = s.reset_seq {
+            map.insert("resetSeq".to_string(), serde_json::json!(seq));
+        }
 
         if let Ok(json_str) = serde_json::to_string_pretty(&map) {
             let _ = std::fs::write(&self.settings_file, &json_str);
@@ -232,3 +238,47 @@ fn resolve_project_root() -> PathBuf {
     }
     dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pet_settings_default_and_reset_seq() {
+        let defaults = PetSettings::default();
+        assert_eq!(defaults.floor_mode, "taskbar");
+        assert!(defaults.gravity_enabled);
+        assert_eq!(defaults.reset_seq, None);
+
+        let json_raw = r#"{
+            "scale": 1.25,
+            "soundEnabled": false,
+            "gravityEnabled": true,
+            "floorMode": "taskbar",
+            "dndPassthrough": false,
+            "showQuota": true,
+            "posX": 450.0,
+            "posY": 320.0,
+            "resetSeq": 1729000000000
+        }"#;
+
+        let v: serde_json::Value = serde_json::from_str(json_raw).unwrap();
+        let mut settings = PetSettings::default();
+        if let Some(s) = v.get("scale").and_then(|x| x.as_f64()) {
+            settings.scale = s as f32;
+        }
+        if let Some(s) = v.get("soundEnabled").and_then(|x| x.as_bool()) {
+            settings.sound_enabled = s;
+        }
+        settings.pos_x = v.get("posX").and_then(|x| x.as_f64());
+        settings.pos_y = v.get("posY").and_then(|x| x.as_f64());
+        settings.reset_seq = v.get("resetSeq").and_then(|x| x.as_u64());
+
+        assert_eq!(settings.scale, 1.25);
+        assert_eq!(settings.sound_enabled, false);
+        assert_eq!(settings.pos_x, Some(450.0));
+        assert_eq!(settings.pos_y, Some(320.0));
+        assert_eq!(settings.reset_seq, Some(1729000000000));
+    }
+}
+

@@ -1703,6 +1703,21 @@
       if (ctrl.action === 'switch-skin' && ctrl.skinId) {
         loadSkin(ctrl.skinId);
       }
+      if (ctrl.action === 'reset_position') {
+        const petW = container.offsetWidth || 136;
+        const petH = container.offsetHeight || 136;
+        const cx = Math.max(0, Math.round((window.innerWidth - petW) * 0.5));
+        const cy = Math.max(0, Math.round((window.innerHeight - petH) * 0.5));
+        container.style.left = `${cx}px`;
+        container.style.top = `${cy}px`;
+        container.style.bottom = 'auto';
+        container.style.right = 'auto';
+        state.hasMoved = true;
+        adjustBubblePosition();
+        syncHitRectsToDesktop();
+        playSound('release');
+        setState('rebound', '已将本喵复位至屏幕中央啦~', 2500);
+      }
     }
   });
   bridge.start();

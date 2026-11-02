@@ -39,13 +39,14 @@ const DEFAULT_SETTINGS = {
   soundEnabled: true,
   soundVolume: 0.8,
   gravityEnabled: true,
-  floorMode: 'bottom', // 'bottom', 'taskbar', 'free'
+  floorMode: 'taskbar', // 'taskbar', 'bottom', 'free'
   ideOnlyMode: false,
   dndPassthrough: false,
   bubbleDurationMs: 4000,
   showQuota: true,
   posX: null,
   posY: null,
+  resetSeq: 0,
   facing: 'left',
   menuConfig: {
     openAntigravity: true,
@@ -361,6 +362,14 @@ const server = http.createServer(async (req, res) => {
       req.on('end', () => {
         try {
           const updates = JSON.parse(body);
+          if (updates.resetPosition) {
+            const seq = Date.now();
+            updates.resetSeq = seq;
+            updates.posX = null;
+            updates.posY = null;
+            delete updates.resetPosition;
+            broadcastSSE('control', { action: 'reset_position', seq });
+          }
           const saved = saveSettings(updates);
           broadcastSSE('settings', saved);
           res.writeHead(200, { 'Content-Type': 'application/json' });

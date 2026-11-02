@@ -64,8 +64,8 @@
               </div>
               <div class="setting-control">
                 <select id="setting-floor-mode" class="native-select">
-                  <option value="bottom">屏幕绝对落底 (0px 极底)</option>
                   <option value="taskbar">贴合任务栏与 Dock 上沿</option>
+                  <option value="bottom">屏幕绝对落底 (0px 极底)</option>
                   <option value="free">自由悬浮 (不吸附底边)</option>
                 </select>
               </div>
@@ -81,6 +81,18 @@
                   <input type="checkbox" id="setting-gravity">
                   <span class="toggle-slider"></span>
                 </label>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">屏幕位置校准</div>
+                <div class="setting-desc">将桌宠一键拉回屏幕安全正中央，避免逃出屏幕或遮挡</div>
+              </div>
+              <div class="setting-control">
+                <button type="button" id="btn-reset-position" class="native-btn">
+                  复位居中
+                </button>
               </div>
             </div>
           </div>
