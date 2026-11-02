@@ -698,7 +698,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let item_reset_zoom = MenuItem::new("重置缩放 (100%)", true, None);
     let item_switch_skin = MenuItem::new("切换皮肤", true, None);
     let sep1 = PredefinedMenuItem::separator();
-    let item_about = MenuItem::new("关于 大肥猫桌宠挂件 v0.2.0", false, None);
+    let item_about = MenuItem::new("关于 大肥猫桌宠挂件 v0.2.1", false, None);
     let sep2 = PredefinedMenuItem::separator();
     let item_quit = MenuItem::new("退出", true, None);
 
@@ -719,7 +719,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tray_icon = TrayIcon::from_rgba(tray_rgba.to_vec(), 32, 32).ok();
 
     let mut tray_builder = TrayIconBuilder::new()
-        .with_tooltip("大肥猫桌宠挂件 v0.2.0")
+        .with_tooltip("大肥猫桌宠挂件 v0.2.1")
         .with_menu(Box::new(tray_menu));
 
     if let Some(icon) = tray_icon {

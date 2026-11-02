@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/TianYaYou/Anti-pet-indesktop/releases"><img alt="版本" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v0.2.0-blue?style=flat-square"></a>
+  <a href="https://github.com/TianYaYou/Anti-pet-indesktop/releases"><img alt="版本" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v0.2.1-blue?style=flat-square"></a>
   <a href="https://github.com/TianYaYou/Anti-pet-indesktop/blob/main/LICENSE"><img alt="开源许可证" src="https://img.shields.io/badge/License-MIT-orange?style=flat-square"></a>
   <img alt="平台支持" src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-macOS%20%7C%20Windows-8A2BE2?style=flat-square">
   <img alt="核心体积" src="https://img.shields.io/badge/%E5%86%85%E6%A0%B8%E4%BD%93%E7%A7%AF-%3C8MB-brightgreen?style=flat-square">
@@ -20,10 +20,11 @@
 
 ---
 
-> ### v0.2.0 里程碑特性说明
+> ### v0.2.1 里程碑特性说明
 >
+> - **完全穿透与免打扰静音升级**：完全穿透免打扰模式下全链路静音与气泡屏蔽，大肥猫安睡不打扰；优化穿透退出机制与紧凑模式重力吸附；
+> - **macOS 原生设置中心风格重构**：设置页面全面学习 macOS 菜单栏与设置中心设计，包含搜索过滤、Squircle 彩色图标、原生弹出式菜单与历史导航；
 > - **macOS 纯托盘 Accessory 模式**：原生适配系统托盘挂件标准，不在 Dock 栏驻留应用图标，启动即常驻托盘菜单，保持桌面环境干净整洁；
-> - **独立原生偏好设置中心**：摒弃传统全屏/桌面毛玻璃模糊层，采用 macOS 与 WinUI 3 原生控件风格的专属设置窗口，分类管理常规显示、自启动与更新、皮肤管理、台词编辑以及右键菜单定制；
 > - **兼容 dsh-pet 皮肤生态**：无缝支持 `dsh-pet-indesktop` 角色配置一键导入，智能映射帧宽高与动作帧序；
 > - **动态右键菜单定制与 Antigravity 状态感应**：支持在偏好设置中自由启闭各项菜单功能，实时感知 Antigravity 进程运行状态并在已启动时自动隐藏重复唤起选项；
 > - **脱离重型运行时**：告别动辄 150MB+ 的打包体积，基于 **Rust Wry/Tao** 微内核，单二进制文件仅 **约 6~8MB**，内存占用维持在 30MB 左右；
@@ -156,7 +157,7 @@ npm start
   - `完全穿透 (免打扰模式)`
   - `重置缩放 (100%)`
   - `切换皮肤`
-  - `关于 大肥猫桌宠挂件 v0.2.0`
+  - `关于 大肥猫桌宠挂件 v0.2.1`
   - `退出`
 - **防误触设计**：点击窗口关闭按钮时默认**收拢至托盘后台常驻**，绝不意外丢失挂件状态，只有在托盘菜单点击「退出」才会完全关闭。
 
