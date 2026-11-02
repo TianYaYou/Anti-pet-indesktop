@@ -550,7 +550,7 @@ mod macos_surface {
 #[cfg(target_os = "windows")]
 mod windows_surface {
     use super::Pixmap;
-    use windows::Win32::Foundation::{ HWND, POINT, SIZE };
+    use windows::Win32::Foundation::{ COLORREF, HWND, POINT, SIZE };
     use windows::Win32::Graphics::Gdi::{
         AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
         CreateCompatibleDC, CreateDIBSection, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetDC,
@@ -623,7 +623,7 @@ mod windows_surface {
                     Some(&size),
                     Some(mem_dc),
                     Some(&pt_src),
-                    None,
+                    COLORREF(0),
                     Some(&blend),
                     ULW_ALPHA,
                 );

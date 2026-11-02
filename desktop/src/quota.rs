@@ -108,7 +108,7 @@ impl NativeQuotaProber {
 }
 
 fn discover_language_servers() -> Vec<EndpointCandidate> {
-    let mut out_list = Vec::new();
+    let mut out_list: Vec<EndpointCandidate> = Vec::new();
 
     #[cfg(not(target_os = "windows"))]
     {
@@ -201,6 +201,103 @@ fn discover_language_servers() -> Vec<EndpointCandidate> {
                     ports,
                     priority,
                 });
+            }
+        }
+    }
+
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+        let ps_cmd = "Get-CimInstance Win32_Process | Where-Object Name -match 'language_server|agy' | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress";
+        let mut cmd = Command::new("powershell");
+        cmd.args(["-NoProfile", "-Command", ps_cmd])
+            .creation_flags(CREATE_NO_WINDOW);
+
+        if let Ok(output) = cmd.output() {
+            let json_str = String::from_utf8_lossy(&output.stdout);
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(json_str.trim()) {
+                let items: Vec<&serde_json::Value> = if let Some(arr) = val.as_array() {
+                    arr.iter().collect()
+                } else if val.is_object() {
+                    vec![&val]
+                } else {
+                    Vec::new()
+                };
+
+                let mut tcp_map: std::collections::HashMap<u32, Vec<u16>> = std::collections::HashMap::new();
+                let net_cmd = "Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -in @('127.0.0.1', '0.0.0.0', '::', '::1') } | Select-Object OwningProcess,LocalPort | ConvertTo-Json -Compress";
+                let mut net_proc = Command::new("powershell");
+                net_proc.args(["-NoProfile", "-Command", net_cmd])
+                    .creation_flags(CREATE_NO_WINDOW);
+                if let Ok(net_out) = net_proc.output() {
+                    let net_json = String::from_utf8_lossy(&net_out.stdout);
+                    if let Ok(net_val) = serde_json::from_str::<serde_json::Value>(net_json.trim()) {
+                        let net_items: Vec<&serde_json::Value> = if let Some(arr) = net_val.as_array() {
+                            arr.iter().collect()
+                        } else if net_val.is_object() {
+                            vec![&net_val]
+                        } else {
+                            Vec::new()
+                        };
+                        for item in net_items {
+                            if let (Some(pid), Some(port)) = (
+                                item.get("OwningProcess").and_then(|v| v.as_u64()).map(|v| v as u32),
+                                item.get("LocalPort").and_then(|v| v.as_u64()).map(|v| v as u16),
+                            ) {
+                                if port > 1024 {
+                                    tcp_map.entry(pid).or_default().push(port);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                for item in items {
+                    let pid = item.get("ProcessId").and_then(|v| v.as_u64()).map(|v| v as u32).unwrap_or(0);
+                    let cmd_line = item.get("CommandLine").and_then(|v| v.as_str()).unwrap_or("");
+                    let lower = cmd_line.to_lowercase();
+
+                    let csrf_token = extract_flag_value(cmd_line, "--csrf_token")
+                        .or_else(|| extract_flag_value(cmd_line, "--extension_server_csrf_token"))
+                        .unwrap_or_default();
+                    let ext_port = extract_flag_value(cmd_line, "--extension_server_port")
+                        .and_then(|v| v.parse::<u16>().ok());
+
+                    let priority = if lower.contains("antigravity.exe")
+                        || lower.contains("--app_data_dir antigravity")
+                    {
+                        1
+                    } else if lower.contains("antigravity") {
+                        2
+                    } else {
+                        3
+                    };
+
+                    let mut ports = Vec::new();
+                    if let Some(ep) = ext_port {
+                        ports.push(ep);
+                        ports.push(ep.saturating_add(1));
+                        ports.push(ep.saturating_add(2));
+                    }
+                    if let Some(tcp_ports) = tcp_map.get(&pid) {
+                        for &p in tcp_ports {
+                            if !ports.contains(&p) {
+                                ports.push(p);
+                            }
+                        }
+                    }
+
+                    if !ports.is_empty() {
+                        out_list.push(EndpointCandidate {
+                            csrf_token,
+                            ports,
+                            priority,
+                        });
+                    }
+                }
             }
         }
     }
