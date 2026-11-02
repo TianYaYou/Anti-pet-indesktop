@@ -75,29 +75,22 @@ html, body {
 
 /* Sidebar */
 .settings-sidebar {
-  width: 220px;
-  min-width: 220px;
+  width: 200px;
+  min-width: 200px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  padding: 14px 10px;
-  gap: 10px;
-}
-
-.sidebar-header {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  border-bottom: 1px solid var(--border-subtle);
-  padding-bottom: 12px;
+  padding: 16px 10px;
 }
 
 .sidebar-title-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 4px;
+  padding: 0 8px 14px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 12px;
 }
 
 .sidebar-title {
@@ -106,90 +99,19 @@ html, body {
   letter-spacing: -0.1px;
 }
 
-.sidebar-search-box {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.sidebar-search-icon {
-  position: absolute;
-  left: 8px;
-  color: var(--text-tertiary);
-  pointer-events: none;
-}
-
-.sidebar-search-input {
-  width: 100%;
-  padding: 5px 8px 5px 26px;
-  font-size: 12px;
-  border-radius: 7px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-input);
-  color: var(--text-primary);
-  outline: none;
-  font-family: inherit;
-  transition: border-color 0.12s, box-shadow 0.12s;
-}
-
-.sidebar-search-input:focus {
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.25);
-}
-
-.sidebar-profile-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 8px;
-  border-radius: 8px;
-  background: rgba(0, 0, 0, 0.03);
-  border: 1px solid var(--border-row);
+.version-tag {
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.05);
+  color: var(--text-secondary);
 }
 
 @media (prefers-color-scheme: dark) {
-  .sidebar-profile-card {
-    background: rgba(255, 255, 255, 0.04);
+  .version-tag {
+    background: rgba(255, 255, 255, 0.08);
   }
-}
-
-.profile-avatar {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: #2c2c2e;
-  border: 1px solid var(--border-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.profile-avatar-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.profile-info {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.profile-name {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.profile-desc {
-  font-size: 10.5px;
-  color: var(--text-secondary);
 }
 
 .sidebar-nav {
@@ -202,8 +124,8 @@ html, body {
   display: flex;
   align-items: center;
   width: 100%;
-  padding: 6px 8px;
-  border-radius: 7px;
+  padding: 7px 10px;
+  border-radius: 6px;
   border: none;
   background: transparent;
   color: var(--text-primary);
@@ -211,7 +133,6 @@ html, body {
   font-weight: 400;
   text-align: left;
   cursor: pointer;
-  gap: 9px;
   transition: background-color 0.12s ease, color 0.12s ease;
 }
 
@@ -231,21 +152,6 @@ html, body {
   font-weight: 500;
 }
 
-.nav-icon-squircle {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #ffffff;
-  flex-shrink: 0;
-}
-
-.nav-item.active .nav-icon-squircle {
-  background: rgba(255, 255, 255, 0.22) !important;
-}
-
 /* Main Content Area */
 .settings-main {
   flex: 1;
@@ -253,73 +159,6 @@ html, body {
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-window);
-}
-
-/* macOS Top Header Bar */
-.mac-header-bar {
-  height: 44px;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  padding: 0 24px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: var(--bg-window);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  gap: 14px;
-}
-
-.mac-nav-arrows {
-  display: flex;
-  background: rgba(0, 0, 0, 0.05);
-  border-radius: 6px;
-  padding: 2px;
-  gap: 1px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .mac-nav-arrows {
-    background: rgba(255, 255, 255, 0.08);
-  }
-}
-
-.mac-nav-arrow {
-  width: 24px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  border-radius: 4px;
-  cursor: pointer;
-  padding: 0;
-}
-
-.mac-nav-arrow:hover:not(:disabled) {
-  background: rgba(0, 0, 0, 0.08);
-  color: var(--text-primary);
-}
-
-@media (prefers-color-scheme: dark) {
-  .mac-nav-arrow:hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.14);
-    color: #ffffff;
-  }
-}
-
-.mac-nav-arrow:disabled {
-  opacity: 0.35;
-  cursor: default;
-}
-
-.mac-header-title {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: -0.1px;
 }
 
 .tab-content-wrapper {
@@ -490,35 +329,6 @@ html, body {
   border-width: 0 1.8px 1.8px 0;
   transform: rotate(45deg) translate(-0.5px, -0.5px);
 }
-
-.mac-squircle {
-  width: 22px;
-  height: 22px;
-  border-radius: 5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #ffffff;
-  flex-shrink: 0;
-}
-
-.mac-icon-svg {
-  width: 14px;
-  height: 14px;
-}
-
-.icon-blue { background: #0a84ff; }
-.icon-gray { background: #8e8e93; }
-.icon-green { background: #34c759; }
-.icon-amber { background: #ff9f0a; }
-.icon-purple { background: #af52de; }
-.icon-pink { background: #ff2d55; }
-.icon-cyan { background: #30b0c7; }
-.icon-indigo { background: #5856d6; }
-.icon-teal { background: #30d158; }
-.icon-slate { background: #636366; }
-.icon-orange { background: #ff9500; }
-.icon-red { background: #ff3b30; }
 
 .mac-row-title {
   font-size: 13px;

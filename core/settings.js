@@ -20,48 +20,6 @@
   // DOM Elements
   const tabButtons = document.querySelectorAll('.nav-item');
   const tabPanes = document.querySelectorAll('.tab-pane');
-  const macHeaderTitle = document.getElementById('mac-header-title');
-  const navPrev = document.getElementById('nav-prev');
-  const navNext = document.getElementById('nav-next');
-  const sidebarSearch = document.getElementById('sidebar-search');
-
-  const tabHistory = ['general'];
-  let historyIndex = 0;
-
-  const TAB_TITLES = {
-    general: '常规与显示',
-    system: '自启动与更新',
-    skins: '皮肤管理',
-    dialogue: '台词与问候',
-    menu: '右键菜单'
-  };
-
-  function updateNavArrows() {
-    if (navPrev) navPrev.disabled = historyIndex <= 0;
-    if (navNext) navNext.disabled = historyIndex >= tabHistory.length - 1;
-  }
-
-  function switchToTab(targetTab, addToHistory = true) {
-    if (!targetTab) return;
-    tabButtons.forEach(b => {
-      const isTarget = b.getAttribute('data-tab') === targetTab;
-      b.classList.toggle('active', isTarget);
-    });
-    tabPanes.forEach(pane => {
-      pane.classList.toggle('active', pane.id === `tab-${targetTab}`);
-    });
-    if (macHeaderTitle) {
-      macHeaderTitle.textContent = TAB_TITLES[targetTab] || '偏好设置';
-    }
-    if (addToHistory) {
-      if (tabHistory[historyIndex] !== targetTab) {
-        tabHistory.splice(historyIndex + 1);
-        tabHistory.push(targetTab);
-        historyIndex = tabHistory.length - 1;
-      }
-    }
-    updateNavArrows();
-  }
 
   // Controls - General
   const settingScale = document.getElementById('setting-scale');
@@ -143,48 +101,16 @@
     }, 2200);
   }
 
-  // Tab Navigation & History Arrows
+  // Tab Navigation
   tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       const targetTab = btn.getAttribute('data-tab');
-      switchToTab(targetTab, true);
+      tabButtons.forEach(b => b.classList.toggle('active', b === btn));
+      tabPanes.forEach(pane => {
+        pane.classList.toggle('active', pane.id === `tab-${targetTab}`);
+      });
     });
   });
-
-  if (navPrev) {
-    navPrev.addEventListener('click', () => {
-      if (historyIndex > 0) {
-        historyIndex -= 1;
-        switchToTab(tabHistory[historyIndex], false);
-      }
-    });
-  }
-
-  if (navNext) {
-    navNext.addEventListener('click', () => {
-      if (historyIndex < tabHistory.length - 1) {
-        historyIndex += 1;
-        switchToTab(tabHistory[historyIndex], false);
-      }
-    });
-  }
-
-  // Sidebar Search
-  if (sidebarSearch) {
-    sidebarSearch.addEventListener('input', () => {
-      const q = sidebarSearch.value.trim().toLowerCase();
-      const menuRows = document.querySelectorAll('.mac-menu-row');
-      menuRows.forEach(row => {
-        const text = (row.textContent || '').toLowerCase();
-        row.style.display = !q || text.includes(q) ? '' : 'none';
-      });
-      const settingsRows = document.querySelectorAll('.settings-row');
-      settingsRows.forEach(row => {
-        const text = (row.textContent || '').toLowerCase();
-        row.style.display = !q || text.includes(q) ? '' : 'none';
-      });
-    });
-  }
 
   // Sliders Dynamic Value Updates
   if (settingScale && settingScaleVal) {
