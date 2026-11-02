@@ -409,7 +409,7 @@ mod cpu_2d_app {
         let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
         let proxy = event_loop.create_proxy();
 
-        let (mon_width, mon_height, mon_scale) =
+        let (mon_width, mon_height, _mon_scale) =
             if let Some(monitor) = event_loop.primary_monitor() {
                 let scale = monitor.scale_factor();
                 let size = monitor.size().to_logical::<f64>(scale);
@@ -425,7 +425,7 @@ mod cpu_2d_app {
         };
         #[cfg(target_os = "windows")]
         let init_dock = {
-            let insets = windows_window::query_taskbar_insets(0, mon_scale);
+            let insets = windows_window::query_taskbar_insets(0, _mon_scale);
             (insets.bottom, insets.left, insets.right)
         };
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -594,7 +594,7 @@ mod cpu_2d_app {
 
         let tray_icon = TrayIcon::from_rgba(tray_rgba.to_vec(), 32, 32).ok();
         let mut tray_builder = TrayIconBuilder::new()
-            .with_tooltip("大肥猫桌宠 v0.3.0 (Pure CPU 2D)")
+            .with_tooltip("大肥猫桌宠 v0.3.10 (Pure CPU 2D)")
             .with_menu(Box::new(menu_mgr.menu.clone()));
         if let Some(icon) = tray_icon {
             tray_builder = tray_builder.with_icon(icon);
@@ -670,7 +670,7 @@ mod cpu_2d_app {
         let mut cursor_left_since: Option<Instant> = None;
         let mut dirty_frame = true;
 
-        println!("Anti-Pet v0.3.0 Pure CPU 2D 软渲染引擎已启动 (Zero WebKit / Zero Node.js)");
+        println!("Anti-Pet v0.3.10 Pure CPU 2D 软渲染引擎已启动 (Zero WebKit / Zero Node.js)");
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Wait;
