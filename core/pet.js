@@ -951,8 +951,6 @@
     let vy = 0;
     let vx = silent ? 0 : state.vx * 0.35;
     const gravity = 1.05;
-    const bounceFactor = -0.34;
-    let bounceCount = 0;
 
     function stepGravity() {
       vy += gravity;
@@ -966,28 +964,22 @@
 
       if (curY >= targetFloor) {
         curY = targetFloor;
-        if (!silent && Math.abs(vy) > 2.6 && bounceCount < 2) {
-          vy *= bounceFactor;
-          bounceCount += 1;
-          playSoftBumpSound();
-          if (bounceCount === 1) {
-            setState('rebound', getRandomDialogue('release'), 500);
-          }
-        } else {
-          container.style.left = `${curX}px`;
-          container.style.top = `${targetFloor}px`;
-          container.style.bottom = 'auto';
-          container.style.right = 'auto';
-          state.gravityRaf = null;
-          if (!silent) playSound('release');
-          adjustBubblePosition();
-          syncHitRectsToDesktop();
-          debouncedSaveSettings({
-            posX: Math.round(curX),
-            posY: Math.round(targetFloor)
-          });
-          return;
+        container.style.left = `${curX}px`;
+        container.style.top = `${targetFloor}px`;
+        container.style.bottom = 'auto';
+        container.style.right = 'auto';
+        state.gravityRaf = null;
+        if (!silent) {
+          playSound('release');
+          setState('rebound', getRandomDialogue('release'), 500);
         }
+        adjustBubblePosition();
+        syncHitRectsToDesktop();
+        debouncedSaveSettings({
+          posX: Math.round(curX),
+          posY: Math.round(targetFloor)
+        });
+        return;
       }
 
       container.style.left = `${curX}px`;
