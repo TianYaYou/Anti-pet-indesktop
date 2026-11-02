@@ -166,75 +166,14 @@
       const menuConfig = data.menuConfig || {};
       MENU_KEYS.forEach((key) => {
         const chk = document.getElementById(`menu-cfg-${key}`);
-        const sel = document.getElementById(`menu-select-${key}`);
-        const row = document.querySelector(`.mac-menu-row[data-key="${key}"]`);
         const val = menuConfig[key];
-
-        if (val === false || val === 'never') {
-          if (chk) chk.checked = false;
-          if (sel) sel.value = 'never';
-          if (row) row.classList.add('row-disabled');
-        } else if (val === 'auto') {
-          if (chk) chk.checked = true;
-          if (sel) sel.value = 'auto';
-          if (row) row.classList.remove('row-disabled');
-        } else if (val === 'active') {
-          if (chk) chk.checked = true;
-          if (sel) sel.value = 'active';
-          if (row) row.classList.remove('row-disabled');
-        } else {
-          // true or 'always' (default)
-          if (chk) chk.checked = true;
-          if (sel) sel.value = key === 'openAntigravity' ? 'auto' : 'always';
-          if (row) row.classList.remove('row-disabled');
+        if (chk) {
+          chk.checked = !(val === false || val === 'never');
         }
       });
     } catch (e) {
       console.error('加载设置失败:', e);
     }
-  }
-
-  function syncMenuRow(key) {
-    const chk = document.getElementById(`menu-cfg-${key}`);
-    const sel = document.getElementById(`menu-select-${key}`);
-    const row = document.querySelector(`.mac-menu-row[data-key="${key}"]`);
-    if (!chk || !sel) return;
-
-    if (sel.value === 'never') {
-      chk.checked = false;
-      if (row) row.classList.add('row-disabled');
-    } else {
-      chk.checked = true;
-      if (row) row.classList.remove('row-disabled');
-    }
-  }
-
-  function setupMenuControls() {
-    MENU_KEYS.forEach((key) => {
-      const chk = document.getElementById(`menu-cfg-${key}`);
-      const sel = document.getElementById(`menu-select-${key}`);
-      const row = document.querySelector(`.mac-menu-row[data-key="${key}"]`);
-
-      if (chk) {
-        chk.addEventListener('change', () => {
-          if (chk.checked) {
-            if (sel && sel.value === 'never') {
-              sel.value = key === 'openAntigravity' ? 'auto' : 'always';
-            }
-            if (row) row.classList.remove('row-disabled');
-          } else {
-            if (sel) sel.value = 'never';
-            if (row) row.classList.add('row-disabled');
-          }
-        });
-      }
-
-      if (sel) {
-        sel.addEventListener('change', () => {
-          syncMenuRow(key);
-        });
-      }
-    });
   }
 
   // Load Autostart Info
@@ -616,11 +555,8 @@
         const menuConfig = {};
         MENU_KEYS.forEach((key) => {
           const chk = document.getElementById(`menu-cfg-${key}`);
-          const sel = document.getElementById(`menu-select-${key}`);
-          if (sel && sel.value) {
-            menuConfig[key] = sel.value;
-          } else if (chk) {
-            menuConfig[key] = chk.checked ? (key === 'openAntigravity' ? 'auto' : 'always') : 'never';
+          if (chk) {
+            menuConfig[key] = chk.checked;
           }
         });
 
@@ -693,7 +629,6 @@
 
   // Initialization
   async function init() {
-    setupMenuControls();
     await loadSettings();
     await loadAutostartInfo();
     await loadSkins();
