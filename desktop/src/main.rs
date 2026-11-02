@@ -304,14 +304,9 @@ mod cpu_2d_app {
         use windows::Win32::Graphics::Dwm::{
             DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
         };
-        use windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
         use windows::Win32::UI::WindowsAndMessaging::{
             GetCursorPos, SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
         };
-
-        extern "system" {
-            fn GetTickCount() -> u32;
-        }
 
         #[derive(Clone, Copy, Debug, Default)]
         pub struct TaskbarInsets {
@@ -384,18 +379,7 @@ mod cpu_2d_app {
         }
 
         pub fn is_user_typing_globally() -> bool {
-            unsafe {
-                let mut lii = LASTINPUTINFO {
-                    cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32,
-                    dwTime: 0,
-                };
-                if GetLastInputInfo(&mut lii).as_bool() {
-                    let now = GetTickCount();
-                    now.saturating_sub(lii.dwTime) < 1200
-                } else {
-                    false
-                }
-            }
+            false
         }
 
         pub fn get_cursor_state(hwnd_isize: isize, scale_factor: f64) -> Option<(f64, f64, f64, f64)> {
