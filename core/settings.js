@@ -22,6 +22,7 @@
   const tabPanes = document.querySelectorAll('.tab-pane');
 
   // Controls - General
+  const settingTheme = document.getElementById('setting-theme');
   const settingScale = document.getElementById('setting-scale');
   const settingScaleVal = document.getElementById('setting-scale-val');
   const settingFloorMode = document.getElementById('setting-floor-mode');
@@ -102,6 +103,22 @@
     }, 2200);
   }
 
+  function applyTheme(theme) {
+    if (theme === 'dark') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else if (theme === 'light') {
+      document.documentElement.setAttribute('data-theme', 'light');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }
+
+  if (settingTheme) {
+    settingTheme.addEventListener('change', () => {
+      applyTheme(settingTheme.value);
+    });
+  }
+
   // Tab Navigation
   tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
@@ -163,6 +180,11 @@
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       initialSettings = { ...data };
+
+      if (settingTheme) {
+        settingTheme.value = data.theme || 'system';
+        applyTheme(settingTheme.value);
+      }
 
       if (settingScale) {
         settingScale.value = data.scale || 1.0;
@@ -586,6 +608,7 @@
         });
 
         const newSettings = {
+          theme: settingTheme ? settingTheme.value : 'system',
           scale: parseFloat(settingScale.value) || 1.0,
           floorMode: settingFloorMode.value || 'bottom',
           gravityEnabled: settingGravity.checked,
@@ -605,6 +628,10 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newSettings)
         });
+
+        if (isDesktop) {
+          window.ipc.postMessage('settings_saved');
+        }
 
         // 2. Save autostart if changed
         if (settingAutostart && settingAutostart.checked !== originalAutostart) {

@@ -40,6 +40,7 @@ impl Default for MenuConfig {
 /// Persistent user settings loaded/saved directly by the Rust desktop binary (`.antigravity-pet-settings.json`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct PetSettings {
+    pub theme: String,
     pub scale: f32,
     pub sound_enabled: bool,
     pub gravity_enabled: bool,
@@ -55,6 +56,7 @@ pub struct PetSettings {
 impl Default for PetSettings {
     fn default() -> Self {
         Self {
+            theme: "system".to_string(),
             scale: 1.0,
             sound_enabled: true,
             gravity_enabled: true,
@@ -113,6 +115,9 @@ impl NativeStateWatcher {
             return settings;
         };
 
+        if let Some(th) = v.get("theme").and_then(|x| x.as_str()) {
+            settings.theme = th.to_string();
+        }
         if let Some(s) = v.get("scale").and_then(|x| x.as_f64()) {
             settings.scale = (s as f32).clamp(0.5, 2.0);
         }
@@ -207,6 +212,7 @@ impl NativeStateWatcher {
         mc_map.insert("sound".to_string(), serde_json::json!(s.menu_config.sound));
 
         let mut map = serde_json::Map::new();
+        map.insert("theme".to_string(), serde_json::json!(s.theme));
         map.insert("scale".to_string(), serde_json::json!((s.scale * 100.0).round() / 100.0));
         map.insert("skinId".to_string(), serde_json::json!("fat-cat"));
         map.insert("soundEnabled".to_string(), serde_json::json!(s.sound_enabled));
@@ -332,6 +338,7 @@ mod tests {
     #[test]
     fn test_pet_settings_default_and_reset_seq() {
         let defaults = PetSettings::default();
+        assert_eq!(defaults.theme, "system");
         assert_eq!(defaults.floor_mode, "bottom");
         assert!(defaults.gravity_enabled);
         assert_eq!(defaults.reset_seq, None);

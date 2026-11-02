@@ -34,6 +34,7 @@ const MIME_TYPES = {
 };
 
 const DEFAULT_SETTINGS = {
+  theme: 'system', // 'system', 'light', 'dark'
   scale: 1.0,
   skinId: 'fat-cat',
   soundEnabled: true,

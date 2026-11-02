@@ -66,10 +66,11 @@ mod cpu_2d_app {
 
     #[derive(Debug, Clone)]
     enum AppEvent {
-        Tick25ms,
+        TickFrame,
         QuotaUpdated(QuotaSnapshot),
         HookStateChanged(HookStateUpdate),
         CloseSettings,
+        ReloadSettings,
         ResetPosition,
     }
 
@@ -200,10 +201,11 @@ mod cpu_2d_app {
                 return;
             }
             unsafe {
-                // NSStatusWindowLevel (25) floats above normal apps, full-screen spaces, and the Dock (level 20)
+                // Level 100 floats above the macOS Dock (level 20), trash can, status items (25),
+                // while staying strictly below native context menus (NSPopUpMenuWindowLevel: 101)
                 let set_level: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) =
                     std::mem::transmute(objc_msgSend as *const ());
-                set_level(ns_window, sel(b"setLevel:\0"), 25);
+                set_level(ns_window, sel(b"setLevel:\0"), 100);
 
                 // CanJoinAllSpaces (1<<0) | Stationary (1<<4) | IgnoresCycle (1<<6) | FullScreenAuxiliary (1<<8)
                 let behavior: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
@@ -404,6 +406,8 @@ mod cpu_2d_app {
                 let body = req.body();
                 if body == "close_settings" {
                     let _ = settings_ipc_proxy.send_event(AppEvent::CloseSettings);
+                } else if body == "settings_saved" || body.starts_with("settings:") {
+                    let _ = settings_ipc_proxy.send_event(AppEvent::ReloadSettings);
                 } else if body == "reset_position" || body == "reset_center" {
                     let _ = settings_ipc_proxy.send_event(AppEvent::ResetPosition);
                 }
@@ -474,7 +478,7 @@ mod cpu_2d_app {
         }
         let _tray = tray_builder.build()?;
 
-        // Background ticker (40 Hz cursor/physics tick + 250ms hook file watch + 12s live quota probe)
+        // Background ticker (60 FPS high-precision physics/render tick + 250ms hook file watch + 12s live quota probe)
         let ticker_proxy = proxy.clone();
         let force_quota_flag = Arc::new(AtomicBool::new(true));
         let force_quota_bg = force_quota_flag.clone();
@@ -482,25 +486,34 @@ mod cpu_2d_app {
             let mut prober = NativeQuotaProber::default();
             let mut hook_watcher = NativeStateWatcher::new();
             let mut tick_count: u64 = 0;
+            let frame_duration = Duration::from_micros(16_667); // 60.0 FPS
+            let mut next_tick = Instant::now();
 
             loop {
-                thread::sleep(Duration::from_millis(25));
+                let now = Instant::now();
+                if now < next_tick {
+                    thread::sleep(next_tick - now);
+                }
+                next_tick += frame_duration;
+                if next_tick < Instant::now() {
+                    next_tick = Instant::now() + frame_duration;
+                }
                 tick_count = tick_count.wrapping_add(1);
 
-                if ticker_proxy.send_event(AppEvent::Tick25ms).is_err() {
+                if ticker_proxy.send_event(AppEvent::TickFrame).is_err() {
                     break;
                 }
 
-                // Every 250ms: check if Antigravity hooks updated `.antigravity-pet-state.json`
-                if tick_count % 10 == 0 {
+                // Every ~250ms (15 frames at 60 FPS): check if Antigravity hooks updated `.antigravity-pet-state.json`
+                if tick_count % 15 == 0 {
                     if let Some(update) = hook_watcher.poll_state_change() {
                         let _ = ticker_proxy.send_event(AppEvent::HookStateChanged(update));
                         force_quota_bg.store(true, Ordering::Relaxed);
                     }
                 }
 
-                // Every 12s (or on force flag): poll live Antigravity `language_server` quota
-                if force_quota_bg.swap(false, Ordering::Relaxed) || tick_count % 480 == 0 {
+                // Every 12s (720 frames at 60 FPS, or on force flag): poll live Antigravity `language_server` quota
+                if force_quota_bg.swap(false, Ordering::Relaxed) || tick_count % 720 == 0 {
                     let snap = prober.fetch_live_quota();
                     let _ = ticker_proxy.send_event(AppEvent::QuotaUpdated(snap));
                 }
@@ -577,6 +590,31 @@ mod cpu_2d_app {
 
                     AppEvent::CloseSettings => {
                         settings_window.set_visible(false);
+                        let fresh = state_watcher.load_settings();
+                        if (fresh.scale - settings.scale).abs() >= 0.01 {
+                            physics.zoom_scale = fresh.scale;
+                        }
+                        physics.gravity_enabled = fresh.gravity_enabled;
+                        physics.floor_mode = fresh.floor_mode.clone();
+                        audio.enabled = fresh.sound_enabled;
+                        bubble.show_quota = fresh.show_quota;
+                        menu_mgr.rebuild_menu(&fresh);
+                        settings = fresh;
+                        dirty_frame = true;
+                    }
+
+                    AppEvent::ReloadSettings => {
+                        let fresh = state_watcher.load_settings();
+                        if (fresh.scale - settings.scale).abs() >= 0.01 {
+                            physics.zoom_scale = fresh.scale;
+                        }
+                        physics.gravity_enabled = fresh.gravity_enabled;
+                        physics.floor_mode = fresh.floor_mode.clone();
+                        audio.enabled = fresh.sound_enabled;
+                        bubble.show_quota = fresh.show_quota;
+                        menu_mgr.rebuild_menu(&fresh);
+                        settings = fresh;
+                        dirty_frame = true;
                     }
 
                     AppEvent::ResetPosition => {
@@ -593,6 +631,9 @@ mod cpu_2d_app {
                         physics.trigger_duang_rebound(420);
 
                         window.set_outer_position(LogicalPosition::new(center_x, center_y));
+                        #[cfg(target_os = "macos")]
+                        macos_window::enforce_topmost(window.ns_window());
+
                         settings.pos_x = Some(center_x);
                         settings.pos_y = Some(center_y);
                         state_watcher.save_settings(&settings);
@@ -605,7 +646,7 @@ mod cpu_2d_app {
                         dirty_frame = true;
                     }
 
-                    AppEvent::Tick25ms => {
+                    AppEvent::TickFrame => {
 
 
                         // 1. Drain native context/tray menu events
@@ -925,7 +966,7 @@ mod cpu_2d_app {
                             settings.pos_y = Some(physics.win_y);
                         }
 
-                        // Redraw at 40 FPS whenever window is visible: fluid breathing, smooth gaze, zero stutter
+                        // Redraw at 60 FPS whenever window is visible: fluid breathing, smooth gaze, zero stutter
                         if is_window_visible {
                             let _ = dirty_frame;
                             dirty_frame = false;
@@ -1015,6 +1056,8 @@ mod cpu_2d_app {
                                     is_dragging = false;
                                     audio.play(SoundEffect::ClickPress);
 
+                                    // Always reload fresh settings before rebuilding context menu
+                                    settings = state_watcher.load_settings();
                                     menu_mgr.rebuild_menu(&settings);
                                     hit_tester.is_menu_open = true;
                                     currently_ignoring_cursor = false;
@@ -1072,6 +1115,9 @@ mod cpu_2d_app {
                                             physics.win_x,
                                             physics.win_y,
                                         ));
+                                        #[cfg(target_os = "macos")]
+                                        macos_window::enforce_topmost(window.ns_window());
+
                                         settings.pos_x = Some(physics.win_x);
                                         settings.pos_y = Some(physics.win_y);
                                         state_watcher.save_settings(&settings);

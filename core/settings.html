@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light dark">
   <title>偏好设置</title>
   <link rel="stylesheet" href="/settings.css">
 </head>
@@ -42,6 +43,23 @@
           <div class="pane-header">
             <h2 class="pane-title">常规与显示</h2>
             <p class="pane-subtitle">调整大肥猫的桌面尺寸、物理重力下落与交互行为</p>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-title">外观与主题</div>
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">界面外观</div>
+                <div class="setting-desc">设置窗口明暗主题风格，默认自动跟随系统</div>
+              </div>
+              <div class="setting-control">
+                <select id="setting-theme" class="native-select">
+                  <option value="system">跟随系统</option>
+                  <option value="light">浅色模式</option>
+                  <option value="dark">深色模式</option>
+                </select>
+              </div>
+            </div>
           </div>
 
           <div class="section-card">
