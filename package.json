@@ -1,6 +1,6 @@
 {
   "name": "anti-pet-indesktop",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "大肥猫桌宠挂件 - Cross-platform lightweight desktop & in-IDE pet companion for Antigravity (Mac & Windows)",
   "main": "server/index.js",
   "scripts": {
