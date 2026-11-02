@@ -1,13 +1,23 @@
 [package]
 name = "anti-pet-desktop"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 
+[features]
+default = ["cpu-2d"]
+# Pure CPU 2D software rendering engine (zero WebKit, zero Node.js runtime)
+cpu-2d = []
+# Legacy WebKit + Node.js engine kept for fallback comparison
+legacy-webkit = ["dep:wry"]
+
 [dependencies]
+dirs = "7.0"
+fastrand = "2.5"
 muda = "0.21"
+png = "0.18"
 tao = "0.37"
 tray-icon = "0.26"
-wry = "0.57"
+wry = { version = "0.57", optional = true }
 
 [target.'cfg(windows)'.build-dependencies]
 winres = "0.1"
@@ -21,3 +31,16 @@ features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_UI_Input_KeyboardAndMouse",
 ]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+cairo-rs = "0.18"
+gdk = "0.18"
+gtk = "0.18"
+pango = "0.18"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
