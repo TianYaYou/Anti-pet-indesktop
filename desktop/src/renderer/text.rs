@@ -361,13 +361,15 @@ pub mod macos_text {
 #[cfg(target_os = "windows")]
 pub mod windows_text {
     use super::Pixmap;
-    use windows::Win32::Foundation::{COLORREF, HWND, RECT};
+    use std::ffi::c_void;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{COLORREF, RECT};
     use windows::Win32::Graphics::Gdi::{
-        CreateCompatibleDC, CreateFontW, DeleteDC, DeleteObject, DrawTextW, GetDC,
-        ReleaseDC, SelectObject, SetBkMode, SetTextColor, DT_CENTER, DT_LEFT, DT_RIGHT,
-        DT_WORDBREAK, FW_BOLD, FW_NORMAL, TRANSPARENT,
+        CreateCompatibleDC, CreateDIBSection, CreateFontW, DeleteDC, DeleteObject, DrawTextW,
+        SelectObject, SetBkMode, SetTextColor, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+        DIB_RGB_COLORS, DT_CENTER, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_WORDBREAK,
+        TRANSPARENT,
     };
-    use windows::core::HSTRING;
 
     #[allow(clippy::too_many_arguments)]
     pub unsafe fn draw_text_into_pixmap(
@@ -380,60 +382,158 @@ pub mod windows_text {
         font_size_px: f32,
         font_weight: f64,
         rgb: [u8; 3],
-        _alpha: f32,
-        alignment: isize,
+        alpha: f32,
+        alignment: isize, // 0 = Left, 1 = Center, 2 = Right
     ) {
-        if text.is_empty() || w <= 1.0 || h <= 1.0 {
+        if text.is_empty() || w <= 1.0 || h <= 1.0 || alpha <= 0.01 {
             return;
         }
 
-        let hdc_screen = GetDC(HWND(std::ptr::null_mut()));
-        let hdc_mem = CreateCompatibleDC(hdc_screen);
+        let bw = (w.ceil() as i32).max(1);
+        let bh = (h.ceil() as i32).max(1);
 
-        let weight = if font_weight >= 0.6 { FW_BOLD } else { FW_NORMAL };
-        let font_name = HSTRING::from("Segoe UI");
-        let hfont = CreateFontW(
-            font_size_px as i32,
+        let hdc = CreateCompatibleDC(None);
+        if hdc.is_invalid() {
+            return;
+        }
+
+        let bmi = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: bw,
+                biHeight: -bh, // Top-down
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let mut bits_ptr: *mut c_void = std::ptr::null_mut();
+        if let Ok(dib) = CreateDIBSection(
+            Some(hdc),
+            &bmi,
+            DIB_RGB_COLORS,
+            &mut bits_ptr,
+            None,
             0,
-            0,
-            0,
-            weight.0 as i32,
-            0,
-            0,
-            0,
-            1, // DEFAULT_CHARSET
-            0,
-            0,
-            5, // CLEARTYPE_QUALITY
-            0,
-            windows::core::PCWSTR(font_name.as_wide().as_ptr()),
+        ) {
+            if !bits_ptr.is_null() {
+                std::ptr::write_bytes(bits_ptr, 0, (bw * bh * 4) as usize);
+
+                let old_bmp = SelectObject(hdc, dib.into());
+
+                let font_name: Vec<u16> = "Microsoft YaHei UI\0".encode_utf16().collect();
+                let weight = if font_weight >= 0.62 {
+                    700 // FW_BOLD (only for percentage numbers)
+                } else {
+                    400 // FW_NORMAL (native un-synthesized YaHei glyphs, zero 1px faux bold doubling)
+                };
+
+                let hfont = CreateFontW(
+                    -(font_size_px.round() as i32),
+                    0,
+                    0,
+                    0,
+                    weight,
+                    0,
+                    0,
+                    0,
+                    windows::Win32::Graphics::Gdi::FONT_CHARSET(1), // DEFAULT_CHARSET
+                    windows::Win32::Graphics::Gdi::FONT_OUTPUT_PRECISION(0), // OUT_DEFAULT_PRECIS
+                    windows::Win32::Graphics::Gdi::FONT_CLIP_PRECISION(0), // CLIP_DEFAULT_PRECIS
+                    windows::Win32::Graphics::Gdi::FONT_QUALITY(4), // ANTIALIASED_QUALITY: Crisp grayscale anti-aliasing
+                    0,
+                    PCWSTR(font_name.as_ptr()),
+                );
+                let old_font = SelectObject(hdc, hfont.into());
+
+                SetBkMode(hdc, TRANSPARENT);
+                SetTextColor(hdc, COLORREF(0x00FFFFFF)); // White text
+
+                let mut text_w: Vec<u16> = text.encode_utf16().collect();
+                let mut rect = RECT {
+                    left: 0,
+                    top: 0,
+                    right: bw,
+                    bottom: bh,
+                };
+                let align_flag = match alignment {
+                    1 => DT_CENTER,
+                    2 => DT_RIGHT,
+                    _ => DT_LEFT,
+                };
+                let flags = DT_NOPREFIX | DT_WORDBREAK | align_flag;
+                DrawTextW(hdc, &mut text_w, &mut rect, flags);
+
+                let dst = bits_ptr as *const u8;
+                let alpha_mult = (alpha * 255.0).round().clamp(0.0, 255.0) as u32;
+
+                for py in 0..bh {
+                    let dest_y = (y as i32) + py;
+                    if dest_y < 0 || dest_y >= pixmap.height as i32 {
+                        continue;
+                    }
+                    for px in 0..bw {
+                        let dest_x = (x as i32) + px;
+                        if dest_x < 0 || dest_x >= pixmap.width as i32 {
+                            continue;
+                        }
+
+                        let o = ((py * bw + px) * 4) as usize;
+                        let b = *dst.add(o) as u32;
+                        let g = *dst.add(o + 1) as u32;
+                        let r = *dst.add(o + 2) as u32;
+
+                        // ANTIALIASED_QUALITY produces clean grayscale pixels where r == g == b.
+                        let intensity = (r + g + b) / 3;
+                        if intensity > 0 {
+                            let glyph_a = ((intensity * alpha_mult) / 255) as u8;
+                            if glyph_a > 0 {
+                                pixmap.blend_pixel(
+                                    dest_x,
+                                    dest_y,
+                                    rgb[0],
+                                    rgb[1],
+                                    rgb[2],
+                                    glyph_a,
+                                );
+                            }
+                        }
+                    }
+                }
+
+                SelectObject(hdc, old_font);
+                let _ = DeleteObject(hfont.into());
+                SelectObject(hdc, old_bmp);
+            }
+            let _ = DeleteObject(dib.into());
+        }
+
+        let _ = DeleteDC(hdc);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_text_rendering() {
+        let mut pixmap = Pixmap::new(200, 200);
+        draw_text_into_pixmap(
+            &mut pixmap,
+            "测试文字 Anti-Pet",
+            10.0,
+            10.0,
+            150.0,
+            30.0,
+            14.0,
+            0.4,
+            [255, 255, 255],
+            1.0,
+            TextAlignment::Left,
         );
-
-        let old_font = SelectObject(hdc_mem, hfont);
-        SetBkMode(hdc_mem, TRANSPARENT);
-        SetTextColor(hdc_mem, COLORREF((rgb[0] as u32) | ((rgb[1] as u32) << 8) | ((rgb[2] as u32) << 16)));
-
-        let dt_align = match alignment {
-            1 => DT_CENTER,
-            2 => DT_RIGHT,
-            _ => DT_LEFT,
-        };
-
-        let mut rect = RECT {
-            left: x as i32,
-            top: y as i32,
-            right: (x + w) as i32,
-            bottom: (y + h) as i32,
-        };
-
-        let wide_str: Vec<u16> = text.encode_utf16().collect();
-        DrawTextW(hdc_mem, &wide_str, &mut rect, dt_align | DT_WORDBREAK);
-
-        SelectObject(hdc_mem, old_font);
-        DeleteObject(hfont);
-        DeleteDC(hdc_mem);
-        ReleaseDC(HWND(std::ptr::null_mut()), hdc_screen);
-
-        let _ = pixmap;
     }
 }
