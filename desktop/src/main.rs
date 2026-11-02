@@ -60,7 +60,12 @@ mod cpu_2d_app {
         },
         physics::{PetMotionState, PetPhysics, COMPACT_WIN_H, COMPACT_WIN_W},
         quota::{NativeQuotaProber, QuotaSnapshot},
-        renderer::{bubble::ThoughtBubble, sprite::CatSprite, Pixmap, SoftwareSurface},
+        renderer::{
+            bubble::ThoughtBubble,
+            settings_ui::{SettingsAction, SettingsUi, SETTINGS_WIN_H, SETTINGS_WIN_W},
+            sprite::CatSprite,
+            Pixmap, SoftwareSurface,
+        },
         state_watcher::{HookStateUpdate, NativeStateWatcher},
     };
 
@@ -69,7 +74,9 @@ mod cpu_2d_app {
         TickFrame,
         QuotaUpdated(QuotaSnapshot),
         HookStateChanged(HookStateUpdate),
+        #[allow(dead_code)]
         CloseSettings,
+        #[allow(dead_code)]
         ReloadSettings,
         ResetPosition,
     }
@@ -268,6 +275,7 @@ mod cpu_2d_app {
         }
     }
 
+    #[allow(dead_code)]
     fn ensure_backend_server() {
         let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 4199));
         let server_alive = std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(150)).is_ok();
@@ -389,7 +397,7 @@ mod cpu_2d_app {
 
         let mut settings_win_builder = WindowBuilder::new()
             .with_title("偏好设置")
-            .with_inner_size(LogicalSize::new(680.0, 520.0))
+            .with_inner_size(LogicalSize::new(SETTINGS_WIN_W, SETTINGS_WIN_H))
             .with_resizable(false)
             .with_visible(false);
 
@@ -399,21 +407,16 @@ mod cpu_2d_app {
 
         let settings_window = settings_win_builder.build(&event_loop)?;
 
-        let settings_ipc_proxy = proxy.clone();
-        let settings_webview = wry::WebViewBuilder::new()
-            .with_accept_first_mouse(true)
-            .with_ipc_handler(move |req| {
-                let body = req.body();
-                if body == "close_settings" {
-                    let _ = settings_ipc_proxy.send_event(AppEvent::CloseSettings);
-                } else if body == "settings_saved" || body.starts_with("settings:") {
-                    let _ = settings_ipc_proxy.send_event(AppEvent::ReloadSettings);
-                } else if body == "reset_position" || body == "reset_center" {
-                    let _ = settings_ipc_proxy.send_event(AppEvent::ResetPosition);
-                }
-            })
-            .with_url("http://127.0.0.1:4199/settings.html")
-            .build(&settings_window)?;
+        #[cfg(target_os = "macos")]
+        let settings_surface = SoftwareSurface::new_macos(settings_window.ns_window());
+        #[cfg(target_os = "windows")]
+        let settings_surface = SoftwareSurface::new_windows(settings_window.hwnd());
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let settings_surface = SoftwareSurface::new_unix();
+
+        let mut settings_pixmap = Pixmap::new(SETTINGS_WIN_W as u32, SETTINGS_WIN_H as u32);
+        let mut settings_ui = SettingsUi::new(settings.clone());
+        let mut is_settings_open = false;
 
         let mut pending_settings_save: Option<Instant> = None;
 
@@ -590,6 +593,7 @@ mod cpu_2d_app {
 
                     AppEvent::CloseSettings => {
                         settings_window.set_visible(false);
+                        is_settings_open = false;
                         let fresh = state_watcher.load_settings();
                         if (fresh.scale - settings.scale).abs() >= 0.01 {
                             physics.zoom_scale = fresh.scale;
@@ -661,10 +665,15 @@ mod cpu_2d_app {
                                         bubble.opacity = 1.0;
                                         bubble_hide_deadline =
                                             Some(Instant::now() + Duration::from_millis(3500));
-                                        ensure_backend_server();
+                                        settings_ui.open(&settings);
+                                        is_settings_open = true;
                                         settings_window.set_visible(true);
                                         settings_window.set_focus();
-                                        let _ = settings_webview.load_url("http://127.0.0.1:4199/settings.html");
+                                        #[cfg(target_os = "macos")]
+                                        macos_window::activate_ignoring_other_apps(settings_window.ns_window());
+                                        let s_scale = settings_window.scale_factor() as f32;
+                                        settings_ui.render(&mut settings_pixmap, s_scale);
+                                        settings_surface.present(&settings_pixmap, s_scale as f64);
                                         dirty_frame = true;
                                     }
 
@@ -993,18 +1002,104 @@ mod cpu_2d_app {
 
                             surface.present(&pixmap, scale as f64);
                         }
+
+                        if is_settings_open && settings_ui.toast.is_some() {
+                            let s_scale = settings_window.scale_factor() as f32;
+                            settings_ui.render(&mut settings_pixmap, s_scale);
+                            settings_surface.present(&settings_pixmap, s_scale as f64);
+                        }
                     }
                 },
 
-                Event::WindowEvent { window_id, event, .. } => match event {
-                    WindowEvent::CloseRequested => {
-                        if window_id == settings_window.id() {
-                            settings_window.set_visible(false);
-                        } else if window_id == window.id() {
-                            is_window_visible = false;
-                            window.set_visible(false);
+                Event::WindowEvent { window_id, event, .. } => {
+                    if window_id == settings_window.id() {
+                        match event {
+                            WindowEvent::CloseRequested => {
+                                settings_window.set_visible(false);
+                                is_settings_open = false;
+                            }
+                            WindowEvent::CursorMoved { position, .. } => {
+                                let s_scale = settings_window.scale_factor() as f32;
+                                let lx = position.x / (s_scale as f64);
+                                let ly = position.y / (s_scale as f64);
+                                if settings_ui.handle_cursor_move(lx, ly, s_scale) {
+                                    settings_ui.render(&mut settings_pixmap, s_scale);
+                                    settings_surface.present(&settings_pixmap, s_scale as f64);
+                                }
+                            }
+                            WindowEvent::MouseInput {
+                                state,
+                                button: TaoMouseButton::Left,
+                                ..
+                            } => {
+                                let s_scale = settings_window.scale_factor() as f32;
+                                if state == ElementState::Pressed {
+                                    if let Some(action) = settings_ui.handle_mouse_down(s_scale) {
+                                        match action {
+                                            SettingsAction::Save(new_settings) => {
+                                                state_watcher.save_settings(&new_settings);
+                                                settings = new_settings;
+                                                physics.zoom_scale = settings.scale;
+                                                physics.gravity_enabled = settings.gravity_enabled;
+                                                physics.floor_mode = settings.floor_mode.clone();
+                                                audio.enabled = settings.sound_enabled;
+                                                bubble.show_quota = settings.show_quota;
+                                                menu_mgr.rebuild_menu(&settings);
+                                                dirty_frame = true;
+                                                settings_window.set_visible(false);
+                                                is_settings_open = false;
+                                            }
+                                            SettingsAction::Cancel => {
+                                                settings_window.set_visible(false);
+                                                is_settings_open = false;
+                                            }
+                                            SettingsAction::ResetPosition => {
+                                                let _ = proxy.send_event(AppEvent::ResetPosition);
+                                                settings_ui.show_toast("已将桌宠复位至屏幕中央");
+                                                settings_ui.render(&mut settings_pixmap, s_scale);
+                                                settings_surface.present(&settings_pixmap, s_scale as f64);
+                                            }
+                                            SettingsAction::CheckUpdate => {
+                                                settings_ui.show_toast("当前已是最新版本 (v0.3.0)");
+                                                settings_ui.render(&mut settings_pixmap, s_scale);
+                                                settings_surface.present(&settings_pixmap, s_scale as f64);
+                                            }
+                                            SettingsAction::SelectTab(_) | SettingsAction::Redraw => {
+                                                settings_ui.render(&mut settings_pixmap, s_scale);
+                                                settings_surface.present(&settings_pixmap, s_scale as f64);
+                                            }
+                                            SettingsAction::None => {}
+                                        }
+                                    }
+                                } else if settings_ui.handle_mouse_up() {
+                                    settings_ui.render(&mut settings_pixmap, s_scale);
+                                    settings_surface.present(&settings_pixmap, s_scale as f64);
+                                }
+                            }
+                            WindowEvent::MouseWheel { delta, .. } => {
+                                let dy = match delta {
+                                    tao::event::MouseScrollDelta::LineDelta(_, y) => y * 28.0,
+                                    tao::event::MouseScrollDelta::PixelDelta(pos) => pos.y as f32,
+                                    _ => 0.0,
+                                };
+                                let s_scale = settings_window.scale_factor() as f32;
+                                if settings_ui.handle_mouse_wheel(dy) {
+                                    settings_ui.render(&mut settings_pixmap, s_scale);
+                                    settings_surface.present(&settings_pixmap, s_scale as f64);
+                                }
+                            }
+                            _ => {}
                         }
+                        return;
                     }
+
+                    match event {
+                        WindowEvent::CloseRequested => {
+                            if window_id == window.id() {
+                                is_window_visible = false;
+                                window.set_visible(false);
+                            }
+                        }
 
                     WindowEvent::Focused(false) => {
                         hit_tester.is_menu_open = false;
@@ -1138,10 +1233,11 @@ mod cpu_2d_app {
                         }
                     }
                     _ => (),
-                },
-
-                _ => (),
+                }
             }
+
+            _ => (),
+        }
         });
     }
 }

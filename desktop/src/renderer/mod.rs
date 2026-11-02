@@ -1,5 +1,7 @@
 pub mod bubble;
+pub mod settings_ui;
 pub mod sprite;
+pub mod text;
 
 #[cfg(target_os = "macos")]
 use std::ffi::c_void;

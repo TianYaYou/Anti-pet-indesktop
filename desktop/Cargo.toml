@@ -8,7 +8,7 @@ default = ["cpu-2d"]
 # Pure CPU 2D software rendering engine (zero WebKit, zero Node.js runtime)
 cpu-2d = []
 # Legacy WebKit + Node.js engine kept for fallback comparison
-legacy-webkit = []
+legacy-webkit = ["dep:wry"]
 
 
 [dependencies]
@@ -20,7 +20,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tao = "0.37"
 tray-icon = "0.26"
-wry = "0.57"
+wry = { version = "0.57", optional = true }
 
 
 
