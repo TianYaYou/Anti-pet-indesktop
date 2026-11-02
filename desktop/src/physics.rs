@@ -94,7 +94,7 @@ impl PetPhysics {
             bounces: 0,
             target_floor_y: init_win_y,
             gravity_enabled: true,
-            floor_mode: "auto".to_string(),
+            floor_mode: "bottom".to_string(),
             zoom_scale: 1.0,
             scale_x: 1.0,
             scale_y: 1.0,
@@ -210,6 +210,10 @@ impl PetPhysics {
 
         let target_floor_y = if !self.gravity_enabled || self.floor_mode == "free" {
             self.win_y
+        } else if self.floor_mode == "bottom" {
+            true_bottom_y
+        } else if self.floor_mode == "taskbar" || self.floor_mode == "dock" {
+            dock_ledge_y
         } else if dock_bottom > 2.0 {
             if self.win_y >= dock_ledge_y + 18.0 {
                 true_bottom_y
@@ -588,13 +592,22 @@ mod tests {
         let expected_dock_y = mon_h - COMPACT_WIN_H - dock_bottom; // 900 - 400 - 72 = 428.0
         let expected_bottom_y = mon_h - COMPACT_WIN_H; // 900 - 400 = 500.0
 
-        // 1. Release in air with 72px dock -> default lands on top of taskbar / dock ledge
+        // 1. Release in taskbar mode with 72px dock -> lands on top of taskbar / dock ledge
+        physics.floor_mode = "taskbar".to_string();
         physics.win_y = 200.0;
         physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
         assert_eq!(physics.target_floor_y, expected_dock_y);
         assert!(physics.target_floor_y + COMPACT_WIN_H <= mon_h - dock_bottom);
 
-        // 2. User drags cat below taskbar ledge -> lands on screen bottom edge
+        // 2. Release in explicit bottom mode with 72px dock -> lands strictly on screen bottom edge (0px)
+        physics.floor_mode = "bottom".to_string();
+        physics.win_y = 200.0;
+        physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
+        assert_eq!(physics.target_floor_y, expected_bottom_y);
+        assert_eq!(physics.target_floor_y + COMPACT_WIN_H, mon_h);
+
+        // 3. User in auto mode drags cat below taskbar ledge -> lands on screen bottom edge
+        physics.floor_mode = "auto".to_string();
         physics.win_y = expected_dock_y + 20.0;
         physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
         assert_eq!(physics.target_floor_y, expected_bottom_y);

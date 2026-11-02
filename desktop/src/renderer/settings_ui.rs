@@ -110,8 +110,8 @@ impl SettingsUi {
         let (mx, my) = self.mouse_pos;
 
         // 1. Sidebar clicks
-        if mx < SIDEBAR_W {
-            let tab_idx = ((my - 60.0) / 36.0).floor() as i32;
+        if mx < SIDEBAR_W && my >= 76.0 {
+            let tab_idx = ((my - 78.0) / 36.0).floor() as i32;
             let target_tab = match tab_idx {
                 0 => Some(SettingsTab::General),
                 1 => Some(SettingsTab::Autostart),
@@ -199,8 +199,8 @@ impl SettingsUi {
         let win_w = SETTINGS_WIN_W as f32;
         let win_h = SETTINGS_WIN_H as f32;
 
-        if mx < SIDEBAR_W {
-            let tab_idx = ((my - 60.0) / 36.0).floor() as i32;
+        if mx < SIDEBAR_W && my >= 76.0 {
+            let tab_idx = ((my - 78.0) / 36.0).floor() as i32;
             if (0..=4).contains(&tab_idx) {
                 return Some(format!("tab_{}", tab_idx));
             }
@@ -221,8 +221,8 @@ impl SettingsUi {
 
         match self.active_tab {
             SettingsTab::General => {
-                // Row 1: 外观与主题 (y approx 72)
-                if (60.0..100.0).contains(&content_y) && (490.0..660.0).contains(&mx) {
+                // Row 1: 外观与主题 (y approx 99)
+                if (86.0..126.0).contains(&content_y) && (490.0..660.0).contains(&mx) {
                     self.temp_settings.theme = match self.temp_settings.theme.as_str() {
                         "system" => "light".to_string(),
                         "light" => "dark".to_string(),
@@ -230,14 +230,14 @@ impl SettingsUi {
                     };
                     return SettingsAction::Redraw;
                 }
-                // Row 2: 缩放大小 (y approx 114)
-                if (100.0..144.0).contains(&content_y) && (500.0..660.0).contains(&mx) {
+                // Row 2: 缩放大小 (y approx 150)
+                if (126.0..170.0).contains(&content_y) && (500.0..660.0).contains(&mx) {
                     self.dragging_slider = Some("scale".to_string());
                     self.update_slider("scale", mx);
                     return SettingsAction::Redraw;
                 }
-                // Row 3: 落地吸附模式 (y approx 158)
-                if (144.0..188.0).contains(&content_y) && (480.0..660.0).contains(&mx) {
+                // Row 3: 落地吸附模式 (y approx 194)
+                if (170.0..214.0).contains(&content_y) && (480.0..660.0).contains(&mx) {
                     self.temp_settings.floor_mode = match self.temp_settings.floor_mode.as_str() {
                         "bottom" => "taskbar".to_string(),
                         "taskbar" => "free".to_string(),
@@ -245,45 +245,45 @@ impl SettingsUi {
                     };
                     return SettingsAction::Redraw;
                 }
-                // Row 4: 重力加速度 (y approx 202)
-                if (188.0..232.0).contains(&content_y) && (590.0..650.0).contains(&mx) {
+                // Row 4: 重力加速度 (y approx 238)
+                if (214.0..258.0).contains(&content_y) && (590.0..650.0).contains(&mx) {
                     self.temp_settings.gravity_enabled = !self.temp_settings.gravity_enabled;
                     return SettingsAction::Redraw;
                 }
-                // Row 5: 屏幕位置校准 (复位居中) (y approx 246)
-                if (232.0..276.0).contains(&content_y) && (560.0..650.0).contains(&mx) {
+                // Row 5: 屏幕位置校准 (复位居中) (y approx 280)
+                if (258.0..302.0).contains(&content_y) && (560.0..650.0).contains(&mx) {
                     return SettingsAction::ResetPosition;
                 }
-                // Row 6: 实时额度卡片 (y approx 318)
-                if (300.0..348.0).contains(&content_y) && (590.0..650.0).contains(&mx) {
+                // Row 6: 实时额度卡片 (y approx 344)
+                if (326.0..374.0).contains(&content_y) && (590.0..650.0).contains(&mx) {
                     self.temp_settings.show_quota = !self.temp_settings.show_quota;
                     return SettingsAction::Redraw;
                 }
-                // Row 7: 仅在 IDE 活跃 (y approx 362)
-                if (348.0..392.0).contains(&content_y) && (590.0..650.0).contains(&mx) {
+                // Row 7: 仅在 IDE 活跃 (y approx 388)
+                if (374.0..418.0).contains(&content_y) && (590.0..650.0).contains(&mx) {
                     self.temp_settings.menu_config.ide_only = !self.temp_settings.menu_config.ide_only;
                     return SettingsAction::Redraw;
                 }
-                // Row 8: 完全穿透免打扰 (y approx 406)
-                if (392.0..436.0).contains(&content_y) && (590.0..650.0).contains(&mx) {
+                // Row 8: 完全穿透免打扰 (y approx 432)
+                if (418.0..462.0).contains(&content_y) && (590.0..650.0).contains(&mx) {
                     self.temp_settings.dnd_passthrough = !self.temp_settings.dnd_passthrough;
                     return SettingsAction::Redraw;
                 }
-                // Row 10: 互动音效 (y approx 512)
-                if (490.0..540.0).contains(&content_y) && (590.0..650.0).contains(&mx) {
+                // Row 10: 互动音效 (y approx 538)
+                if (516.0..566.0).contains(&content_y) && (590.0..650.0).contains(&mx) {
                     self.temp_settings.sound_enabled = !self.temp_settings.sound_enabled;
                     return SettingsAction::Redraw;
                 }
             }
 
             SettingsTab::Autostart => {
-                // Row 1: 开机自启 (y approx 72)
-                if (56.0..106.0).contains(&content_y) && (590.0..650.0).contains(&mx) {
+                // Row 1: 开机自启 (y approx 98)
+                if (82.0..132.0).contains(&content_y) && (590.0..650.0).contains(&mx) {
                     self.autostart_enabled = !self.autostart_enabled;
                     return SettingsAction::Redraw;
                 }
-                // Row 2: 检查更新按钮 (y approx 160)
-                if (140.0..190.0).contains(&content_y) && (550.0..650.0).contains(&mx) {
+                // Row 2: 检查更新按钮 (y approx 186)
+                if (166.0..216.0).contains(&content_y) && (550.0..650.0).contains(&mx) {
                     return SettingsAction::CheckUpdate;
                 }
             }
@@ -303,7 +303,7 @@ impl SettingsUi {
                     &mut self.temp_settings.menu_config.sound,
                 ];
 
-                let start_y = 66.0;
+                let start_y = 92.0;
                 let row_h = 36.0;
                 for (i, val) in menu_keys.into_iter().enumerate() {
                     let ry = start_y + (i as f32) * row_h;
@@ -345,10 +345,10 @@ impl SettingsUi {
         // 2. Render Left Sidebar
         pixmap.fill_rounded_rect_sdf(0.0, 0.0, SIDEBAR_W * s, h_px as f32, 0.0, bg_sidebar, 1.0 * s, border_card);
 
-        // Sidebar title and version
-        draw_text_into_pixmap(pixmap, "偏好设置", 18.0 * s, 18.0 * s, 100.0 * s, 20.0 * s, 13.0 * s, 0.25, text_pri, 1.0, TextAlignment::Left);
-        pixmap.fill_rounded_rect_sdf(126.0 * s, 18.0 * s, 46.0 * s, 18.0 * s, 4.0 * s, if is_dark { [255, 255, 255, 24] } else { [0, 0, 0, 14] }, 0.0, [0, 0, 0, 0]);
-        draw_text_into_pixmap(pixmap, "v0.3.0", 126.0 * s, 20.0 * s, 46.0 * s, 14.0 * s, 10.0 * s, 0.0, text_sec, 1.0, TextAlignment::Center);
+        // Sidebar title and version (spaced below native macOS traffic light buttons)
+        draw_text_into_pixmap(pixmap, "偏好设置", 18.0 * s, 44.0 * s, 100.0 * s, 20.0 * s, 13.0 * s, 0.25, text_pri, 1.0, TextAlignment::Left);
+        pixmap.fill_rounded_rect_sdf(126.0 * s, 45.0 * s, 46.0 * s, 18.0 * s, 4.0 * s, if is_dark { [255, 255, 255, 24] } else { [0, 0, 0, 14] }, 0.0, [0, 0, 0, 0]);
+        draw_text_into_pixmap(pixmap, "v0.4.0", 126.0 * s, 47.0 * s, 46.0 * s, 14.0 * s, 10.0 * s, 0.0, text_sec, 1.0, TextAlignment::Center);
 
         // Sidebar nav items
         let tabs = [
@@ -360,7 +360,7 @@ impl SettingsUi {
         ];
 
         for (i, (tab, title)) in tabs.into_iter().enumerate() {
-            let ty = (56.0 + (i as f32) * 36.0) * s;
+            let ty = (78.0 + (i as f32) * 36.0) * s;
             let is_active = self.active_tab == tab;
             let (bg_pill, txt_color, weight) = if is_active {
                 (accent_blue, [255, 255, 255], 0.23)
@@ -441,7 +441,7 @@ impl SettingsUi {
         text_sec: [u8; 3],
         accent_blue: [u8; 4],
     ) {
-        let base_y = (18.0 - self.scroll_y) * s;
+        let base_y = (44.0 - self.scroll_y) * s;
 
         // Header
         draw_text_into_pixmap(pixmap, "常规与显示", cx, base_y, cw, 22.0 * s, 15.0 * s, 0.3, text_pri, 1.0, TextAlignment::Left);
@@ -547,7 +547,7 @@ impl SettingsUi {
         text_sec: [u8; 3],
         _accent_blue: [u8; 4],
     ) {
-        let base_y = 18.0 * s;
+        let base_y = (44.0 - self.scroll_y) * s;
         draw_text_into_pixmap(pixmap, "自启动与更新", cx, base_y, cw, 22.0 * s, 15.0 * s, 0.3, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "管理开机自启动配置与挂件版本检测", cx, base_y + 22.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
@@ -561,7 +561,7 @@ impl SettingsUi {
         let c2_y = c1_y + 80.0 * s;
         pixmap.fill_rounded_rect_sdf(cx, c2_y, cw, 56.0 * s, 8.0 * s, bg_card, 1.0 * s, border_card);
         draw_text_into_pixmap(pixmap, "当前版本", cx + 14.0 * s, c2_y + 8.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "v0.3.0 (Pure CPU 2D 软渲染引擎 · 单二进制)", cx + 14.0 * s, c2_y + 26.0 * s, 280.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "v0.4.0 (Pure CPU 2D 软渲染引擎 · 单二进制)", cx + 14.0 * s, c2_y + 26.0 * s, 280.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         let btn_update_x = cx + cw - 88.0 * s;
         pixmap.fill_rounded_rect_sdf(btn_update_x, c2_y + 14.0 * s, 76.0 * s, 26.0 * s, 6.0 * s, border_card, 1.0 * s, border_card);
         draw_text_into_pixmap(pixmap, "检查更新", btn_update_x, c2_y + 19.0 * s, 76.0 * s, 16.0 * s, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
@@ -581,7 +581,7 @@ impl SettingsUi {
         accent_blue: [u8; 4],
     ) {
         let is_dark = self.is_dark_mode();
-        let base_y = 18.0 * s;
+        let base_y = (44.0 - self.scroll_y) * s;
         draw_text_into_pixmap(pixmap, "皮肤管理", cx, base_y, cw, 22.0 * s, 15.0 * s, 0.3, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "切换外观皮肤，轻量化纯 2D 精灵切片", cx, base_y + 22.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
@@ -635,7 +635,7 @@ impl SettingsUi {
         text_pri: [u8; 3],
         text_sec: [u8; 3],
     ) {
-        let base_y = (18.0 - self.scroll_y) * s;
+        let base_y = (44.0 - self.scroll_y) * s;
         draw_text_into_pixmap(pixmap, "台词与问候", cx, base_y, cw, 22.0 * s, 15.0 * s, 0.3, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "自定义不同工作状态下的气泡台词与提示内容", cx, base_y + 22.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
@@ -669,7 +669,7 @@ impl SettingsUi {
         text_sec: [u8; 3],
         accent_blue: [u8; 4],
     ) {
-        let base_y = (18.0 - self.scroll_y) * s;
+        let base_y = (44.0 - self.scroll_y) * s;
         draw_text_into_pixmap(pixmap, "右键菜单", cx, base_y, cw, 22.0 * s, 15.0 * s, 0.3, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "管理在桌面右键点击桌宠时出现的控制项与呈现策略", cx, base_y + 22.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
@@ -729,9 +729,17 @@ impl SettingsUi {
         let r = 4.0 * s;
         if checked {
             pixmap.fill_rounded_rect_sdf(x, y, size, size, r, accent, 0.0, [0, 0, 0, 0]);
-            // Draw checkmark tick
-            pixmap.fill_rounded_rect_sdf(x + 4.0 * s, y + 7.0 * s, 3.0 * s, 6.0 * s, 1.0 * s, [255, 255, 255, 255], 0.0, [0, 0, 0, 0]);
-            pixmap.fill_rounded_rect_sdf(x + 6.0 * s, y + 10.0 * s, 6.0 * s, 3.0 * s, 1.0 * s, [255, 255, 255, 255], 0.0, [0, 0, 0, 0]);
+            // Draw clean anti-aliased vector checkmark (Apple SF Symbols style)
+            let thick = 1.8 * s;
+            let check_color = [255, 255, 255, 255];
+            let p1_x = x + 4.2 * s;
+            let p1_y = y + 8.2 * s;
+            let p2_x = x + 6.8 * s;
+            let p2_y = y + 11.4 * s;
+            let p3_x = x + 12.0 * s;
+            let p3_y = y + 4.8 * s;
+            pixmap.draw_line_sdf(p1_x, p1_y, p2_x, p2_y, thick, check_color);
+            pixmap.draw_line_sdf(p2_x, p2_y, p3_x, p3_y, thick, check_color);
         } else {
             pixmap.fill_rounded_rect_sdf(x, y, size, size, r, [0, 0, 0, 0], 1.2 * s, [142, 142, 147, 180]);
         }
@@ -792,7 +800,7 @@ mod tests {
         assert_eq!(ui.temp_settings.scale, 1.0);
 
         // Click sidebar tab 4 (Menu)
-        ui.mouse_pos = (50.0, 210.0);
+        ui.mouse_pos = (50.0, 230.0);
         let action = ui.handle_mouse_down(1.0);
         assert!(matches!(action, Some(SettingsAction::SelectTab(SettingsTab::Menu))));
         assert_eq!(ui.active_tab, SettingsTab::Menu);
@@ -801,7 +809,7 @@ mod tests {
         ui.render(&mut pixmap, 1.0);
 
         // Click sidebar tab 2 (Skins)
-        ui.mouse_pos = (50.0, 145.0);
+        ui.mouse_pos = (50.0, 160.0);
         let action = ui.handle_mouse_down(1.0);
         assert!(matches!(action, Some(SettingsAction::SelectTab(SettingsTab::Skins))));
         assert_eq!(ui.active_tab, SettingsTab::Skins);
@@ -811,7 +819,7 @@ mod tests {
 
         // Click row 0 in Menu (Toggle openAntigravity)
         ui.active_tab = SettingsTab::Menu;
-        ui.mouse_pos = (300.0, 75.0);
+        ui.mouse_pos = (300.0, 102.0);
         let action = ui.handle_mouse_down(1.0);
         assert!(matches!(action, Some(SettingsAction::Redraw)));
         assert_eq!(ui.temp_settings.menu_config.open_antigravity, false);

@@ -248,6 +248,45 @@ mod cpu_2d_app {
             }
         }
 
+        pub fn show_settings_window(ns_window: *mut c_void) {
+            if ns_window.is_null() {
+                return;
+            }
+            unsafe {
+                // Settings dialog window level: NSFloatingWindowLevel (3)
+                let set_level: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) =
+                    std::mem::transmute(objc_msgSend as *const ());
+                set_level(ns_window, sel(b"setLevel:\0"), 3);
+
+                // MoveToActiveSpace (1<<1) | FullScreenNone (1<<9)
+                // Prevents corrupting or invading full-screen spaces of other applications
+                let behavior: usize = (1 << 1) | (1 << 9);
+                let set_behavior: unsafe extern "C" fn(*mut c_void, *mut c_void, usize) =
+                    std::mem::transmute(objc_msgSend as *const ());
+                set_behavior(ns_window, sel(b"setCollectionBehavior:\0"), behavior);
+
+                let center_win: unsafe extern "C" fn(*mut c_void, *mut c_void) =
+                    std::mem::transmute(objc_msgSend as *const ());
+                center_win(ns_window, sel(b"center\0"));
+
+                let make_key_and_order: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) =
+                    std::mem::transmute(objc_msgSend as *const ());
+                make_key_and_order(ns_window, sel(b"makeKeyAndOrderFront:\0"), std::ptr::null_mut());
+
+                let app_cls = objc_getClass(b"NSApplication\0".as_ptr());
+                if !app_cls.is_null() {
+                    let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+                        std::mem::transmute(objc_msgSend as *const ());
+                    let shared_app = msg_ptr(app_cls, sel(b"sharedApplication\0"));
+                    if !shared_app.is_null() {
+                        let msg_void_bool: unsafe extern "C" fn(*mut c_void, *mut c_void, i8) =
+                            std::mem::transmute(objc_msgSend as *const ());
+                        msg_void_bool(shared_app, sel(b"activateIgnoringOtherApps:\0"), 1);
+                    }
+                }
+            }
+        }
+
         pub fn query_dock_insets_global() -> DockInsets {
             unsafe {
                 let cls = objc_getClass(b"NSScreen\0".as_ptr());
@@ -519,10 +558,22 @@ mod cpu_2d_app {
             .with_title("偏好设置")
             .with_inner_size(LogicalSize::new(SETTINGS_WIN_W, SETTINGS_WIN_H))
             .with_resizable(false)
+            .with_maximizable(false)
             .with_visible(false);
 
         if let Some(ref icon) = win_icon {
             settings_win_builder = settings_win_builder.with_window_icon(Some(icon.clone()));
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            settings_win_builder = settings_win_builder
+                .with_has_shadow(true)
+                .with_titlebar_transparent(true)
+                .with_fullsize_content_view(true)
+                .with_title_hidden(true)
+                .with_traffic_light_inset(LogicalPosition::new(14.0, 16.0))
+                .with_movable_by_window_background(true);
         }
 
         let settings_window = settings_win_builder.build(&event_loop)?;
@@ -567,6 +618,7 @@ mod cpu_2d_app {
             .root_dir()
             .join("skins/fat-cat/frames/idle.png");
         let cat_sprite = CatSprite::load_from_path(&custom_skin_path);
+        settings_ui.cat_sprite = cat_sprite.clone();
 
         let mut physics = PetPhysics::new(default_x, default_y);
         physics.zoom_scale = settings.scale;
@@ -597,7 +649,7 @@ mod cpu_2d_app {
 
         let tray_icon = TrayIcon::from_rgba(tray_rgba.to_vec(), 32, 32).ok();
         let mut tray_builder = TrayIconBuilder::new()
-            .with_tooltip("大肥猫桌宠 v0.3.0 (Pure CPU 2D)")
+            .with_tooltip("大肥猫桌宠 v0.4.0 (Pure CPU 2D)")
             .with_menu(Box::new(menu_mgr.menu.clone()));
         if let Some(icon) = tray_icon {
             tray_builder = tray_builder.with_icon(icon);
@@ -673,7 +725,7 @@ mod cpu_2d_app {
         let mut cursor_left_since: Option<Instant> = None;
         let mut dirty_frame = true;
 
-        println!("Anti-Pet v0.3.0 Pure CPU 2D 软渲染引擎已启动 (Zero WebKit / Zero Node.js)");
+        println!("Anti-Pet v0.4.0 Pure CPU 2D 软渲染引擎已启动 (Zero WebKit / Zero Node.js)");
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Wait;
@@ -811,7 +863,7 @@ mod cpu_2d_app {
                                         settings_window.set_visible(true);
                                         settings_window.set_focus();
                                         #[cfg(target_os = "macos")]
-                                        macos_window::activate_ignoring_other_apps(settings_window.ns_window());
+                                        macos_window::show_settings_window(settings_window.ns_window());
                                         let s_scale = settings_window.scale_factor() as f32;
                                         settings_ui.render(&mut settings_pixmap, s_scale);
                                         settings_surface.present(&settings_pixmap, s_scale as f64);
@@ -1215,7 +1267,7 @@ mod cpu_2d_app {
                                                 settings_surface.present(&settings_pixmap, s_scale as f64);
                                             }
                                             SettingsAction::CheckUpdate => {
-                                                settings_ui.show_toast("当前已是最新版本 (v0.3.0)");
+                                                settings_ui.show_toast("当前已是最新版本 (v0.4.0)");
                                                 settings_ui.render(&mut settings_pixmap, s_scale);
                                                 settings_surface.present(&settings_pixmap, s_scale as f64);
                                             }

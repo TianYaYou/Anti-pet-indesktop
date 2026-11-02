@@ -378,6 +378,56 @@ impl Pixmap {
             }
         }
     }
+
+    /// Draws an anti-aliased line segment (capsule) from (x0, y0) to (x1, y1) with the given thickness and color.
+    pub fn draw_line_sdf(
+        &mut self,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        thickness: f32,
+        color: [u8; 4],
+    ) {
+        if color[3] == 0 || thickness <= 0.0 {
+            return;
+        }
+
+        let radius = thickness * 0.5;
+        let min_x = (x0.min(x1) - radius - 1.0).floor().max(0.0) as i32;
+        let max_x = (x0.max(x1) + radius + 1.0).ceil().min(self.width as f32 - 1.0) as i32;
+        let min_y = (y0.min(y1) - radius - 1.0).floor().max(0.0) as i32;
+        let max_y = (y0.max(y1) + radius + 1.0).ceil().min(self.height as f32 - 1.0) as i32;
+
+        let dx = x1 - x0;
+        let dy = y1 - y0;
+        let len_sq = dx * dx + dy * dy;
+
+        let [r, g, b, a] = color;
+        let a_f = a as f32;
+
+        for py in min_y..=max_y {
+            let py_f = py as f32 + 0.5;
+            for px in min_x..=max_x {
+                let px_f = px as f32 + 0.5;
+
+                let dist = if len_sq <= 0.0001 {
+                    (px_f - x0).hypot(py_f - y0)
+                } else {
+                    let t = (((px_f - x0) * dx + (py_f - y0) * dy) / len_sq).clamp(0.0, 1.0);
+                    let proj_x = x0 + t * dx;
+                    let proj_y = y0 + t * dy;
+                    (px_f - proj_x).hypot(py_f - proj_y)
+                };
+
+                let d = dist - radius;
+                let cov = (0.5 - d).clamp(0.0, 1.0);
+                if cov > 0.005 {
+                    self.blend_pixel(px, py, r, g, b, (a_f * cov).round() as u8);
+                }
+            }
+        }
+    }
 }
 
 /// Cross-platform software framebuffer presenter that blits a transparent `Pixmap`
