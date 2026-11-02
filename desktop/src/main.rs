@@ -463,13 +463,7 @@ mod cpu_2d_app {
         hit_tester.cat_rect = Some(physics.cat_bounding_rect());
         let mut last_cursor_local = (150.0_f64, 320.0_f64);
         let mut audio = NativeAudioPlayer::new(settings.sound_enabled);
-        let menu_mgr = NativeMenuManager::new(
-            settings.show_quota,
-            settings.dnd_passthrough,
-            settings.gravity_enabled,
-            &settings.floor_mode,
-            settings.sound_enabled,
-        );
+        let mut menu_mgr = NativeMenuManager::new(&settings);
 
         let tray_icon = TrayIcon::from_rgba(tray_rgba.to_vec(), 32, 32).ok();
         let mut tray_builder = TrayIconBuilder::new()
@@ -784,6 +778,7 @@ mod cpu_2d_app {
                                 let _ = proxy.send_event(AppEvent::ResetPosition);
                             }
 
+                            menu_mgr.rebuild_menu(&new_settings);
                             settings = new_settings;
                             dirty_frame = true;
                         }
@@ -919,7 +914,7 @@ mod cpu_2d_app {
                         }
 
                         // 5. Step physics engine & redraw software framebuffer if needed
-                        let (win_moved, anim_active) =
+                        let (win_moved, _anim_active) =
                             physics.step_frame(mon_width, dock.1, dock.2);
                         if win_moved {
                             window.set_outer_position(LogicalPosition::new(
@@ -930,8 +925,9 @@ mod cpu_2d_app {
                             settings.pos_y = Some(physics.win_y);
                         }
 
-                        // Redraw at 60 FPS during active animation, or ~8 FPS during calm idle breathing
-                        if dirty_frame || win_moved || anim_active {
+                        // Redraw at 40 FPS whenever window is visible: fluid breathing, smooth gaze, zero stutter
+                        if is_window_visible {
+                            let _ = dirty_frame;
                             dirty_frame = false;
                             let scale = window.scale_factor() as f32;
                             let pw = ((COMPACT_WIN_W as f32) * scale).round() as u32;
@@ -1019,6 +1015,7 @@ mod cpu_2d_app {
                                     is_dragging = false;
                                     audio.play(SoundEffect::ClickPress);
 
+                                    menu_mgr.rebuild_menu(&settings);
                                     hit_tester.is_menu_open = true;
                                     currently_ignoring_cursor = false;
                                     let _ = window.set_ignore_cursor_events(false);

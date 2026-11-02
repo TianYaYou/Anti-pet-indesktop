@@ -3,8 +3,42 @@ use crate::quota::QuotaSnapshot;
 use std::path::PathBuf;
 use std::time::SystemTime;
 
+/// Configuration of which context menu items are displayed (managed by Settings window).
+#[derive(Clone, Debug, PartialEq)]
+pub struct MenuConfig {
+    pub open_antigravity: bool,
+    pub settings: bool,
+    pub quota: bool,
+    pub random_dialogue: bool,
+    pub pet_action: bool,
+    pub zoom: bool,
+    pub dnd: bool,
+    pub ide_only: bool,
+    pub gravity: bool,
+    pub switch_skin: bool,
+    pub sound: bool,
+}
+
+impl Default for MenuConfig {
+    fn default() -> Self {
+        Self {
+            open_antigravity: true,
+            settings: true,
+            quota: true,
+            random_dialogue: true,
+            pet_action: true,
+            zoom: true,
+            dnd: true,
+            ide_only: true,
+            gravity: true,
+            switch_skin: true,
+            sound: true,
+        }
+    }
+}
+
 /// Persistent user settings loaded/saved directly by the Rust desktop binary (`.antigravity-pet-settings.json`).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct PetSettings {
     pub scale: f32,
     pub sound_enabled: bool,
@@ -15,6 +49,7 @@ pub struct PetSettings {
     pub pos_x: Option<f64>,
     pub pos_y: Option<f64>,
     pub reset_seq: Option<u64>,
+    pub menu_config: MenuConfig,
 }
 
 impl Default for PetSettings {
@@ -29,6 +64,7 @@ impl Default for PetSettings {
             pos_x: None,
             pos_y: None,
             reset_seq: None,
+            menu_config: MenuConfig::default(),
         }
     }
 }
@@ -98,6 +134,42 @@ impl NativeStateWatcher {
         settings.pos_x = v.get("posX").and_then(|x| x.as_f64());
         settings.pos_y = v.get("posY").and_then(|x| x.as_f64());
         settings.reset_seq = v.get("resetSeq").and_then(|x| x.as_u64());
+
+        if let Some(mc) = v.get("menuConfig").and_then(|x| x.as_object()) {
+            if let Some(b) = mc.get("openAntigravity").and_then(|x| x.as_bool()) {
+                settings.menu_config.open_antigravity = b;
+            }
+            if let Some(b) = mc.get("settings").and_then(|x| x.as_bool()) {
+                settings.menu_config.settings = b;
+            }
+            if let Some(b) = mc.get("quota").and_then(|x| x.as_bool()) {
+                settings.menu_config.quota = b;
+            }
+            if let Some(b) = mc.get("randomDialogue").and_then(|x| x.as_bool()) {
+                settings.menu_config.random_dialogue = b;
+            }
+            if let Some(b) = mc.get("petAction").and_then(|x| x.as_bool()) {
+                settings.menu_config.pet_action = b;
+            }
+            if let Some(b) = mc.get("zoom").and_then(|x| x.as_bool()) {
+                settings.menu_config.zoom = b;
+            }
+            if let Some(b) = mc.get("dnd").and_then(|x| x.as_bool()) {
+                settings.menu_config.dnd = b;
+            }
+            if let Some(b) = mc.get("ideOnly").and_then(|x| x.as_bool()) {
+                settings.menu_config.ide_only = b;
+            }
+            if let Some(b) = mc.get("gravity").and_then(|x| x.as_bool()) {
+                settings.menu_config.gravity = b;
+            }
+            if let Some(b) = mc.get("switchSkin").and_then(|x| x.as_bool()) {
+                settings.menu_config.switch_skin = b;
+            }
+            if let Some(b) = mc.get("sound").and_then(|x| x.as_bool()) {
+                settings.menu_config.sound = b;
+            }
+        }
         settings
     }
 
@@ -121,6 +193,19 @@ impl NativeStateWatcher {
             None => serde_json::Value::Null,
         };
 
+        let mut mc_map = serde_json::Map::new();
+        mc_map.insert("openAntigravity".to_string(), serde_json::json!(s.menu_config.open_antigravity));
+        mc_map.insert("settings".to_string(), serde_json::json!(s.menu_config.settings));
+        mc_map.insert("quota".to_string(), serde_json::json!(s.menu_config.quota));
+        mc_map.insert("randomDialogue".to_string(), serde_json::json!(s.menu_config.random_dialogue));
+        mc_map.insert("petAction".to_string(), serde_json::json!(s.menu_config.pet_action));
+        mc_map.insert("zoom".to_string(), serde_json::json!(s.menu_config.zoom));
+        mc_map.insert("dnd".to_string(), serde_json::json!(s.menu_config.dnd));
+        mc_map.insert("ideOnly".to_string(), serde_json::json!(s.menu_config.ide_only));
+        mc_map.insert("gravity".to_string(), serde_json::json!(s.menu_config.gravity));
+        mc_map.insert("switchSkin".to_string(), serde_json::json!(s.menu_config.switch_skin));
+        mc_map.insert("sound".to_string(), serde_json::json!(s.menu_config.sound));
+
         let mut map = serde_json::Map::new();
         map.insert("scale".to_string(), serde_json::json!((s.scale * 100.0).round() / 100.0));
         map.insert("skinId".to_string(), serde_json::json!("fat-cat"));
@@ -131,6 +216,7 @@ impl NativeStateWatcher {
         map.insert("showQuota".to_string(), serde_json::json!(s.show_quota));
         map.insert("posX".to_string(), pos_x_val);
         map.insert("posY".to_string(), pos_y_val);
+        map.insert("menuConfig".to_string(), serde_json::Value::Object(mc_map));
         if let Some(seq) = s.reset_seq {
             map.insert("resetSeq".to_string(), serde_json::json!(seq));
         }

@@ -1,4 +1,4 @@
-use muda::{CheckMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
+use muda::{CheckMenuItem, IsMenuItem, Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
 #[cfg(target_os = "macos")]
 use muda::ContextMenu;
 #[cfg(target_os = "windows")]
@@ -146,72 +146,101 @@ pub enum PetMenuAction {
     Quit,
 }
 
+#[cfg(target_os = "macos")]
+pub fn is_antigravity_running() -> bool {
+    let out = std::process::Command::new("/usr/bin/pgrep")
+        .args(["-f", "Antigravity.app"])
+        .output();
+    if let Ok(res) = out {
+        if res.status.success() {
+            return true;
+        }
+    }
+    let out2 = std::process::Command::new("/usr/bin/pgrep")
+        .args(["-x", "Antigravity"])
+        .output();
+    if let Ok(res2) = out2 {
+        if res2.status.success() {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn is_antigravity_running() -> bool {
+    false
+}
+
 /// Native OS Menu Manager (`muda`) serving both the System Tray Menu and the Right-Click Context Menu.
 pub struct NativeMenuManager {
     pub menu: Menu,
-    id_settings: MenuId,
-    id_reset_center: MenuId,
-    id_next_dialogue: MenuId,
-    id_pet_head: MenuId,
-    id_refresh_quota: MenuId,
+    item_settings: MenuItem,
+    item_reset_center: MenuItem,
+    item_next_dialogue: MenuItem,
+    item_pet_head: MenuItem,
+    item_refresh_quota: MenuItem,
     pub item_show_quota: CheckMenuItem,
     pub item_dnd: CheckMenuItem,
     pub item_gravity: CheckMenuItem,
     pub item_floor_bottom: CheckMenuItem,
     pub item_floor_dock: CheckMenuItem,
     pub item_floor_free: CheckMenuItem,
+    floor_sub: Submenu,
+    zoom_sub: Submenu,
     id_zoom_80: MenuId,
     id_zoom_100: MenuId,
     id_zoom_125: MenuId,
     id_zoom_150: MenuId,
     pub item_sound: CheckMenuItem,
+    item_toggle_vis: MenuItem,
+    item_open_agy: MenuItem,
+    item_about: MenuItem,
+    item_quit: MenuItem,
+    id_settings: MenuId,
+    id_reset_center: MenuId,
+    id_next_dialogue: MenuId,
+    id_pet_head: MenuId,
+    id_refresh_quota: MenuId,
     id_toggle_vis: MenuId,
     id_open_agy: MenuId,
     id_quit: MenuId,
 }
 
 impl NativeMenuManager {
-    pub fn new(
-        show_quota: bool,
-        dnd_enabled: bool,
-        gravity_enabled: bool,
-        floor_mode: &str,
-        sound_enabled: bool,
-    ) -> Self {
+    pub fn new(settings: &crate::state_watcher::PetSettings) -> Self {
         let menu = Menu::new();
 
         let item_settings = MenuItem::new("偏好设置...", true, None);
         let item_reset_center = MenuItem::new("复位居中", true, None);
-        let sep0 = PredefinedMenuItem::separator();
 
         let item_next_dialogue = MenuItem::new("换一句傲娇台词", true, None);
         let item_pet_head = MenuItem::new("摸摸猫猫头", true, None);
         let item_refresh_quota = MenuItem::new("立即刷新 Antigravity 额度", true, None);
-        let sep1 = PredefinedMenuItem::separator();
 
-        let item_show_quota = CheckMenuItem::new("气泡内显示额度条", true, show_quota, None);
-        let item_dnd = CheckMenuItem::new("免打扰模式 (右键猫咪可随时退出)", true, dnd_enabled, None);
-        let item_gravity = CheckMenuItem::new("启用物理重力掉落", true, gravity_enabled, None);
-        let item_sound = CheckMenuItem::new("启用 Q 弹互动音效", true, sound_enabled, None);
+        let item_show_quota = CheckMenuItem::new("气泡内显示额度条", true, settings.show_quota, None);
+        let item_dnd = CheckMenuItem::new("免打扰模式 (右键猫咪可随时退出)", true, settings.dnd_passthrough, None);
+        let item_gravity = CheckMenuItem::new("启用物理重力掉落", true, settings.gravity_enabled, None);
+        let item_sound = CheckMenuItem::new("启用 Q 弹互动音效", true, settings.sound_enabled, None);
 
         // Floor mode submenu
         let floor_sub = Submenu::new("掉落落点位置", true);
         let item_floor_bottom = CheckMenuItem::new(
             "屏幕最底边 (贴底)",
             true,
-            floor_mode == "bottom",
+            settings.floor_mode == "bottom",
             None,
         );
         let item_floor_dock = CheckMenuItem::new(
             "Mac 程序坞 / 任务栏上方",
             true,
-            floor_mode == "taskbar" || floor_mode == "dock",
+            settings.floor_mode == "taskbar" || settings.floor_mode == "dock",
             None,
         );
         let item_floor_free = CheckMenuItem::new(
             "自由悬浮 (松手不掉落)",
             true,
-            floor_mode == "free",
+            settings.floor_mode == "free",
             None,
         );
         let _ = floor_sub.append_items(&[&item_floor_bottom, &item_floor_dock, &item_floor_free]);
@@ -229,57 +258,126 @@ impl NativeMenuManager {
             &item_zoom_150,
         ]);
 
-        let sep2 = PredefinedMenuItem::separator();
         let item_toggle_vis = MenuItem::new("显示 / 隐藏 大肥猫", true, None);
         let item_open_agy = MenuItem::new("唤起 Antigravity IDE", true, None);
         let item_about = MenuItem::new("大肥猫桌宠 v0.3.0 (Pure CPU 2D)", false, None);
-        let sep3 = PredefinedMenuItem::separator();
         let item_quit = MenuItem::new("退出", true, None);
 
-        let _ = menu.append_items(&[
-            &item_settings,
-            &item_reset_center,
-            &sep0,
-            &item_next_dialogue,
-            &item_pet_head,
-            &item_refresh_quota,
-            &sep1,
-            &item_show_quota,
-            &item_dnd,
-            &item_gravity,
-            &floor_sub,
-            &zoom_sub,
-            &item_sound,
-            &sep2,
-            &item_toggle_vis,
-            &item_open_agy,
-            &item_about,
-            &sep3,
-            &item_quit,
-        ]);
+        let id_settings = item_settings.id().clone();
+        let id_reset_center = item_reset_center.id().clone();
+        let id_next_dialogue = item_next_dialogue.id().clone();
+        let id_pet_head = item_pet_head.id().clone();
+        let id_refresh_quota = item_refresh_quota.id().clone();
+        let id_zoom_80 = item_zoom_80.id().clone();
+        let id_zoom_100 = item_zoom_100.id().clone();
+        let id_zoom_125 = item_zoom_125.id().clone();
+        let id_zoom_150 = item_zoom_150.id().clone();
+        let id_toggle_vis = item_toggle_vis.id().clone();
+        let id_open_agy = item_open_agy.id().clone();
+        let id_quit = item_quit.id().clone();
 
-        Self {
+        let mut mgr = Self {
             menu,
-            id_settings: item_settings.id().clone(),
-            id_reset_center: item_reset_center.id().clone(),
-            id_next_dialogue: item_next_dialogue.id().clone(),
-            id_pet_head: item_pet_head.id().clone(),
-            id_refresh_quota: item_refresh_quota.id().clone(),
+            item_settings,
+            item_reset_center,
+            item_next_dialogue,
+            item_pet_head,
+            item_refresh_quota,
             item_show_quota,
             item_dnd,
             item_gravity,
             item_floor_bottom,
             item_floor_dock,
             item_floor_free,
-            id_zoom_80: item_zoom_80.id().clone(),
-            id_zoom_100: item_zoom_100.id().clone(),
-            id_zoom_125: item_zoom_125.id().clone(),
-            id_zoom_150: item_zoom_150.id().clone(),
+            floor_sub,
+            zoom_sub,
+            id_zoom_80,
+            id_zoom_100,
+            id_zoom_125,
+            id_zoom_150,
             item_sound,
-            id_toggle_vis: item_toggle_vis.id().clone(),
-            id_open_agy: item_open_agy.id().clone(),
-            id_quit: item_quit.id().clone(),
+            item_toggle_vis,
+            item_open_agy,
+            item_about,
+            item_quit,
+            id_settings,
+            id_reset_center,
+            id_next_dialogue,
+            id_pet_head,
+            id_refresh_quota,
+            id_toggle_vis,
+            id_open_agy,
+            id_quit,
+        };
+        mgr.rebuild_menu(settings);
+        mgr
+    }
+
+    /// Rebuilds the menu hierarchy to strictly match user configuration (`menuConfig`).
+    pub fn rebuild_menu(&mut self, settings: &crate::state_watcher::PetSettings) {
+        while self.menu.remove_at(0).is_some() {}
+
+        self.item_show_quota.set_checked(settings.show_quota);
+        self.item_dnd.set_checked(settings.dnd_passthrough);
+        self.item_gravity.set_checked(settings.gravity_enabled);
+        self.item_floor_bottom.set_checked(settings.floor_mode == "bottom");
+        self.item_floor_dock.set_checked(settings.floor_mode == "taskbar" || settings.floor_mode == "dock");
+        self.item_floor_free.set_checked(settings.floor_mode == "free");
+        self.item_sound.set_checked(settings.sound_enabled);
+
+        let mut items: Vec<&dyn IsMenuItem> = Vec::new();
+
+        if settings.menu_config.settings {
+            items.push(&self.item_settings);
         }
+
+        // 复位居中 (无条件提供，避免迷航)
+        items.push(&self.item_reset_center);
+
+        let sep0 = PredefinedMenuItem::separator();
+        items.push(&sep0);
+
+        if settings.menu_config.random_dialogue {
+            items.push(&self.item_next_dialogue);
+        }
+        if settings.menu_config.pet_action {
+            items.push(&self.item_pet_head);
+        }
+        if settings.menu_config.quota {
+            items.push(&self.item_refresh_quota);
+            items.push(&self.item_show_quota);
+        }
+        if settings.menu_config.dnd || settings.dnd_passthrough {
+            items.push(&self.item_dnd);
+        }
+        if settings.menu_config.gravity {
+            items.push(&self.item_gravity);
+            items.push(&self.floor_sub);
+        }
+        if settings.menu_config.zoom {
+            items.push(&self.zoom_sub);
+        }
+        if settings.menu_config.sound {
+            items.push(&self.item_sound);
+        }
+
+        let sep1 = PredefinedMenuItem::separator();
+        items.push(&sep1);
+
+        items.push(&self.item_toggle_vis);
+
+        if settings.menu_config.open_antigravity && !is_antigravity_running() {
+            items.push(&self.item_open_agy);
+        }
+
+        items.push(&self.item_about);
+
+        let sep2 = PredefinedMenuItem::separator();
+        items.push(&sep2);
+
+        items.push(&self.item_quit);
+
+        let _ = self.menu.append_items(&items);
     }
 
     /// Pops up the native OS context menu right at the current cursor position on right-click!

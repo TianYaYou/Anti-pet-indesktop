@@ -286,21 +286,30 @@ impl PetPhysics {
         let cat_h = self.cat_logical_size();
         let center_y = self.local_anchor_y - cat_h * 0.5;
         let dy = (local_y as f32) - center_y;
+        let dist = (dx * dx + dy * dy).sqrt();
 
-        // Subtle gaze shift toward cursor only when stationary and hovered over cat
-        if over_cat {
-            let dist = (dx * dx + dy * dy).sqrt().max(1.0);
-            let factor = (dist / 180.0).min(1.0) * 3.2;
-            self.gaze_x = (dx / dist) * factor;
-            self.gaze_y = (dy / dist) * factor * 0.65;
+        // Gaze shifts toward cursor within a generous radius of 360px
+        if dist <= 360.0 {
+            let factor = (dist / 200.0).min(1.0) * 3.4;
+            let target_gx = (dx / dist.max(1.0)) * factor;
+            let target_gy = (dy / dist.max(1.0)) * factor * 0.65;
+            self.gaze_x += (target_gx - self.gaze_x) * 0.28;
+            self.gaze_y += (target_gy - self.gaze_y) * 0.28;
 
             // Only flip when stationary on ground and cursor is clearly on one side (with generous deadband)
-            if self.edge_dock.is_none() && dx.abs() > 38.0 {
+            if self.edge_dock.is_none() && dx.abs() > 42.0 {
                 self.target_flip_x = if dx > 0.0 { -1.0 } else { 1.0 };
             }
         } else {
-            self.gaze_x *= 0.8;
-            self.gaze_y *= 0.8;
+            // Smoothly ease gaze back to center when cursor moves far away
+            self.gaze_x *= 0.85;
+            self.gaze_y *= 0.85;
+            if self.gaze_x.abs() < 0.02 {
+                self.gaze_x = 0.0;
+            }
+            if self.gaze_y.abs() < 0.02 {
+                self.gaze_y = 0.0;
+            }
         }
 
         // Detect petting gesture on top 55% of the cat sprite
@@ -387,11 +396,19 @@ impl PetPhysics {
 
             if self.win_y >= self.target_floor_y {
                 self.win_y = self.target_floor_y;
-                self.falling = false;
-                self.vy = 0.0;
-                self.vx = 0.0;
-                self.bounces = 0;
-                self.trigger_duang_rebound(440);
+                if self.vy.abs() > 6.0 && self.bounces < 2 {
+                    // Forceful throw/fall -> bounce up to 2 times with dampening
+                    self.bounces += 1;
+                    self.vy = -self.vy * 0.38;
+                    self.vx *= 0.65;
+                    self.trigger_duang_rebound(260);
+                } else {
+                    self.falling = false;
+                    self.vy = 0.0;
+                    self.vx = 0.0;
+                    self.bounces = 0;
+                    self.trigger_duang_rebound(440);
+                }
             }
             window_moved = true;
         }
@@ -517,19 +534,48 @@ mod tests {
     fn test_single_landing_duang_rebound() {
         let mut physics = PetPhysics::new(100.0, 200.0);
         physics.falling = true;
-        physics.vy = 10.0;
+        physics.vy = 4.0;
         physics.target_floor_y = 500.0;
-        physics.win_y = 495.0;
+        physics.win_y = 498.0;
 
-        // Step frame: moves win_y to 495 + 10 + 1.15 = 506.15 >= 500.0
+        // Step frame: gentle drop hits floor and settles without bouncing
         let (moved, _) = physics.step_frame(1440.0, 0.0, 0.0);
         assert!(moved);
         assert_eq!(physics.win_y, 500.0);
-        assert!(!physics.falling, "Falling must stop immediately on floor landing");
-        assert_eq!(physics.bounces, 0, "No double physical bounces allowed");
+        assert!(!physics.falling, "Gentle landing must settle without extra bounces");
+        assert_eq!(physics.bounces, 0);
         assert_eq!(physics.motion, PetMotionState::Rebound);
         assert!(physics.scale_x > 1.0, "Landing impact must first expand wider");
         assert!(physics.scale_y < 1.0, "Landing impact must first compress flatter");
+    }
+
+    #[test]
+    fn test_forceful_throw_bounces_twice() {
+        let mut physics = PetPhysics::new(100.0, 200.0);
+        physics.falling = true;
+        physics.vy = 18.0;
+        physics.target_floor_y = 500.0;
+        physics.win_y = 490.0;
+
+        // First impact: bounce 1
+        physics.step_frame(1440.0, 0.0, 0.0);
+        assert_eq!(physics.bounces, 1);
+        assert!(physics.falling);
+        assert!(physics.vy < 0.0, "Rebounded upward");
+
+        // Simulate flight until second impact
+        physics.win_y = 498.0;
+        physics.vy = 10.0;
+        physics.step_frame(1440.0, 0.0, 0.0);
+        assert_eq!(physics.bounces, 2);
+        assert!(physics.falling);
+
+        // Third impact: settles
+        physics.win_y = 499.0;
+        physics.vy = 5.0;
+        physics.step_frame(1440.0, 0.0, 0.0);
+        assert_eq!(physics.bounces, 0);
+        assert!(!physics.falling);
     }
 
     #[test]
