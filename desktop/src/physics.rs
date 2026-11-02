@@ -149,12 +149,15 @@ impl PetPhysics {
         self.target_scale_y = 0.84;
     }
 
-    /// Triggers duang rebound when released without dragging.
+    /// Triggers duang rebound when released without dragging or landing on floor (先变宽后变高).
     pub fn trigger_duang_rebound(&mut self, duration_ms: u64) {
         self.motion = PetMotionState::Rebound;
         self.motion_until = Some(Instant::now() + std::time::Duration::from_millis(duration_ms));
-        self.vel_scale_x = -0.36;
-        self.vel_scale_y = 0.44;
+        // Impact squash: immediately compress flatter & wider (先变宽后变高)
+        self.scale_x = 1.18;
+        self.scale_y = 0.84;
+        self.vel_scale_x = 0.0;
+        self.vel_scale_y = 0.0;
         self.target_scale_x = 1.0;
         self.target_scale_y = 1.0;
         self.target_rotation_rad = 0.0;
@@ -525,6 +528,8 @@ mod tests {
         assert!(!physics.falling, "Falling must stop immediately on floor landing");
         assert_eq!(physics.bounces, 0, "No double physical bounces allowed");
         assert_eq!(physics.motion, PetMotionState::Rebound);
+        assert!(physics.scale_x > 1.0, "Landing impact must first expand wider");
+        assert!(physics.scale_y < 1.0, "Landing impact must first compress flatter");
     }
 
     #[test]

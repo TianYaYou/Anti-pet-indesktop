@@ -200,7 +200,7 @@ mod cpu_2d_app {
                 return;
             }
             unsafe {
-                // NSStatusWindowLevel (25) floats above normal apps and full-screen windows
+                // NSStatusWindowLevel (25) floats above normal apps, full-screen spaces, and the Dock (level 20)
                 let set_level: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) =
                     std::mem::transmute(objc_msgSend as *const ());
                 set_level(ns_window, sel(b"setLevel:\0"), 25);
@@ -210,6 +210,10 @@ mod cpu_2d_app {
                 let set_behavior: unsafe extern "C" fn(*mut c_void, *mut c_void, usize) =
                     std::mem::transmute(objc_msgSend as *const ());
                 set_behavior(ns_window, sel(b"setCollectionBehavior:\0"), behavior);
+
+                let order_front: unsafe extern "C" fn(*mut c_void, *mut c_void) =
+                    std::mem::transmute(objc_msgSend as *const ());
+                order_front(ns_window, sel(b"orderFrontRegardless\0"));
             }
         }
 
@@ -230,6 +234,7 @@ mod cpu_2d_app {
                     let msg_void: unsafe extern "C" fn(*mut c_void, *mut c_void) =
                         std::mem::transmute(objc_msgSend as *const ());
                     msg_void(ns_window, sel(b"makeKeyWindow\0"));
+                    msg_void(ns_window, sel(b"orderFrontRegardless\0"));
                 }
             }
         }
@@ -526,7 +531,11 @@ mod cpu_2d_app {
 
             match event {
                 Event::NewEvents(StartCause::Init) => {
+                    #[cfg(target_os = "macos")]
+                    macos_window::enforce_topmost(window.ns_window());
+                    #[cfg(not(target_os = "macos"))]
                     window.set_always_on_top(true);
+
                     window.set_visible_on_all_workspaces(true);
                     dirty_frame = true;
                 }
@@ -713,7 +722,6 @@ mod cpu_2d_app {
                                     PetMenuAction::SetZoom(z) => {
                                         settings.scale = z;
                                         physics.zoom_scale = z;
-                                        physics.trigger_duang_rebound(380);
                                         state_watcher.save_settings(&settings);
                                         dirty_frame = true;
                                     }
@@ -987,7 +995,6 @@ mod cpu_2d_app {
                                 if (rounded_scale - physics.zoom_scale).abs() >= 0.01 {
                                     physics.zoom_scale = rounded_scale;
                                     settings.scale = rounded_scale;
-                                    physics.trigger_duang_rebound(280);
                                     bubble.text = format!("体型缩放: {:.0}%", rounded_scale * 100.0);
                                     bubble.visible = true;
                                     bubble.opacity = 1.0;
