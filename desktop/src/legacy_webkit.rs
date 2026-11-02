@@ -50,7 +50,6 @@ struct CompactFallPhysics {
     vx: f64,
     vy: f64,
     target_floor_y: f64,
-    bounces: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -511,7 +510,6 @@ pub fn run_legacy_webkit() -> Result<(), Box<dyn std::error::Error>> {
         vx: 0.0,
         vy: 0.0,
         target_floor_y: init_compact_y,
-        bounces: 0,
     };
 
     event_loop.run(move |event, _, control_flow| {
@@ -587,7 +585,6 @@ pub fn run_legacy_webkit() -> Result<(), Box<dyn std::error::Error>> {
                             vx: vx * 0.35,
                             vy: 0.0,
                             target_floor_y,
-                            bounces: 0,
                         };
                     }
                 }
@@ -612,12 +609,10 @@ pub fn run_legacy_webkit() -> Result<(), Box<dyn std::error::Error>> {
                         compact_physics.vx *= 0.94;
                         if compact_physics.y >= compact_physics.target_floor_y {
                             compact_physics.y = compact_physics.target_floor_y;
-                            if compact_physics.vy.abs() > 2.8 && compact_physics.bounces < 2 {
-                                compact_physics.vy *= -0.34;
-                                compact_physics.bounces += 1;
-                            } else {
-                                compact_physics.active = false;
-                            }
+                            compact_physics.active = false;
+                            let _ = webview.evaluate_script(
+                                "if(window.__antiPetOnCompactBounce)window.__antiPetOnCompactBounce();",
+                            );
                         }
                         compact_x = compact_physics.x;
                         compact_y = compact_physics.y;
