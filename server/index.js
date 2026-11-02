@@ -39,7 +39,7 @@ const DEFAULT_SETTINGS = {
   soundEnabled: true,
   soundVolume: 0.8,
   gravityEnabled: true,
-  floorMode: 'taskbar', // 'taskbar', 'bottom', 'free'
+  floorMode: 'bottom', // 'bottom', 'taskbar', 'free'
   ideOnlyMode: false,
   dndPassthrough: false,
   bubbleDurationMs: 4000,

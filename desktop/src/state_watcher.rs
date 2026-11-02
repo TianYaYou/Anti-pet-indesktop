@@ -23,7 +23,7 @@ impl Default for PetSettings {
             scale: 1.0,
             sound_enabled: true,
             gravity_enabled: true,
-            floor_mode: "taskbar".to_string(),
+            floor_mode: "bottom".to_string(),
             dnd_passthrough: false,
             show_quota: true,
             pos_x: None,
@@ -246,7 +246,7 @@ mod tests {
     #[test]
     fn test_pet_settings_default_and_reset_seq() {
         let defaults = PetSettings::default();
-        assert_eq!(defaults.floor_mode, "taskbar");
+        assert_eq!(defaults.floor_mode, "bottom");
         assert!(defaults.gravity_enabled);
         assert_eq!(defaults.reset_seq, None);
 

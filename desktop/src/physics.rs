@@ -87,14 +87,14 @@ impl PetPhysics {
             win_x: init_win_x,
             win_y: init_win_y,
             local_anchor_x: (COMPACT_WIN_W * 0.5) as f32,
-            local_anchor_y: (COMPACT_WIN_H - 14.0) as f32,
+            local_anchor_y: COMPACT_WIN_H as f32,
             vx: 0.0,
             vy: 0.0,
             falling: false,
             bounces: 0,
             target_floor_y: init_win_y,
             gravity_enabled: true,
-            floor_mode: "taskbar".to_string(),
+            floor_mode: "bottom".to_string(),
             zoom_scale: 1.0,
             scale_x: 1.0,
             scale_y: 1.0,
@@ -121,6 +121,23 @@ impl PetPhysics {
 
     pub fn cat_logical_size(&self) -> f32 {
         (DEFAULT_CAT_WIDTH * self.zoom_scale).clamp(80.0, 260.0)
+    }
+
+    /// Returns the generous interactive bounding box of the cat bust.
+    pub fn cat_bounding_rect(&self) -> crate::hit_test::LogicalRect {
+        let cat_w = self.cat_logical_size();
+        let cat_h = cat_w * 0.835;
+        let pad = 12.0_f32;
+        let left = (self.local_anchor_x - cat_w * 0.5 - pad).max(0.0);
+        let top = (self.local_anchor_y - cat_h - pad).max(0.0);
+        let width = cat_w + pad * 2.0;
+        let height = cat_h + pad * 2.0;
+        crate::hit_test::LogicalRect {
+            x: left,
+            y: top,
+            w: width,
+            h: height,
+        }
     }
 
     /// Triggers Q-elastic press compression (`compress 0.84`).
@@ -150,6 +167,10 @@ impl PetPhysics {
         self.motion = PetMotionState::Dragging;
         self.motion_until = None;
 
+        // When picked up: do not gaze track the mouse
+        self.gaze_x = 0.0;
+        self.gaze_y = 0.0;
+
         let max_drag_y = (mon_h - COMPACT_WIN_H).max(0.0);
         self.win_x = (self.win_x + dx).clamp(-80.0, mon_w - COMPACT_WIN_W + 80.0);
         self.win_y = (self.win_y + dy).clamp(0.0, max_drag_y);
@@ -157,12 +178,13 @@ impl PetPhysics {
         self.vx = dx;
         self.vy = dy;
 
-        if dx.abs() > 1.2 {
+        // Facing direction only changes if dragging with clear horizontal velocity
+        if dx.abs() > 2.5 {
             self.target_flip_x = if dx > 0.0 { -1.0 } else { 1.0 };
         }
         self.target_scale_x = 0.94;
         self.target_scale_y = 1.07;
-        self.target_rotation_rad = ((dx as f32) * 0.018).clamp(-0.22, 0.22);
+        self.target_rotation_rad = ((dx as f32) * 0.015).clamp(-0.20, 0.20);
     }
 
     /// Releases the pet from drag and computes target floor or left/right screen-edge magnetic snap.
@@ -177,6 +199,8 @@ impl PetPhysics {
         self.target_scale_x = 1.0;
         self.target_scale_y = 1.0;
         self.target_rotation_rad = 0.0;
+        self.gaze_x = 0.0;
+        self.gaze_y = 0.0;
 
         let true_bottom_y = (mon_h - COMPACT_WIN_H).max(0.0);
         let dock_ledge_y = (mon_h - COMPACT_WIN_H - dock_bottom.max(0.0)).max(0.0);
@@ -230,7 +254,7 @@ impl PetPhysics {
                 target_floor_y
             };
             self.falling = false;
-            self.trigger_duang_rebound(480);
+            self.trigger_duang_rebound(440);
         } else {
             self.falling = true;
             self.vx *= 0.35;
@@ -238,25 +262,42 @@ impl PetPhysics {
             self.bounces = 0;
             self.target_floor_y = target_floor_y;
             self.motion = PetMotionState::Idle;
+            // Lock facing direction in the direction of the throw velocity, never flip while falling:
+            if self.vx.abs() > 0.5 {
+                self.target_flip_x = if self.vx > 0.0 { -1.0 } else { 1.0 };
+            }
         }
     }
 
     /// Updates cursor gaze tracking and detects rapid back-and-forth head petting gestures.
     /// Returns `true` if a new petting gesture was just triggered.
     pub fn on_cursor_moved(&mut self, local_x: f64, local_y: f64, over_cat: bool) -> bool {
+        // While falling or dragged: do not gaze track the mouse and do not flip
+        if self.falling || matches!(self.motion, PetMotionState::Dragging | PetMotionState::Pressed) {
+            self.gaze_x = 0.0;
+            self.gaze_y = 0.0;
+            return false;
+        }
+
         let dx = (local_x as f32) - self.local_anchor_x;
         let cat_h = self.cat_logical_size();
         let center_y = self.local_anchor_y - cat_h * 0.5;
         let dy = (local_y as f32) - center_y;
 
-        // Subtle gaze shift toward cursor
-        let dist = (dx * dx + dy * dy).sqrt().max(1.0);
-        let factor = (dist / 180.0).min(1.0) * 3.2;
-        self.gaze_x = (dx / dist) * factor;
-        self.gaze_y = (dy / dist) * factor * 0.65;
+        // Subtle gaze shift toward cursor only when stationary and hovered over cat
+        if over_cat {
+            let dist = (dx * dx + dy * dy).sqrt().max(1.0);
+            let factor = (dist / 180.0).min(1.0) * 3.2;
+            self.gaze_x = (dx / dist) * factor;
+            self.gaze_y = (dy / dist) * factor * 0.65;
 
-        if self.edge_dock.is_none() && dx.abs() > 28.0 && over_cat {
-            self.target_flip_x = if dx > 0.0 { -1.0 } else { 1.0 };
+            // Only flip when stationary on ground and cursor is clearly on one side (with generous deadband)
+            if self.edge_dock.is_none() && dx.abs() > 38.0 {
+                self.target_flip_x = if dx > 0.0 { -1.0 } else { 1.0 };
+            }
+        } else {
+            self.gaze_x *= 0.8;
+            self.gaze_y *= 0.8;
         }
 
         // Detect petting gesture on top 55% of the cat sprite
@@ -333,6 +374,8 @@ impl PetPhysics {
             self.win_y += self.vy;
             self.win_x = (self.win_x + self.vx).clamp(min_win_x, max_win_x);
             self.vx *= 0.94;
+            self.gaze_x = 0.0;
+            self.gaze_y = 0.0;
 
             // Stretch slightly while falling fast
             let stretch = ((self.vy as f32) * 0.006).clamp(0.0, 0.12);
@@ -345,7 +388,7 @@ impl PetPhysics {
                 self.vy = 0.0;
                 self.vx = 0.0;
                 self.bounces = 0;
-                self.trigger_duang_rebound(480);
+                self.trigger_duang_rebound(440);
             }
             window_moved = true;
         }
@@ -354,8 +397,7 @@ impl PetPhysics {
         let t = now.duration_since(self.start_instant).as_secs_f32();
         let (anim_sx, anim_sy, anim_rot) = match self.motion {
             PetMotionState::Idle => {
-                // Subtle breathing wave
-                let breath = (t * 2.2).sin() * 0.016;
+                let breath = (t * 2.0).sin() * 0.014;
                 (1.0 - breath * 0.5, 1.0 + breath, 0.0)
             }
             PetMotionState::Thinking => {
@@ -409,24 +451,39 @@ impl PetPhysics {
             anim_rot
         };
 
-        // 3. Spring-damper integration
-        let stiffness = 0.22;
-        let damping = 0.76;
+        // 3. Calm breathing in Idle, Spring-damper for dynamic actions
+        if matches!(self.motion, PetMotionState::Idle) && !self.falling && self.edge_dock.is_none() {
+            let breath = (t * 2.0).sin() * 0.014;
+            self.scale_x = 1.0 - breath * 0.5;
+            self.scale_y = 1.0 + breath;
+            self.vel_scale_x = 0.0;
+            self.vel_scale_y = 0.0;
+            self.rotation_rad = 0.0;
+        } else {
+            let stiffness = 0.22;
+            let damping = 0.74;
+            self.vel_scale_x = (self.vel_scale_x + (goal_sx - self.scale_x) * stiffness) * damping;
+            self.vel_scale_y = (self.vel_scale_y + (goal_sy - self.scale_y) * stiffness) * damping;
+            self.scale_x += self.vel_scale_x;
+            self.scale_y += self.vel_scale_y;
+            self.rotation_rad += (goal_rot - self.rotation_rad) * 0.22;
+            if self.rotation_rad.abs() < 0.001 {
+                self.rotation_rad = 0.0;
+            }
+        }
 
-        self.vel_scale_x = (self.vel_scale_x + (goal_sx - self.scale_x) * stiffness) * damping;
-        self.vel_scale_y = (self.vel_scale_y + (goal_sy - self.scale_y) * stiffness) * damping;
-        self.scale_x += self.vel_scale_x;
-        self.scale_y += self.vel_scale_y;
-
-        self.flip_x += (self.target_flip_x - self.flip_x) * 0.24;
-        self.rotation_rad += (goal_rot - self.rotation_rad) * 0.22;
+        self.flip_x += (self.target_flip_x - self.flip_x) * 0.25;
+        if (self.flip_x - self.target_flip_x).abs() < 0.005 {
+            self.flip_x = self.target_flip_x;
+        }
 
         let active_anim = self.falling
             || self.vel_scale_x.abs() > 0.002
             || self.vel_scale_y.abs() > 0.002
+            || self.rotation_rad.abs() > 0.002
             || (self.scale_x - goal_sx).abs() > 0.003
             || (self.scale_y - goal_sy).abs() > 0.003
-            || (self.flip_x - self.target_flip_x).abs() > 0.01
+            || (self.flip_x - self.target_flip_x).abs() > 0.005
             || !matches!(self.motion, PetMotionState::Idle);
 
         (window_moved, active_anim)
@@ -444,7 +501,7 @@ impl PetPhysics {
             gaze_offset_x: self.gaze_x,
             gaze_offset_y: self.gaze_y,
             opacity: if dnd_enabled { 0.88 } else { 1.0 },
-            draw_ground_shadow: self.edge_dock.is_none() && !self.falling,
+            draw_ground_shadow: false,
         }
     }
 }
@@ -477,9 +534,10 @@ mod tests {
         let dock_bottom = 72.0;
 
         let mut physics = PetPhysics::new(100.0, 100.0);
-        assert_eq!(physics.floor_mode, "taskbar");
+        assert_eq!(physics.floor_mode, "bottom");
 
         // 1. Release in taskbar mode with 72px dock
+        physics.floor_mode = "taskbar".to_string();
         physics.win_y = 200.0;
         physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
         let expected_dock_y = mon_h - COMPACT_WIN_H - dock_bottom; // 900 - 400 - 72 = 428.0

@@ -168,7 +168,7 @@
         settingScale.value = data.scale || 1.0;
         if (settingScaleVal) settingScaleVal.textContent = `${Math.round((data.scale || 1.0) * 100)}%`;
       }
-      if (settingFloorMode) settingFloorMode.value = data.floorMode || 'taskbar';
+      if (settingFloorMode) settingFloorMode.value = data.floorMode || 'bottom';
       if (settingGravity) settingGravity.checked = data.gravityEnabled !== false;
       if (settingShowQuota) settingShowQuota.checked = data.showQuota !== false;
       if (settingIdeOnly) settingIdeOnly.checked = !!data.ideOnlyMode;

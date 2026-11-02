@@ -27,6 +27,10 @@ pub struct PixelHitTester {
     pub alpha_threshold: u8,
     /// Optional active thought-bubble rectangle in logical window coordinates.
     pub bubble_rect: Option<LogicalRect>,
+    /// Cat body interactive bounding box in logical window coordinates.
+    pub cat_rect: Option<LogicalRect>,
+    /// True while the context menu is open so clicks/hover in menu are never blocked.
+    pub is_menu_open: bool,
 }
 
 impl Default for PixelHitTester {
@@ -34,6 +38,8 @@ impl Default for PixelHitTester {
         Self {
             alpha_threshold: 20,
             bubble_rect: None,
+            cat_rect: None,
+            is_menu_open: false,
         }
     }
 }
@@ -56,25 +62,35 @@ impl PixelHitTester {
         is_dragging: bool,
         dnd_mode: bool,
     ) -> bool {
-        if is_dragging {
+        if is_dragging || self.is_menu_open {
             return true;
         }
         if logical_x < 0.0 || logical_y < 0.0 {
             return false;
         }
-        let max_w = (pixmap.width as f64) / dpi_scale.max(1.0);
-        let max_h = (pixmap.height as f64) / dpi_scale.max(1.0);
-        if logical_x > max_w || logical_y > max_h {
-            return false;
-        }
+        let lx = logical_x as f32;
+        let ly = logical_y as f32;
 
         // Check active thought bubble rectangle first (when not in DND mode)
         if !dnd_mode {
             if let Some(rect) = self.bubble_rect {
-                if rect.contains(logical_x as f32, logical_y as f32) {
+                if rect.contains(lx, ly) {
                     return true;
                 }
             }
+        }
+
+        // Check cat bounding box with margin - never passes through on hover ("放置")
+        if let Some(cat_r) = self.cat_rect {
+            if cat_r.contains(lx, ly) {
+                return true;
+            }
+        }
+
+        let max_w = (pixmap.width as f64) / dpi_scale.max(1.0);
+        let max_h = (pixmap.height as f64) / dpi_scale.max(1.0);
+        if logical_x > max_w || logical_y > max_h {
+            return false;
         }
 
         // Direct O(1) lookup in the rendered RGBA software framebuffer

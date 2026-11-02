@@ -195,9 +195,9 @@ mod cpu_2d_app {
             }
         }
 
-        pub fn enforce_topmost_and_query_dock(ns_window: *mut c_void) -> DockInsets {
+        pub fn enforce_topmost(ns_window: *mut c_void) {
             if ns_window.is_null() {
-                return DockInsets::default();
+                return;
             }
             unsafe {
                 // NSStatusWindowLevel (25) floats above normal apps and full-screen windows
@@ -210,35 +210,26 @@ mod cpu_2d_app {
                 let set_behavior: unsafe extern "C" fn(*mut c_void, *mut c_void, usize) =
                     std::mem::transmute(objc_msgSend as *const ());
                 set_behavior(ns_window, sel(b"setCollectionBehavior:\0"), behavior);
+            }
+        }
 
-                let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
-                    std::mem::transmute(objc_msgSend as *const ());
-                let mut screen = msg_ptr(ns_window, sel(b"screen\0"));
-                if screen.is_null() {
-                    let cls = objc_getClass(b"NSScreen\0".as_ptr());
-                    if !cls.is_null() {
-                        screen = msg_ptr(cls, sel(b"mainScreen\0"));
+        pub fn activate_ignoring_other_apps(ns_window: *mut c_void) {
+            unsafe {
+                let app_cls = objc_getClass(b"NSApplication\0".as_ptr());
+                if !app_cls.is_null() {
+                    let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+                        std::mem::transmute(objc_msgSend as *const ());
+                    let shared_app = msg_ptr(app_cls, sel(b"sharedApplication\0"));
+                    if !shared_app.is_null() {
+                        let msg_void_bool: unsafe extern "C" fn(*mut c_void, *mut c_void, i8) =
+                            std::mem::transmute(objc_msgSend as *const ());
+                        msg_void_bool(shared_app, sel(b"activateIgnoringOtherApps:\0"), 1);
                     }
                 }
-                if screen.is_null() {
-                    return DockInsets::default();
-                }
-
-                let full_frame = msg_send_rect(screen, sel(b"frame\0"));
-                let vis_frame = msg_send_rect(screen, sel(b"visibleFrame\0"));
-
-                let top_menu_inset = (full_frame.origin.y + full_frame.size.height)
-                    - (vis_frame.origin.y + vis_frame.size.height);
-                if top_menu_inset < 1.0 {
-                    DockInsets::default()
-                } else {
-                    DockInsets {
-                        bottom: (vis_frame.origin.y - full_frame.origin.y).max(0.0),
-                        left: (vis_frame.origin.x - full_frame.origin.x).max(0.0),
-                        right: ((full_frame.origin.x + full_frame.size.width)
-                            - (vis_frame.origin.x + vis_frame.size.width))
-                        .max(0.0),
-                    }
+                if !ns_window.is_null() {
+                    let msg_void: unsafe extern "C" fn(*mut c_void, *mut c_void) =
+                        std::mem::transmute(objc_msgSend as *const ());
+                    msg_void(ns_window, sel(b"makeKeyWindow\0"));
                 }
             }
         }
@@ -421,7 +412,7 @@ mod cpu_2d_app {
         #[cfg(target_os = "macos")]
         let surface = {
             macos_window::set_accessory_activation_policy();
-            let _ = macos_window::enforce_topmost_and_query_dock(window.ns_window());
+            macos_window::enforce_topmost(window.ns_window());
             SoftwareSurface::new_macos(window.ns_window())
         };
 
@@ -464,6 +455,8 @@ mod cpu_2d_app {
             Some(Instant::now() + Duration::from_millis(5000));
 
         let mut hit_tester = PixelHitTester::default();
+        hit_tester.cat_rect = Some(physics.cat_bounding_rect());
+        let mut last_cursor_local = (150.0_f64, 320.0_f64);
         let mut audio = NativeAudioPlayer::new(settings.sound_enabled);
         let menu_mgr = NativeMenuManager::new(
             settings.show_quota,
@@ -614,6 +607,7 @@ mod cpu_2d_app {
 
                         // 1. Drain native context/tray menu events
                         while let Ok(menu_evt) = MenuEvent::receiver().try_recv() {
+                            hit_tester.is_menu_open = false;
                             if let Some(action) = menu_mgr.resolve_event(&menu_evt.id) {
                                 match action {
                                     PetMenuAction::OpenSettings => {
@@ -802,7 +796,7 @@ mod cpu_2d_app {
                         // 3. Query macOS Dock insets, global typing state, and cursor position
                         #[cfg(target_os = "macos")]
                         let (dock, is_typing, cursor_state) = {
-                            let d = macos_window::enforce_topmost_and_query_dock(window.ns_window());
+                            let d = macos_window::query_dock_insets_global();
                             let typing = macos_window::is_user_typing_globally();
                             let cur = macos_window::get_cursor_state(window.ns_window(), mon_height);
                             ((d.bottom, d.left, d.right), typing, cur)
@@ -831,6 +825,7 @@ mod cpu_2d_app {
 
                         // 4. Cursor tracking, drag handling & < 1μs pixel-level alpha hit-testing
                         if let Some((screen_x, screen_y, local_x, local_y)) = cursor_state {
+                            last_cursor_local = (local_x, local_y);
                             if pointer_down {
                                 let dx = screen_x - drag_last_screen.0;
                                 let dy = screen_y - drag_last_screen.1;
@@ -940,6 +935,7 @@ mod cpu_2d_app {
                             let (_, min_py, _, _) = cat_sprite.draw(&mut pixmap, &tf, scale);
                             let cat_top_logical_y = (min_py as f32) / scale.max(1.0);
 
+                            hit_tester.cat_rect = Some(physics.cat_bounding_rect());
                             hit_tester.bubble_rect = bubble.draw(
                                 &mut pixmap,
                                 tf.anchor_x,
@@ -966,6 +962,7 @@ mod cpu_2d_app {
                     }
 
                     WindowEvent::Focused(false) => {
+                        hit_tester.is_menu_open = false;
                         if window_id == window.id() && bubble.visible && !last_over_cat {
                             bubble.visible = false;
                             dirty_frame = true;
@@ -1015,10 +1012,25 @@ mod cpu_2d_app {
                                     is_dragging = false;
                                     audio.play(SoundEffect::ClickPress);
 
+                                    hit_tester.is_menu_open = true;
+                                    currently_ignoring_cursor = false;
+                                    let _ = window.set_ignore_cursor_events(false);
+
                                     #[cfg(target_os = "macos")]
-                                    menu_mgr.show_context_menu_macos(window.ns_view(), None);
+                                    {
+                                        macos_window::activate_ignoring_other_apps(window.ns_window());
+                                        let pos = muda::dpi::LogicalPosition::new(
+                                            last_cursor_local.0.clamp(10.0, (COMPACT_WIN_W - 10.0) as f64),
+                                            last_cursor_local.1.clamp(10.0, (COMPACT_WIN_H - 10.0) as f64),
+                                        );
+                                        menu_mgr.show_context_menu_macos(window.ns_view(), Some(pos));
+                                        hit_tester.is_menu_open = false;
+                                    }
                                     #[cfg(target_os = "windows")]
-                                    menu_mgr.show_context_menu_windows(window.hwnd(), None);
+                                    {
+                                        menu_mgr.show_context_menu_windows(window.hwnd(), None);
+                                        hit_tester.is_menu_open = false;
+                                    }
                                 }
                             }
 

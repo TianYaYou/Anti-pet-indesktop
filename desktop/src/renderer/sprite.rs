@@ -47,8 +47,8 @@ pub struct SpriteTransform {
 impl Default for SpriteTransform {
     fn default() -> Self {
         Self {
-            anchor_x: 170.0,
-            anchor_y: 386.0,
+            anchor_x: 150.0,
+            anchor_y: 400.0,
             base_size: 136.0,
             scale_x: 1.0,
             scale_y: 1.0,
@@ -57,7 +57,7 @@ impl Default for SpriteTransform {
             gaze_offset_x: 0.0,
             gaze_offset_y: 0.0,
             opacity: 1.0,
-            draw_ground_shadow: true,
+            draw_ground_shadow: false,
         }
     }
 }
