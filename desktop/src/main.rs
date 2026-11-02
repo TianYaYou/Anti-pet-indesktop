@@ -242,13 +242,13 @@ mod cpu_2d_app {
     }
 
     pub fn run_cpu_2d() -> Result<(), Box<dyn std::error::Error>> {
-        let mut state_watcher = NativeStateWatcher::new();
+        let state_watcher = NativeStateWatcher::new();
         let mut settings = state_watcher.load_settings();
 
         let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
         let proxy = event_loop.create_proxy();
 
-        let (mon_width, mon_height, mon_scale) =
+        let (mon_width, mon_height, _mon_scale) =
             if let Some(monitor) = event_loop.primary_monitor() {
                 let scale = monitor.scale_factor();
                 let size = monitor.size().to_logical::<f64>(scale);

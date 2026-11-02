@@ -81,7 +81,10 @@ impl CatSprite {
     pub fn from_png_bytes(bytes: &[u8]) -> Result<Self, String> {
         let decoder = png::Decoder::new(Cursor::new(bytes));
         let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
-        let mut buf = vec![0u8; reader.output_buffer_size()];
+        let buf_size = reader
+            .output_buffer_size()
+            .ok_or_else(|| "PNG output buffer size overflow".to_string())?;
+        let mut buf = vec![0u8; buf_size];
         let info = reader.next_frame(&mut buf).map_err(|e| e.to_string())?;
 
         let width = info.width;
