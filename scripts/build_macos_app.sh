@@ -4,20 +4,23 @@ set -e
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 cd "$DIR"
 
-echo "Building macOS Anti-Pet.app bundle..."
+echo "Building macOS Anti-Pet.app bundle (v0.3.0 Pure CPU 2D)..."
 
 APP_DIR="dist/Anti-Pet.app"
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
 mkdir -p "$APP_DIR/Contents/Resources"
 
-# 1. Copy binary
+# 1. Locate compiled binary (or build if cargo is available)
 BIN_PATH="${1:-desktop/target/release/anti-pet-desktop}"
 if [ ! -f "$BIN_PATH" ]; then
     if [ -f "desktop/target/aarch64-apple-darwin/release/anti-pet-desktop" ]; then
         BIN_PATH="desktop/target/aarch64-apple-darwin/release/anti-pet-desktop"
     elif [ -f "desktop/target/x86_64-apple-darwin/release/anti-pet-desktop" ]; then
         BIN_PATH="desktop/target/x86_64-apple-darwin/release/anti-pet-desktop"
+    elif command -v cargo >/dev/null 2>&1; then
+        echo "Compiling Pure CPU 2D release binary via cargo..."
+        cargo build --release --manifest-path desktop/Cargo.toml --features cpu-2d
     fi
 fi
 
@@ -29,12 +32,9 @@ fi
 echo "Using binary: $BIN_PATH"
 cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/anti-pet-desktop"
 
-# 2. Copy Resources
+# 2. Copy minimal Resources (icon + custom skins folder; no WebKit core/ or Node server/ required)
 cp assets/icon.icns "$APP_DIR/Contents/Resources/"
-cp -r core "$APP_DIR/Contents/Resources/"
 cp -r skins "$APP_DIR/Contents/Resources/"
-cp -r server "$APP_DIR/Contents/Resources/"
-cp -r assets "$APP_DIR/Contents/Resources/"
 
 # 3. Create Info.plist
 cat << 'EOF' > "$APP_DIR/Contents/Info.plist"
@@ -51,9 +51,9 @@ cat << 'EOF' > "$APP_DIR/Contents/Info.plist"
     <key>CFBundleIdentifier</key>
     <string>com.tianyayou.anti-pet</string>
     <key>CFBundleVersion</key>
-    <string>0.2.1</string>
+    <string>0.3.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.2.1</string>
+    <string>0.3.0</string>
     <key>CFBundleExecutable</key>
     <string>anti-pet-desktop</string>
     <key>CFBundleIconFile</key>
@@ -66,4 +66,4 @@ cat << 'EOF' > "$APP_DIR/Contents/Info.plist"
 </plist>
 EOF
 
-echo "Anti-Pet.app successfully assembled at $APP_DIR"
+echo "Anti-Pet.app (v0.3.0 Pure CPU 2D) successfully assembled at $APP_DIR"
