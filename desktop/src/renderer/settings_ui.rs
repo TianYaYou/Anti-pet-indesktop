@@ -43,6 +43,7 @@ pub struct SettingsUi {
     pub hovered_id: Option<String>,
     pub dragging_slider: Option<String>,
     pub mouse_pos: (f32, f32),
+    pub cat_sprite: super::sprite::CatSprite,
 }
 
 impl SettingsUi {
@@ -57,6 +58,7 @@ impl SettingsUi {
             hovered_id: None,
             dragging_slider: None,
             mouse_pos: (0.0, 0.0),
+            cat_sprite: super::sprite::CatSprite::load_default(),
         }
     }
 
@@ -344,9 +346,9 @@ impl SettingsUi {
         pixmap.fill_rounded_rect_sdf(0.0, 0.0, SIDEBAR_W * s, h_px as f32, 0.0, bg_sidebar, 1.0 * s, border_card);
 
         // Sidebar title and version
-        draw_text_into_pixmap(pixmap, "偏好设置", 18.0 * s, 18.0 * s, 100.0 * s, 20.0 * s, 13.0 * s, 0.65, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "偏好设置", 18.0 * s, 18.0 * s, 100.0 * s, 20.0 * s, 13.0 * s, 0.25, text_pri, 1.0, TextAlignment::Left);
         pixmap.fill_rounded_rect_sdf(126.0 * s, 18.0 * s, 46.0 * s, 18.0 * s, 4.0 * s, if is_dark { [255, 255, 255, 24] } else { [0, 0, 0, 14] }, 0.0, [0, 0, 0, 0]);
-        draw_text_into_pixmap(pixmap, "v0.3.0", 126.0 * s, 20.0 * s, 46.0 * s, 14.0 * s, 10.5 * s, 0.5, text_sec, 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, "v0.3.0", 126.0 * s, 20.0 * s, 46.0 * s, 14.0 * s, 10.0 * s, 0.0, text_sec, 1.0, TextAlignment::Center);
 
         // Sidebar nav items
         let tabs = [
@@ -360,16 +362,16 @@ impl SettingsUi {
         for (i, (tab, title)) in tabs.into_iter().enumerate() {
             let ty = (56.0 + (i as f32) * 36.0) * s;
             let is_active = self.active_tab == tab;
-            let (bg_pill, txt_color) = if is_active {
-                (accent_blue, [255, 255, 255])
+            let (bg_pill, txt_color, weight) = if is_active {
+                (accent_blue, [255, 255, 255], 0.23)
             } else {
-                ([0, 0, 0, 0], text_pri)
+                ([0, 0, 0, 0], text_pri, 0.0)
             };
 
             if is_active {
                 pixmap.fill_rounded_rect_sdf(10.0 * s, ty, (SIDEBAR_W - 20.0) * s, 28.0 * s, 6.0 * s, bg_pill, 0.0, [0, 0, 0, 0]);
             }
-            draw_text_into_pixmap(pixmap, title, 20.0 * s, ty + 6.0 * s, (SIDEBAR_W - 40.0) * s, 16.0 * s, 12.5 * s, if is_active { 0.6 } else { 0.4 }, txt_color, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, title, 20.0 * s, ty + 6.0 * s, (SIDEBAR_W - 40.0) * s, 16.0 * s, 12.5 * s, weight, txt_color, 1.0, TextAlignment::Left);
         }
 
         // 3. Render Right Content Area
@@ -400,17 +402,17 @@ impl SettingsUi {
         let fw = (SETTINGS_WIN_W as f32) * s;
         pixmap.fill_rounded_rect_sdf(SIDEBAR_W * s, fy, fw - SIDEBAR_W * s, FOOTER_H * s, 0.0, bg_win, 1.0 * s, border_card);
 
-        draw_text_into_pixmap(pixmap, "配置变更将在点击保存后立即生效", cx, fy + 16.0 * s, 260.0 * s, 18.0 * s, 11.5 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "配置变更将在点击保存后立即生效", cx, fy + 16.0 * s, 260.0 * s, 18.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
         // Cancel Button
         let btn_cancel_x = (SETTINGS_WIN_W as f32 - 164.0) * s;
         pixmap.fill_rounded_rect_sdf(btn_cancel_x, fy + 12.0 * s, 68.0 * s, 26.0 * s, 6.0 * s, if is_dark { [58, 58, 60, 255] } else { [255, 255, 255, 255] }, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, "取消", btn_cancel_x, fy + 17.0 * s, 68.0 * s, 16.0 * s, 12.5 * s, 0.5, text_pri, 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, "取消", btn_cancel_x, fy + 17.0 * s, 68.0 * s, 16.0 * s, 12.0 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
 
         // Save Button
         let btn_save_x = (SETTINGS_WIN_W as f32 - 86.0) * s;
         pixmap.fill_rounded_rect_sdf(btn_save_x, fy + 12.0 * s, 72.0 * s, 26.0 * s, 6.0 * s, accent_blue, 0.0, [0, 0, 0, 0]);
-        draw_text_into_pixmap(pixmap, "保存", btn_save_x, fy + 17.0 * s, 72.0 * s, 16.0 * s, 12.5 * s, 0.6, [255, 255, 255], 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, "保存", btn_save_x, fy + 17.0 * s, 72.0 * s, 16.0 * s, 12.0 * s, 0.25, [255, 255, 255], 1.0, TextAlignment::Center);
 
         // 5. Toast Pill
         if let Some((ref msg, since)) = self.toast {
@@ -420,7 +422,7 @@ impl SettingsUi {
                 let toast_x = ((SETTINGS_WIN_W as f32 * s) - toast_w) * 0.5;
                 let toast_y = fy - 36.0 * s;
                 pixmap.fill_rounded_rect_sdf(toast_x, toast_y, toast_w, 28.0 * s, 14.0 * s, [28, 28, 30, (230.0 * alpha) as u8], 0.0, [0, 0, 0, 0]);
-                draw_text_into_pixmap(pixmap, msg, toast_x, toast_y + 6.0 * s, toast_w, 16.0 * s, 12.0 * s, 0.5, [255, 255, 255], alpha, TextAlignment::Center);
+                draw_text_into_pixmap(pixmap, msg, toast_x, toast_y + 6.0 * s, toast_w, 16.0 * s, 11.5 * s, 0.0, [255, 255, 255], alpha, TextAlignment::Center);
             }
         }
     }
@@ -442,15 +444,15 @@ impl SettingsUi {
         let base_y = (18.0 - self.scroll_y) * s;
 
         // Header
-        draw_text_into_pixmap(pixmap, "常规与显示", cx, base_y, cw, 22.0 * s, 17.0 * s, 0.65, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "调整大肥猫的桌面尺寸、物理重力下落与交互行为", cx, base_y + 22.0 * s, cw, 16.0 * s, 12.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "常规与显示", cx, base_y, cw, 22.0 * s, 15.0 * s, 0.3, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "调整大肥猫的桌面尺寸、物理重力下落与交互行为", cx, base_y + 22.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
         // Card 1: 外观与主题
         let c1_y = base_y + 46.0 * s;
         let c1_h = 44.0 * s;
         pixmap.fill_rounded_rect_sdf(cx, c1_y, cw, c1_h, 8.0 * s, bg_card, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, "界面外观", cx + 14.0 * s, c1_y + 8.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.55, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "设置窗口明暗主题风格，默认自动跟随系统", cx + 14.0 * s, c1_y + 24.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "界面外观", cx + 14.0 * s, c1_y + 8.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "设置窗口明暗主题风格，默认自动跟随系统", cx + 14.0 * s, c1_y + 24.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
         // Theme option pill button
         let theme_label = match self.temp_settings.theme.as_str() {
@@ -460,7 +462,7 @@ impl SettingsUi {
         };
         let pill_x = cx + cw - 96.0 * s;
         pixmap.fill_rounded_rect_sdf(pill_x, c1_y + 9.0 * s, 84.0 * s, 24.0 * s, 6.0 * s, border_card, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, theme_label, pill_x, c1_y + 13.0 * s, 84.0 * s, 16.0 * s, 11.5 * s, 0.5, text_pri, 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, theme_label, pill_x, c1_y + 13.0 * s, 84.0 * s, 16.0 * s, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
 
         // Card 2: 体型与物理
         let c2_y = c1_y + c1_h + 12.0 * s;
@@ -469,17 +471,17 @@ impl SettingsUi {
 
         // Row 2.1: 缩放大小
         let r1_y = c2_y + 4.0 * s;
-        draw_text_into_pixmap(pixmap, "缩放大小", cx + 14.0 * s, r1_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.55, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "挂件在屏幕上的呈现比例 (也可悬停直接滚轮平滑缩放)", cx + 14.0 * s, r1_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "缩放大小", cx + 14.0 * s, r1_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "挂件在屏幕上的呈现比例 (也可悬停直接滚轮平滑缩放)", cx + 14.0 * s, r1_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         self.render_slider(pixmap, cx + cw - 170.0 * s, r1_y + 14.0 * s, 110.0 * s, s, (self.temp_settings.scale - 0.5) / 1.5, accent_blue);
         let scale_str = format!("{:.0}%", self.temp_settings.scale * 100.0);
-        draw_text_into_pixmap(pixmap, &scale_str, cx + cw - 52.0 * s, r1_y + 12.0 * s, 40.0 * s, 16.0 * s, 12.0 * s, 0.5, text_sec, 1.0, TextAlignment::Right);
+        draw_text_into_pixmap(pixmap, &scale_str, cx + cw - 52.0 * s, r1_y + 12.0 * s, 40.0 * s, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Right);
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r1_y + 42.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 2.2: 落地吸附模式
         let r2_y = r1_y + 44.0 * s;
-        draw_text_into_pixmap(pixmap, "落地吸附模式", cx + 14.0 * s, r2_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.55, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "拖拽松手后猫猫下落吸附的目标基准线", cx + 14.0 * s, r2_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "落地吸附模式", cx + 14.0 * s, r2_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "拖拽松手后猫猫下落吸附的目标基准线", cx + 14.0 * s, r2_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         let floor_label = match self.temp_settings.floor_mode.as_str() {
             "taskbar" => "贴合任务栏与 Dock",
             "free" => "自由悬浮",
@@ -487,23 +489,23 @@ impl SettingsUi {
         };
         let floor_pill_x = cx + cw - 138.0 * s;
         pixmap.fill_rounded_rect_sdf(floor_pill_x, r2_y + 9.0 * s, 126.0 * s, 24.0 * s, 6.0 * s, border_card, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, floor_label, floor_pill_x, r2_y + 13.0 * s, 126.0 * s, 16.0 * s, 11.5 * s, 0.5, text_pri, 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, floor_label, floor_pill_x, r2_y + 13.0 * s, 126.0 * s, 16.0 * s, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r2_y + 42.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 2.3: 重力加速度模拟
         let r3_y = r2_y + 44.0 * s;
-        draw_text_into_pixmap(pixmap, "重力加速度模拟", cx + 14.0 * s, r3_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.55, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "释放后遵循弹性重力加速度下落，触底自然回弹", cx + 14.0 * s, r3_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "重力加速度模拟", cx + 14.0 * s, r3_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "释放后遵循弹性重力加速度下落，触底自然回弹", cx + 14.0 * s, r3_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         self.render_toggle(pixmap, cx + cw - 52.0 * s, r3_y + 10.0 * s, s, self.temp_settings.gravity_enabled);
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r3_y + 42.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 2.4: 屏幕位置校准 (复位居中)
         let r4_y = r3_y + 44.0 * s;
-        draw_text_into_pixmap(pixmap, "屏幕位置校准", cx + 14.0 * s, r4_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.55, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "将桌宠一键拉回屏幕安全正中央，避免逃出屏幕或遮挡", cx + 14.0 * s, r4_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "屏幕位置校准", cx + 14.0 * s, r4_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "将桌宠一键拉回屏幕安全正中央，避免逃出屏幕或遮挡", cx + 14.0 * s, r4_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         let reset_btn_x = cx + cw - 88.0 * s;
         pixmap.fill_rounded_rect_sdf(reset_btn_x, r4_y + 9.0 * s, 76.0 * s, 24.0 * s, 6.0 * s, border_card, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, "复位居中", reset_btn_x, r4_y + 13.0 * s, 76.0 * s, 16.0 * s, 11.5 * s, 0.5, text_pri, 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, "复位居中", reset_btn_x, r4_y + 13.0 * s, 76.0 * s, 16.0 * s, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
 
         // Card 3: 状态与交互
         let c3_y = c2_y + c2_h + 12.0 * s;
@@ -512,22 +514,22 @@ impl SettingsUi {
 
         // Row 3.1: 实时额度卡片
         let r31_y = c3_y + 4.0 * s;
-        draw_text_into_pixmap(pixmap, "实时额度卡片", cx + 14.0 * s, r31_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.55, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "在对话气泡中同步展示 Antigravity 5小时与周额度进度", cx + 14.0 * s, r31_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "实时额度卡片", cx + 14.0 * s, r31_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "在对话气泡中同步展示 Antigravity 5小时与周额度进度", cx + 14.0 * s, r31_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         self.render_toggle(pixmap, cx + cw - 52.0 * s, r31_y + 10.0 * s, s, self.temp_settings.show_quota);
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r31_y + 42.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 3.2: 仅在 IDE 活跃
         let r32_y = r31_y + 44.0 * s;
-        draw_text_into_pixmap(pixmap, "仅在 IDE 活跃时显示", cx + 14.0 * s, r32_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.55, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "前台为 Antigravity / VS Code / Cursor 时呈现，切出时隐匿", cx + 14.0 * s, r32_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "仅在 IDE 活跃时显示", cx + 14.0 * s, r32_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "前台为 Antigravity / VS Code / Cursor 时呈现，切出时隐匿", cx + 14.0 * s, r32_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         self.render_toggle(pixmap, cx + cw - 52.0 * s, r32_y + 10.0 * s, s, self.temp_settings.menu_config.ide_only);
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r32_y + 42.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 3.3: 完全穿透免打扰
         let r33_y = r32_y + 44.0 * s;
-        draw_text_into_pixmap(pixmap, "完全穿透免打扰", cx + 14.0 * s, r33_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.55, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "猫猫处于只读透明状态，鼠标点击直接透传到底层应用", cx + 14.0 * s, r33_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "完全穿透免打扰", cx + 14.0 * s, r33_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "猫猫处于只读透明状态，鼠标点击直接透传到底层应用", cx + 14.0 * s, r33_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         self.render_toggle(pixmap, cx + cw - 52.0 * s, r33_y + 10.0 * s, s, self.temp_settings.dnd_passthrough);
     }
 
@@ -546,23 +548,23 @@ impl SettingsUi {
         _accent_blue: [u8; 4],
     ) {
         let base_y = 18.0 * s;
-        draw_text_into_pixmap(pixmap, "自启动与更新", cx, base_y, cw, 22.0 * s, 17.0 * s, 0.65, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "管理开机自启动配置与挂件版本检测", cx, base_y + 22.0 * s, cw, 16.0 * s, 12.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "自启动与更新", cx, base_y, cw, 22.0 * s, 15.0 * s, 0.3, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "管理开机自启动配置与挂件版本检测", cx, base_y + 22.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
         let c1_y = base_y + 48.0 * s;
         pixmap.fill_rounded_rect_sdf(cx, c1_y, cw, 68.0 * s, 8.0 * s, bg_card, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, "开机自动启动", cx + 14.0 * s, c1_y + 8.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.55, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "在系统登录完成后自动在托盘挂载大肥猫伴侣", cx + 14.0 * s, c1_y + 24.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "开机自动启动", cx + 14.0 * s, c1_y + 8.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "在系统登录完成后自动在托盘挂载大肥猫伴侣", cx + 14.0 * s, c1_y + 24.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         self.render_toggle(pixmap, cx + cw - 52.0 * s, c1_y + 12.0 * s, s, self.autostart_enabled);
-        draw_text_into_pixmap(pixmap, if self.autostart_enabled { "已开启系统开机自启" } else { "未开启自启，点击可在登录时自动拉起伴侣" }, cx + 14.0 * s, c1_y + 46.0 * s, cw - 28.0 * s, 14.0 * s, 10.5 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, if self.autostart_enabled { "已开启系统开机自启" } else { "未开启自启，点击可在登录时自动拉起伴侣" }, cx + 14.0 * s, c1_y + 46.0 * s, cw - 28.0 * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
         let c2_y = c1_y + 80.0 * s;
         pixmap.fill_rounded_rect_sdf(cx, c2_y, cw, 56.0 * s, 8.0 * s, bg_card, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, "当前版本", cx + 14.0 * s, c2_y + 8.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.55, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "v0.3.0 (Pure CPU 2D 软渲染引擎 · 单二进制)", cx + 14.0 * s, c2_y + 26.0 * s, 280.0 * s, 14.0 * s, 11.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "当前版本", cx + 14.0 * s, c2_y + 8.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "v0.3.0 (Pure CPU 2D 软渲染引擎 · 单二进制)", cx + 14.0 * s, c2_y + 26.0 * s, 280.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         let btn_update_x = cx + cw - 88.0 * s;
         pixmap.fill_rounded_rect_sdf(btn_update_x, c2_y + 14.0 * s, 76.0 * s, 26.0 * s, 6.0 * s, border_card, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, "检查更新", btn_update_x, c2_y + 19.0 * s, 76.0 * s, 16.0 * s, 11.5 * s, 0.5, text_pri, 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, "检查更新", btn_update_x, c2_y + 19.0 * s, 76.0 * s, 16.0 * s, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -578,18 +580,47 @@ impl SettingsUi {
         text_sec: [u8; 3],
         accent_blue: [u8; 4],
     ) {
+        let is_dark = self.is_dark_mode();
         let base_y = 18.0 * s;
-        draw_text_into_pixmap(pixmap, "皮肤管理", cx, base_y, cw, 22.0 * s, 17.0 * s, 0.65, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "切换外观皮肤，轻量化纯 2D 精灵切片", cx, base_y + 22.0 * s, cw, 16.0 * s, 12.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "皮肤管理", cx, base_y, cw, 22.0 * s, 15.0 * s, 0.3, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "切换外观皮肤，轻量化纯 2D 精灵切片", cx, base_y + 22.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
         let card_y = base_y + 50.0 * s;
-        pixmap.fill_rounded_rect_sdf(cx, card_y, 140.0 * s, 160.0 * s, 8.0 * s, bg_card, 1.5 * s, accent_blue);
-        draw_text_into_pixmap(pixmap, "大肥猫", cx, card_y + 110.0 * s, 140.0 * s, 18.0 * s, 13.0 * s, 0.6, text_pri, 1.0, TextAlignment::Center);
-        draw_text_into_pixmap(pixmap, "默认官方伴侣", cx, card_y + 130.0 * s, 140.0 * s, 14.0 * s, 10.5 * s, 0.4, text_sec, 1.0, TextAlignment::Center);
+        let card_w = 144.0 * s;
+        let card_h = 168.0 * s;
 
-        // Active Badge
-        pixmap.fill_rounded_rect_sdf(cx + 96.0 * s, card_y + 8.0 * s, 36.0 * s, 16.0 * s, 3.0 * s, accent_blue, 0.0, [0, 0, 0, 0]);
-        draw_text_into_pixmap(pixmap, "已启用", cx + 96.0 * s, card_y + 9.5 * s, 36.0 * s, 14.0 * s, 9.5 * s, 0.6, [255, 255, 255], 1.0, TextAlignment::Center);
+        // Outer Card Container with Active Blue Outline
+        pixmap.fill_rounded_rect_sdf(cx, card_y, card_w, card_h, 10.0 * s, bg_card, 1.5 * s, accent_blue);
+
+        // Preview inner background box
+        let preview_bg = if is_dark { [26, 26, 28, 220] } else { [240, 240, 244, 230] };
+        pixmap.fill_rounded_rect_sdf(cx + 8.0 * s, card_y + 8.0 * s, card_w - 16.0 * s, 98.0 * s, 8.0 * s, preview_bg, 0.0, [0, 0, 0, 0]);
+
+        // Render the fat-cat sprite avatar into the preview area
+        let tf = super::sprite::SpriteTransform {
+            anchor_x: (cx + (card_w * 0.5)) / s,
+            anchor_y: (card_y + 98.0 * s) / s,
+            base_size: 76.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            flip_x: 1.0,
+            rotation_rad: 0.0,
+            gaze_offset_x: 0.0,
+            gaze_offset_y: 0.0,
+            opacity: 1.0,
+            draw_ground_shadow: true,
+        };
+        let _ = self.cat_sprite.draw(pixmap, &tf, s);
+
+        // "已启用" Badge in top-right of preview
+        let badge_w = 42.0 * s;
+        let badge_h = 18.0 * s;
+        pixmap.fill_rounded_rect_sdf(cx + card_w - badge_w - 12.0 * s, card_y + 12.0 * s, badge_w, badge_h, 4.0 * s, accent_blue, 0.0, [0, 0, 0, 0]);
+        draw_text_into_pixmap(pixmap, "已启用", cx + card_w - badge_w - 12.0 * s, card_y + 13.5 * s, badge_w, 14.0 * s, 10.0 * s, 0.2, [255, 255, 255], 1.0, TextAlignment::Center);
+
+        // Character Name & Subtitle
+        draw_text_into_pixmap(pixmap, "大肥猫", cx, card_y + 116.0 * s, card_w, 18.0 * s, 13.0 * s, 0.23, text_pri, 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, "默认官方伴侣", cx, card_y + 136.0 * s, card_w, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Center);
     }
 
     fn render_dialogue_tab(
@@ -605,8 +636,8 @@ impl SettingsUi {
         text_sec: [u8; 3],
     ) {
         let base_y = (18.0 - self.scroll_y) * s;
-        draw_text_into_pixmap(pixmap, "台词与问候", cx, base_y, cw, 22.0 * s, 17.0 * s, 0.65, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "自定义不同工作状态下的气泡台词与提示内容", cx, base_y + 22.0 * s, cw, 16.0 * s, 12.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "台词与问候", cx, base_y, cw, 22.0 * s, 15.0 * s, 0.3, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "自定义不同工作状态下的气泡台词与提示内容", cx, base_y + 22.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
         let cats = [
             ("待机日常 (idle)", "5 条预置台词随时间周期随机出现"),
@@ -619,8 +650,8 @@ impl SettingsUi {
         for (i, (title, desc)) in cats.into_iter().enumerate() {
             let cy = base_y + (48.0 + (i as f32) * 58.0) * s;
             pixmap.fill_rounded_rect_sdf(cx, cy, cw, 50.0 * s, 8.0 * s, bg_card, 1.0 * s, border_card);
-            draw_text_into_pixmap(pixmap, title, cx + 14.0 * s, cy + 8.0 * s, 260.0 * s, 16.0 * s, 13.0 * s, 0.6, text_pri, 1.0, TextAlignment::Left);
-            draw_text_into_pixmap(pixmap, desc, cx + 14.0 * s, cy + 26.0 * s, 340.0 * s, 14.0 * s, 11.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, title, cx + 14.0 * s, cy + 8.0 * s, 260.0 * s, 16.0 * s, 12.5 * s, 0.2, text_pri, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, desc, cx + 14.0 * s, cy + 26.0 * s, 340.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         }
     }
 
@@ -639,8 +670,8 @@ impl SettingsUi {
         accent_blue: [u8; 4],
     ) {
         let base_y = (18.0 - self.scroll_y) * s;
-        draw_text_into_pixmap(pixmap, "右键菜单", cx, base_y, cw, 22.0 * s, 17.0 * s, 0.65, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "管理在桌面右键点击桌宠时出现的控制项与呈现策略", cx, base_y + 22.0 * s, cw, 16.0 * s, 12.0 * s, 0.4, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "右键菜单", cx, base_y, cw, 22.0 * s, 15.0 * s, 0.3, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "管理在桌面右键点击桌宠时出现的控制项与呈现策略", cx, base_y + 22.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
         let menu_items = [
             ("打开 Antigravity", self.temp_settings.menu_config.open_antigravity),
@@ -663,7 +694,7 @@ impl SettingsUi {
         for (i, (name, checked)) in menu_items.into_iter().enumerate() {
             let ry = card_y + (i as f32) * 36.0 * s;
             self.render_checkbox(pixmap, cx + 14.0 * s, ry + 10.0 * s, s, checked, accent_blue);
-            draw_text_into_pixmap(pixmap, name, cx + 38.0 * s, ry + 9.0 * s, cw - 50.0 * s, 16.0 * s, 12.5 * s, 0.5, text_pri, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, name, cx + 38.0 * s, ry + 9.0 * s, cw - 50.0 * s, 16.0 * s, 12.5 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
 
             if i < menu_items.len() - 1 {
                 pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, ry + 35.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
@@ -769,7 +800,17 @@ mod tests {
         // Re-render
         ui.render(&mut pixmap, 1.0);
 
+        // Click sidebar tab 2 (Skins)
+        ui.mouse_pos = (50.0, 145.0);
+        let action = ui.handle_mouse_down(1.0);
+        assert!(matches!(action, Some(SettingsAction::SelectTab(SettingsTab::Skins))));
+        assert_eq!(ui.active_tab, SettingsTab::Skins);
+
+        // Render skins tab with cat sprite preview
+        ui.render(&mut pixmap, 1.0);
+
         // Click row 0 in Menu (Toggle openAntigravity)
+        ui.active_tab = SettingsTab::Menu;
         ui.mouse_pos = (300.0, 75.0);
         let action = ui.handle_mouse_down(1.0);
         assert!(matches!(action, Some(SettingsAction::Redraw)));

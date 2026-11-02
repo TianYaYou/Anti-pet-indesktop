@@ -133,6 +133,12 @@ pub mod macos_text {
         fn CGContextTranslateCTM(c: *mut c_void, tx: f64, ty: f64);
         fn CGContextScaleCTM(c: *mut c_void, sx: f64, sy: f64);
         fn CGContextSetTextMatrix(c: *mut c_void, t: CGAffineTransform);
+        fn CGContextSetAllowsAntialiasing(c: *mut c_void, allows: bool);
+        fn CGContextSetShouldAntialias(c: *mut c_void, should: bool);
+        fn CGContextSetAllowsFontSmoothing(c: *mut c_void, allows: bool);
+        fn CGContextSetShouldSmoothFonts(c: *mut c_void, should: bool);
+        fn CGContextSetAllowsFontSubpixelPositioning(c: *mut c_void, allows: bool);
+        fn CGContextSetShouldSubpixelPositionFonts(c: *mut c_void, should: bool);
     }
 
     #[inline]
@@ -183,6 +189,13 @@ pub mod macos_text {
         }
 
         let pool = objc_autoreleasePoolPush();
+
+        CGContextSetAllowsAntialiasing(cg_ctx, true);
+        CGContextSetShouldAntialias(cg_ctx, true);
+        CGContextSetAllowsFontSmoothing(cg_ctx, false);
+        CGContextSetShouldSmoothFonts(cg_ctx, false);
+        CGContextSetAllowsFontSubpixelPositioning(cg_ctx, true);
+        CGContextSetShouldSubpixelPositionFonts(cg_ctx, true);
 
         CGContextTranslateCTM(cg_ctx, 0.0, pixmap.height as f64);
         CGContextScaleCTM(cg_ctx, 1.0, -1.0);
