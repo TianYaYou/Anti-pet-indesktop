@@ -7,11 +7,6 @@
   <link rel="stylesheet" href="/core/pet.css">
 </head>
 <body class="pet-body">
-  <!-- Floating DND Wake Pill -->
-  <div id="dnd-wake-pill" class="dnd-wake-pill hidden" title="点击或按 Cmd/Ctrl+Shift+P 唤醒大肥猫">
-    <span class="wake-text">穿透免打扰中 · 点击唤醒</span>
-  </div>
-
   <div id="pet-container" class="pet-container facing-left state-idle">
     <!-- Cat Thought Cloud Bubble (o -> O -> Cloud Bubble) -->
     <div id="speech-bubble" class="speech-bubble hidden">
@@ -73,7 +68,7 @@
     <div class="menu-item" data-action="pet-action" data-menu-key="petAction"><span>互动抚摸</span></div>
     <div class="menu-item" data-action="reset-zoom" data-menu-key="zoom"><span>缩放大小 (滚轮微调)</span><span id="zoom-status" class="menu-val">100%</span></div>
     <div class="menu-divider" data-menu-div="2"></div>
-    <div class="menu-item" data-action="toggle-dnd" data-menu-key="dnd"><span>完全穿透 (免打扰)</span><span id="dnd-status" class="menu-val">关闭</span></div>
+    <div class="menu-item" data-action="toggle-dnd" data-menu-key="dnd"><span>免打扰模式</span><span id="dnd-status" class="menu-val">关闭</span></div>
     <div class="menu-item" data-action="toggle-ide-only" data-menu-key="ideOnly"><span>仅 IDE 活跃时显示</span><span id="ide-only-status" class="menu-val">关闭</span></div>
     <div class="menu-item" data-action="toggle-gravity" data-menu-key="gravity"><span>重力下落吸附</span><span id="gravity-status" class="menu-val">开启</span></div>
     <div class="menu-divider" data-menu-div="3"></div>

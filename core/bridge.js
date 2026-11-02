@@ -33,6 +33,15 @@ class DesktopIPC {
     this.sendRaw(`set_dragging:${Boolean(dragging)}`);
   }
 
+  moveWindowBy(dx, dy) {
+    if (Math.abs(dx) < 0.2 && Math.abs(dy) < 0.2) return;
+    this.sendRaw(`move_window_by:${dx.toFixed(1)},${dy.toFixed(1)}`);
+  }
+
+  releaseWindow(vx, gravityEnabled, floorMode = 'auto') {
+    this.sendRaw(`release_window:${vx.toFixed(1)},${Boolean(gravityEnabled)},${floorMode}`);
+  }
+
   setAlwaysOnTop(enabled) {
     this.sendRaw(`set_always_on_top:${Boolean(enabled)}`);
   }
