@@ -468,6 +468,7 @@ mod cpu_2d_app {
 
         let mut hit_tester = PixelHitTester::default();
         hit_tester.cat_rect = Some(physics.cat_bounding_rect());
+        #[cfg(target_os = "macos")]
         let mut last_cursor_local = (150.0_f64, 320.0_f64);
         let mut audio = NativeAudioPlayer::new(settings.sound_enabled);
         let mut menu_mgr = NativeMenuManager::new(&settings);
@@ -878,7 +879,10 @@ mod cpu_2d_app {
 
                         // 4. Cursor tracking, drag handling & < 1μs pixel-level alpha hit-testing
                         if let Some((screen_x, screen_y, local_x, local_y)) = cursor_state {
-                            last_cursor_local = (local_x, local_y);
+                            #[cfg(target_os = "macos")]
+                            {
+                                last_cursor_local = (local_x, local_y);
+                            }
                             if pointer_down {
                                 let dx = screen_x - drag_last_screen.0;
                                 let dy = screen_y - drag_last_screen.1;
