@@ -403,7 +403,7 @@ fn draw_bubble_texts(
 
     #[cfg(target_os = "windows")]
     unsafe {
-        // Dialogue text: centered, #1f2642 deep ink color, 12px, weight 0.58 (semibold)
+        // Dialogue text: centered, #1f2642 deep ink color, 12px, clean regular weight
         windows_text::draw_text_into_pixmap(
             pixmap,
             dialogue,
@@ -412,7 +412,7 @@ fn draw_bubble_texts(
             (card_w - 24.0) * dpi_scale,
             (text_block_h - 6.0) * dpi_scale,
             12.0 * dpi_scale,
-            0.58,
+            0.4, // Clean FW_NORMAL (eliminates faux-bold double stroke ghosting)
             [31, 38, 66],
             alpha_scale,
             1, // Center alignment
@@ -432,7 +432,7 @@ fn draw_bubble_texts(
                 38.0 * dpi_scale,
                 15.0 * dpi_scale,
                 9.8 * dpi_scale,
-                0.5,
+                0.4,
                 [92, 100, 132],
                 alpha_scale,
                 0, // Left alignment
@@ -448,7 +448,7 @@ fn draw_bubble_texts(
                 26.0 * dpi_scale,
                 15.0 * dpi_scale,
                 9.8 * dpi_scale,
-                0.65,
+                0.7, // FW_BOLD
                 [31, 38, 66],
                 alpha_scale,
                 2, // Right alignment
@@ -463,7 +463,7 @@ fn draw_bubble_texts(
                 38.0 * dpi_scale,
                 15.0 * dpi_scale,
                 9.8 * dpi_scale,
-                0.5,
+                0.4,
                 [92, 100, 132],
                 alpha_scale,
                 0, // Left alignment
@@ -479,23 +479,23 @@ fn draw_bubble_texts(
                 26.0 * dpi_scale,
                 15.0 * dpi_scale,
                 9.8 * dpi_scale,
-                0.65,
+                0.7, // FW_BOLD
                 [31, 38, 66],
                 alpha_scale,
                 2, // Right alignment
             );
 
-            // Quota meta: centered, #5c6484, 9px
+            // Quota meta: centered, #5c6484, 9.5px
             if !quota_meta.is_empty() {
                 windows_text::draw_text_into_pixmap(
                     pixmap,
                     quota_meta,
-                    (card_x + 10.0) * dpi_scale,
+                    (card_x + 8.0) * dpi_scale,
                     meta_y,
-                    (card_w - 20.0) * dpi_scale,
+                    (card_w - 16.0) * dpi_scale,
                     14.0 * dpi_scale,
-                    9.0 * dpi_scale,
-                    0.3,
+                    9.5 * dpi_scale,
+                    0.4,
                     [92, 100, 132],
                     alpha_scale,
                     1, // Center alignment
@@ -868,12 +868,10 @@ pub mod windows_text {
                 let old_bmp = SelectObject(hdc, dib.into());
 
                 let font_name: Vec<u16> = "Microsoft YaHei UI\0".encode_utf16().collect();
-                let weight = if font_weight > 0.6 {
-                    700 // FW_BOLD
-                } else if font_weight > 0.5 {
-                    600 // FW_SEMIBOLD
+                let weight = if font_weight >= 0.62 {
+                    700 // FW_BOLD (only for percentage numbers)
                 } else {
-                    400 // FW_NORMAL
+                    400 // FW_NORMAL (native un-synthesized YaHei glyphs, zero 1px faux bold doubling)
                 };
 
                 let hfont = CreateFontW(
@@ -888,7 +886,7 @@ pub mod windows_text {
                     windows::Win32::Graphics::Gdi::FONT_CHARSET(1), // DEFAULT_CHARSET
                     windows::Win32::Graphics::Gdi::FONT_OUTPUT_PRECISION(0), // OUT_DEFAULT_PRECIS
                     windows::Win32::Graphics::Gdi::FONT_CLIP_PRECISION(0), // CLIP_DEFAULT_PRECIS
-                    windows::Win32::Graphics::Gdi::FONT_QUALITY(5), // CLEARTYPE_QUALITY
+                    windows::Win32::Graphics::Gdi::FONT_QUALITY(4), // ANTIALIASED_QUALITY: Crisp grayscale anti-aliasing (no ClearType subpixel bleeding/ghosting)
                     0,
                     PCWSTR(font_name.as_ptr()),
                 );
@@ -931,7 +929,8 @@ pub mod windows_text {
                         let g = *dst.add(o + 1) as u32;
                         let r = *dst.add(o + 2) as u32;
 
-                        let intensity = r.max(g).max(b);
+                        // ANTIALIASED_QUALITY produces clean grayscale pixels where r == g == b.
+                        let intensity = (r + g + b) / 3;
                         if intensity > 0 {
                             let glyph_a = ((intensity * alpha_mult) / 255) as u8;
                             if glyph_a > 0 {

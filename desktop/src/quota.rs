@@ -228,27 +228,25 @@ fn discover_language_servers() -> Vec<EndpointCandidate> {
                 };
 
                 let mut tcp_map: std::collections::HashMap<u32, Vec<u16>> = std::collections::HashMap::new();
-                let net_cmd = "Get-NetTCPConnection -ErrorAction SilentlyContinue | Where-Object { $_.LocalAddress -in @('127.0.0.1', '0.0.0.0', '::', '::1') } | Select-Object OwningProcess,LocalPort | ConvertTo-Json -Compress";
-                let mut net_proc = Command::new("powershell");
-                net_proc.args(["-NoProfile", "-Command", net_cmd])
+                let mut net_proc = Command::new("netstat");
+                net_proc.args(["-ano", "-p", "tcp"])
                     .creation_flags(CREATE_NO_WINDOW);
                 if let Ok(net_out) = net_proc.output() {
-                    let net_json = String::from_utf8_lossy(&net_out.stdout);
-                    if let Ok(net_val) = serde_json::from_str::<serde_json::Value>(net_json.trim()) {
-                        let net_items: Vec<&serde_json::Value> = if let Some(arr) = net_val.as_array() {
-                            arr.iter().collect()
-                        } else if net_val.is_object() {
-                            vec![&net_val]
-                        } else {
-                            Vec::new()
-                        };
-                        for item in net_items {
-                            if let (Some(pid), Some(port)) = (
-                                item.get("OwningProcess").and_then(|v| v.as_u64()).map(|v| v as u32),
-                                item.get("LocalPort").and_then(|v| v.as_u64()).map(|v| v as u16),
-                            ) {
-                                if port > 1024 {
-                                    tcp_map.entry(pid).or_default().push(port);
+                    let net_text = String::from_utf8_lossy(&net_out.stdout);
+                    for line in net_text.lines() {
+                        let trimmed = line.trim();
+                        if !trimmed.contains("LISTENING") {
+                            continue;
+                        }
+                        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                        if parts.len() >= 5 {
+                            let local_addr = parts[1];
+                            let pid_str = parts.last().unwrap_or(&"");
+                            if let (Some(colon), Ok(pid)) = (local_addr.rfind(':'), pid_str.parse::<u32>()) {
+                                if let Ok(port) = local_addr[colon + 1..].parse::<u16>() {
+                                    if port > 1024 {
+                                        tcp_map.entry(pid).or_default().push(port);
+                                    }
                                 }
                             }
                         }

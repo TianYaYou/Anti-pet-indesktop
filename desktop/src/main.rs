@@ -601,12 +601,11 @@ mod cpu_2d_app {
         }
         let _tray = tray_builder.build()?;
 
-        // Background ticker (60 FPS high-precision physics/render tick + 250ms hook file watch + 12s live quota probe)
+        // 1. High-precision 60 FPS physics and frame ticker (strictly never blocked)
         let ticker_proxy = proxy.clone();
-        let force_quota_flag = Arc::new(AtomicBool::new(true));
+        let force_quota_flag = Arc::new(AtomicBool::new(false));
         let force_quota_bg = force_quota_flag.clone();
         thread::spawn(move || {
-            let mut prober = NativeQuotaProber::default();
             let mut hook_watcher = NativeStateWatcher::new();
             let mut tick_count: u64 = 0;
             let frame_duration = Duration::from_micros(16_667); // 60.0 FPS
@@ -634,11 +633,28 @@ mod cpu_2d_app {
                         force_quota_bg.store(true, Ordering::Relaxed);
                     }
                 }
+            }
+        });
 
-                // Every 12s (720 frames at 60 FPS, or on force flag): poll live Antigravity `language_server` quota
-                if force_quota_bg.swap(false, Ordering::Relaxed) || tick_count % 720 == 0 {
-                    let snap = prober.fetch_live_quota();
-                    let _ = ticker_proxy.send_event(AppEvent::QuotaUpdated(snap));
+        // 2. Dedicated asynchronous quota probe worker (eliminates startup GUI freeze)
+        let quota_proxy = proxy.clone();
+        let force_quota_worker = force_quota_flag.clone();
+        thread::spawn(move || {
+            let mut prober = NativeQuotaProber::default();
+            // Stagger initial probe by 600ms so window is fully mounted, placed on taskbar and smooth first
+            thread::sleep(Duration::from_millis(600));
+            loop {
+                let snap = prober.fetch_live_quota();
+                if quota_proxy.send_event(AppEvent::QuotaUpdated(snap)).is_err() {
+                    break;
+                }
+
+                // Sleep up to 12s, or wake early if user explicitly refreshed quota or hook triggered
+                for _ in 0..120 {
+                    thread::sleep(Duration::from_millis(100));
+                    if force_quota_worker.swap(false, Ordering::Relaxed) {
+                        break;
+                    }
                 }
             }
         });
