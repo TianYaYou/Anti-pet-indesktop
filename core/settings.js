@@ -54,8 +54,27 @@
   const btnConfirmCreateSkin = document.getElementById('btn-confirm-create-skin');
   const btnCancelCreateSkin = document.getElementById('btn-cancel-create-skin');
   const importSkinJson = document.getElementById('import-skin-json');
+  const importSkinFile = document.getElementById('import-skin-file');
+  const importSkinFrameFile = document.getElementById('import-skin-frame-file');
+  const importDetectedFormat = document.getElementById('import-detected-format');
   const btnConfirmImportSkin = document.getElementById('btn-confirm-import-skin');
   const btnCancelImportSkin = document.getElementById('btn-cancel-import-skin');
+
+  let importedFrameBase64 = null;
+
+  const MENU_KEYS = [
+    'openAntigravity',
+    'settings',
+    'quota',
+    'randomDialogue',
+    'petAction',
+    'zoom',
+    'dnd',
+    'ideOnly',
+    'gravity',
+    'switchSkin',
+    'sound'
+  ];
 
   // Controls - Dialogue
   const dialogueSkinSelector = document.getElementById('dialogue-skin-selector');
@@ -143,6 +162,12 @@
 
       activeSkinId = data.skinId || 'fat-cat';
       activeDialogueSkinId = activeSkinId;
+
+      const menuConfig = data.menuConfig || {};
+      MENU_KEYS.forEach((key) => {
+        const el = document.getElementById(`menu-cfg-${key}`);
+        if (el) el.checked = menuConfig[key] !== false;
+      });
     } catch (e) {
       console.error('加载设置失败:', e);
     }
@@ -313,6 +338,61 @@
     });
   }
 
+  // Helper: Detect import format (dsh-pet / Codex vs Anti-Pet)
+  function checkImportFormat(text) {
+    if (!importDetectedFormat) return;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed.displayName || parsed.spritesheetPath || parsed.frame) {
+        importDetectedFormat.className = 'status-bar success';
+        importDetectedFormat.textContent = `检测到 dsh-pet / Codex 宠物格式 [${parsed.displayName || parsed.name || '未知'}]，导入时将自动兼容转换！`;
+        importDetectedFormat.classList.remove('hidden');
+      } else if (parsed.schemaVersion || (parsed.frames && parsed.states)) {
+        importDetectedFormat.className = 'status-bar neutral';
+        importDetectedFormat.textContent = `检测到 Anti-Pet 标准皮肤格式 [${parsed.name || parsed.id || '标准皮肤'}]`;
+        importDetectedFormat.classList.remove('hidden');
+      } else {
+        importDetectedFormat.classList.add('hidden');
+      }
+    } catch (e) {
+      importDetectedFormat.classList.add('hidden');
+    }
+  }
+
+  if (importSkinJson) {
+    importSkinJson.addEventListener('input', () => {
+      checkImportFormat(importSkinJson.value.trim());
+    });
+  }
+
+  if (importSkinFile) {
+    importSkinFile.addEventListener('change', () => {
+      const file = importSkinFile.files && importSkinFile.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          importSkinJson.value = e.target.result;
+          checkImportFormat(e.target.result);
+        };
+        reader.readAsText(file);
+      }
+    });
+  }
+
+  if (importSkinFrameFile) {
+    importSkinFrameFile.addEventListener('change', () => {
+      const file = importSkinFrameFile.files && importSkinFrameFile.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          importedFrameBase64 = e.target.result;
+          showToast(`已载入立绘图片: ${file.name}`);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  }
+
   // Import Skin Toggle
   if (btnToggleImportSkin && importSkinForm) {
     btnToggleImportSkin.addEventListener('click', () => {
@@ -324,6 +404,10 @@
   if (btnCancelImportSkin && importSkinForm) {
     btnCancelImportSkin.addEventListener('click', () => {
       importSkinForm.classList.add('hidden');
+      importedFrameBase64 = null;
+      if (importSkinFile) importSkinFile.value = '';
+      if (importSkinFrameFile) importSkinFrameFile.value = '';
+      if (importDetectedFormat) importDetectedFormat.classList.add('hidden');
     });
   }
 
@@ -331,32 +415,32 @@
     btnConfirmImportSkin.addEventListener('click', async () => {
       const content = (importSkinJson.value || '').trim();
       if (!content) {
-        showToast('请粘贴 skin.json 配置内容');
+        showToast('请选择配置文件或粘贴配置代码');
         return;
       }
       try {
         const parsed = JSON.parse(content);
-        if (!parsed.id || !parsed.name) {
-          showToast('配置缺失必要的 id 或 name 字段');
-          return;
-        }
-
         btnConfirmImportSkin.disabled = true;
-        const res = await fetch('/api/skins', {
+        btnConfirmImportSkin.textContent = '导入中...';
+
+        const res = await fetch('/api/skins/import', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            skinId: parsed.id,
-            name: parsed.name,
-            author: parsed.author || '',
-            description: parsed.description || ''
+            config: parsed,
+            frameBase64: importedFrameBase64
           })
         });
         const data = await res.json();
         if (data.ok) {
-          showToast(`成功导入皮肤配置: ${parsed.name}`);
+          const skinName = (data.skin && data.skin.name) || '新皮肤';
+          showToast(data.isDshPet ? `成功导入并适配 dsh-pet 宠物: ${skinName}` : `成功导入皮肤: ${skinName}`);
           importSkinForm.classList.add('hidden');
           importSkinJson.value = '';
+          importedFrameBase64 = null;
+          if (importSkinFile) importSkinFile.value = '';
+          if (importSkinFrameFile) importSkinFrameFile.value = '';
+          if (importDetectedFormat) importDetectedFormat.classList.add('hidden');
           await loadSkins();
         } else {
           showToast(`导入失败: ${data.error || '未知错误'}`);
@@ -365,6 +449,7 @@
         showToast('JSON 格式解析错误，请检查语法');
       } finally {
         btnConfirmImportSkin.disabled = false;
+        btnConfirmImportSkin.textContent = '确认导入';
       }
     });
   }
@@ -464,6 +549,12 @@
       btnSave.textContent = '保存中...';
 
       try {
+        const menuConfig = {};
+        MENU_KEYS.forEach((key) => {
+          const el = document.getElementById(`menu-cfg-${key}`);
+          if (el) menuConfig[key] = el.checked;
+        });
+
         const newSettings = {
           scale: parseFloat(settingScale.value) || 1.0,
           floorMode: settingFloorMode.value || 'bottom',
@@ -474,7 +565,8 @@
           bubbleDurationMs: parseInt(settingBubbleDuration.value, 10) || 4000,
           soundEnabled: settingSound.checked,
           soundVolume: parseFloat(settingVolume.value) || 0.8,
-          skinId: activeSkinId
+          skinId: activeSkinId,
+          menuConfig
         };
 
         // 1. Save general settings

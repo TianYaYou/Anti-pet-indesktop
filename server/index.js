@@ -46,7 +46,21 @@ const DEFAULT_SETTINGS = {
   showQuota: true,
   posX: null,
   posY: null,
-  facing: 'left'
+  facing: 'left',
+  menuConfig: {
+    openAntigravity: true,
+    settings: true,
+    quota: true,
+    randomDialogue: true,
+    petAction: true,
+    zoom: true,
+    dnd: true,
+    ideOnly: true,
+    gravity: true,
+    switchSkin: true,
+    sound: true
+  },
+  antigravityPath: null
 };
 
 function loadSettings() {
@@ -458,6 +472,56 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify(updateInfo));
   }
 
+  // 8.1 Antigravity Status API: /api/antigravity/status
+  if (pathname === '/api/antigravity/status') {
+    if (process.platform === 'darwin' || process.platform === 'linux') {
+      exec('pgrep -i antigravity', (err, stdout) => {
+        const isRunning = !err && Boolean(stdout && stdout.trim().length > 0);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ running: isRunning }));
+      });
+    } else if (process.platform === 'win32') {
+      exec('tasklist /FI "IMAGENAME eq Antigravity.exe"', (err, stdout) => {
+        const isRunning = !err && Boolean(stdout && stdout.toLowerCase().includes('antigravity.exe'));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ running: isRunning }));
+      });
+    } else {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ running: false }));
+    }
+    return;
+  }
+
+  // 8.2 Open Antigravity API: /api/antigravity/open
+  if (pathname === '/api/antigravity/open' && req.method === 'POST') {
+    const customPath = currentSettings.antigravityPath;
+    let cmd = '';
+    if (process.platform === 'darwin') {
+      if (customPath && fs.existsSync(customPath)) {
+        cmd = `open "${customPath}"`;
+      } else if (fs.existsSync('/Applications/Antigravity.app')) {
+        cmd = 'open -a /Applications/Antigravity.app';
+      } else {
+        cmd = 'open -a Antigravity';
+      }
+    } else if (process.platform === 'win32') {
+      if (customPath && fs.existsSync(customPath)) {
+        cmd = `start "" "${customPath}"`;
+      } else {
+        cmd = 'start antigravity:';
+      }
+    } else {
+      cmd = customPath || 'antigravity';
+    }
+
+    exec(cmd, (err) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: !err, error: err ? err.message : null }));
+    });
+    return;
+  }
+
   // 9. Shutdown: /api/shutdown
   if (pathname === '/api/shutdown') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -583,6 +647,135 @@ const server = http.createServer(async (req, res) => {
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, skin: newSkinMeta }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // 11.1 Import Skin (Compatible with dsh-pet / Codex pet.json and Anti-Pet skin.json)
+  if (pathname === '/api/skins/import' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (c) => (body += c));
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        const rawConfig = payload.config || payload;
+        const isDshPet = Boolean(rawConfig.displayName || rawConfig.spritesheetPath || rawConfig.frame);
+
+        // Adapt config if needed
+        const id = (payload.skinId || rawConfig.id || rawConfig.petId || rawConfig.name || 'custom-pet')
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9_-]/g, '-');
+        if (!id) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ error: '无效的宠物 ID' }));
+        }
+
+        const name = rawConfig.displayName || rawConfig.name || rawConfig.title || id;
+        const author = rawConfig.author || rawConfig.creator || (isDshPet ? 'dsh-pet 社区' : '自定义作者');
+        const description = rawConfig.description || (isDshPet ? '兼容 dsh-pet 格式导入宠物' : '导入的桌面伴侣皮肤');
+
+        let defaultWidth = 136;
+        if (rawConfig.frame && rawConfig.frame.width) {
+          defaultWidth = Math.min(240, Math.max(80, Math.round(rawConfig.frame.width)));
+        } else if (rawConfig.render && rawConfig.render.defaultWidth) {
+          defaultWidth = rawConfig.render.defaultWidth;
+        }
+
+        let idleFrame = 'frames/idle.png';
+        if (rawConfig.frames && typeof rawConfig.frames === 'object' && rawConfig.frames.idle) {
+          idleFrame = rawConfig.frames.idle;
+        } else if (rawConfig.spritesheetPath) {
+          idleFrame = 'frames/idle.png'; // Will be mapped to idle.png
+        }
+
+        const states = rawConfig.states || {
+          idle: { frame: 'idle', motion: 'breath', loop: true },
+          thinking: { frame: 'idle', motion: 'ponder', bubbleText: '正在思考中...', loop: true },
+          working: { frame: 'idle', motion: 'working', bubbleText: '正在努力写代码！', loop: true },
+          success: { frame: 'idle', motion: 'duang', bubbleText: '任务完成！', durationMs: 3000, loop: false },
+          error: { frame: 'idle', motion: 'worry', bubbleText: '遇到阻碍，排查中...', durationMs: 3500, loop: false },
+          petting: { frame: 'idle', motion: 'nuzzle', bubbleText: '摸摸头真舒服~', durationMs: 2400, loop: false },
+          dragging: { frame: 'idle', motion: 'held', loop: false },
+          pressed: { frame: 'idle', motion: 'compress', loop: false },
+          rebound: { frame: 'idle', motion: 'duang', durationMs: 500, loop: false }
+        };
+
+        const adaptedMeta = {
+          schemaVersion: 1,
+          id,
+          name,
+          version: rawConfig.version || '1.0.0',
+          author,
+          description,
+          render: {
+            defaultWidth,
+            minWidth: 80,
+            maxWidth: 260,
+            motionPaddingPx: 0,
+            facingTransitionMs: 220
+          },
+          frames: {
+            idle: idleFrame
+          },
+          states,
+          audio: {
+            press: 'audio/pop-press.wav',
+            release: 'audio/pop-release.wav',
+            clickPress: 'audio/click-press.wav',
+            clickRelease: 'audio/click-release.wav'
+          },
+          dialogue: 'dialogue.json'
+        };
+
+        const skinDir = path.join(ROOT_DIR, 'skins', id);
+        fs.mkdirSync(skinDir, { recursive: true });
+        fs.mkdirSync(path.join(skinDir, 'frames'), { recursive: true });
+        fs.mkdirSync(path.join(skinDir, 'audio'), { recursive: true });
+        fs.mkdirSync(path.join(skinDir, 'ui'), { recursive: true });
+
+        // Save frame image if provided as base64, otherwise copy default idle frame
+        if (payload.frameBase64) {
+          const base64Data = payload.frameBase64.replace(/^data:image\/\w+;base64,/, '');
+          fs.writeFileSync(path.join(skinDir, 'frames', 'idle.png'), Buffer.from(base64Data, 'base64'));
+        } else {
+          const defaultFrame = path.join(ROOT_DIR, 'skins', 'fat-cat', 'frames', 'idle.png');
+          if (fs.existsSync(defaultFrame)) {
+            fs.copyFileSync(defaultFrame, path.join(skinDir, 'frames', 'idle.png'));
+          }
+        }
+
+        // Copy audio and ui
+        const audioSrc = path.join(ROOT_DIR, 'skins', 'fat-cat', 'audio');
+        if (fs.existsSync(audioSrc)) {
+          for (const f of fs.readdirSync(audioSrc)) {
+            fs.copyFileSync(path.join(audioSrc, f), path.join(skinDir, 'audio', f));
+          }
+        }
+        const uiSrc = path.join(ROOT_DIR, 'skins', 'fat-cat', 'ui');
+        if (fs.existsSync(uiSrc)) {
+          for (const f of fs.readdirSync(uiSrc)) {
+            fs.copyFileSync(path.join(uiSrc, f), path.join(skinDir, 'ui', f));
+          }
+        }
+
+        // Save skin.json
+        fs.writeFileSync(path.join(skinDir, 'skin.json'), JSON.stringify(adaptedMeta, null, 2), 'utf-8');
+
+        // Copy or write dialogue.json
+        const defaultDialogue = path.join(ROOT_DIR, 'skins', 'fat-cat', 'dialogue.json');
+        if (fs.existsSync(defaultDialogue)) {
+          fs.copyFileSync(defaultDialogue, path.join(skinDir, 'dialogue.json'));
+        }
+
+        broadcastSSE('skins-updated', { skinId: id });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, skin: adaptedMeta, isDshPet }));
       } catch (e) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: e.message }));

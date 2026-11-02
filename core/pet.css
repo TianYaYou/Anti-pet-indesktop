@@ -474,14 +474,6 @@ body.pet-body {
   pointer-events: none;
 }
 
-.menu-header {
-  padding: 5px 12px 3px;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--gemini-purple);
-  letter-spacing: 0.4px;
-}
-
 .menu-item {
   padding: 5px 12px;
   cursor: pointer;

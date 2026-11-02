@@ -65,22 +65,22 @@
 
   <!-- Right-Click Context Menu -->
   <div id="context-menu" class="context-menu hidden">
-    <div class="menu-header">伴侣控制台</div>
-    <div class="menu-item primary" data-action="open-settings"><span>偏好设置...</span><span class="menu-shortcut">Cmd+,</span></div>
-    <div class="menu-divider"></div>
-    <div class="menu-item" data-action="toggle-quota"><span>切换额度卡片</span></div>
-    <div class="menu-item" data-action="random-dialogue"><span>换一句台词</span></div>
-    <div class="menu-item" data-action="pet-action"><span>互动抚摸</span></div>
-    <div class="menu-item" data-action="reset-zoom"><span>缩放大小 (滚轮微调)</span><span id="zoom-status" class="menu-val">100%</span></div>
-    <div class="menu-divider"></div>
-    <div class="menu-item" data-action="toggle-dnd"><span>完全穿透 (免打扰)</span><span id="dnd-status" class="menu-val">关闭</span></div>
-    <div class="menu-item" data-action="toggle-ide-only"><span>仅 IDE 活跃时显示</span><span id="ide-only-status" class="menu-val">关闭</span></div>
-    <div class="menu-item" data-action="toggle-gravity"><span>重力下落吸附</span><span id="gravity-status" class="menu-val">开启</span></div>
-    <div class="menu-divider"></div>
-    <div class="menu-item" data-action="switch-skin"><span>切换皮肤</span><span id="skin-status" class="menu-val">大肥猫</span></div>
-    <div class="menu-item" data-action="toggle-sound"><span>音效</span><span id="sound-status" class="menu-val">开启</span></div>
-    <div class="menu-divider"></div>
-    <div class="menu-item close" data-action="close-menu"><span>关闭菜单 (Cmd/Ctrl+Shift+P)</span></div>
+    <div class="menu-item primary hidden" data-action="open-antigravity" data-menu-key="openAntigravity"><span>打开 Antigravity</span></div>
+    <div class="menu-item primary" data-action="open-settings" data-menu-key="settings"><span>偏好设置...</span><span class="menu-shortcut">Cmd+,</span></div>
+    <div class="menu-divider" data-menu-div="1"></div>
+    <div class="menu-item" data-action="toggle-quota" data-menu-key="quota"><span>切换额度卡片</span></div>
+    <div class="menu-item" data-action="random-dialogue" data-menu-key="randomDialogue"><span>换一句台词</span></div>
+    <div class="menu-item" data-action="pet-action" data-menu-key="petAction"><span>互动抚摸</span></div>
+    <div class="menu-item" data-action="reset-zoom" data-menu-key="zoom"><span>缩放大小 (滚轮微调)</span><span id="zoom-status" class="menu-val">100%</span></div>
+    <div class="menu-divider" data-menu-div="2"></div>
+    <div class="menu-item" data-action="toggle-dnd" data-menu-key="dnd"><span>完全穿透 (免打扰)</span><span id="dnd-status" class="menu-val">关闭</span></div>
+    <div class="menu-item" data-action="toggle-ide-only" data-menu-key="ideOnly"><span>仅 IDE 活跃时显示</span><span id="ide-only-status" class="menu-val">关闭</span></div>
+    <div class="menu-item" data-action="toggle-gravity" data-menu-key="gravity"><span>重力下落吸附</span><span id="gravity-status" class="menu-val">开启</span></div>
+    <div class="menu-divider" data-menu-div="3"></div>
+    <div class="menu-item" data-action="switch-skin" data-menu-key="switchSkin"><span>切换皮肤</span><span id="skin-status" class="menu-val">大肥猫</span></div>
+    <div class="menu-item" data-action="toggle-sound" data-menu-key="sound"><span>音效</span><span id="sound-status" class="menu-val">开启</span></div>
+    <div class="menu-divider" data-menu-div="4"></div>
+    <div class="menu-item close" data-action="close-menu"><span>关闭菜单</span></div>
   </div>
 
   <!-- Core Scripts -->

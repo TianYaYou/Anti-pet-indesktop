@@ -330,6 +330,26 @@ mod macos_native {
             msg_set_icon(shared_app, sel(b"setApplicationIconImage:\0"), ns_img);
         }
     }
+
+    /// Sets NSApplication activation policy to Accessory (1) so it runs purely as a menu bar / tray tool with NO Dock icon.
+    pub fn set_accessory_activation_policy() {
+        unsafe {
+            let app_cls = objc_getClass(b"NSApplication\0".as_ptr());
+            if app_cls.is_null() {
+                return;
+            }
+            let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+                std::mem::transmute(objc_msgSend as *const ());
+            let shared_app = msg_ptr(app_cls, sel(b"sharedApplication\0"));
+            if shared_app.is_null() {
+                return;
+            }
+            let msg_set_policy: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) -> bool =
+                std::mem::transmute(objc_msgSend as *const ());
+            // NSApplicationActivationPolicyAccessory = 1 (No Dock icon, menu bar accessory tool)
+            msg_set_policy(shared_app, sel(b"setActivationPolicy:\0"), 1);
+        }
+    }
 }
 
 
@@ -596,7 +616,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     #[cfg(target_os = "macos")]
     {
-        macos_native::set_application_dock_icon(APP_ICON_PNG);
+        macos_native::set_accessory_activation_policy();
         let _ = macos_native::sync_fullscreen_overlay_and_query_dock(window.ns_window(), true);
     }
 

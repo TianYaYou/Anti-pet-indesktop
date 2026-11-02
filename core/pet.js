@@ -1263,10 +1263,70 @@
    * Open the right-click context menu anchored directly at the mouse cursor (e.clientX, e.clientY).
    * Automatically flips upward/leftward when near screen edges or Mac Dock so it is never cut off.
    */
-  container.addEventListener('contextmenu', (e) => {
+  async function updateContextMenuVisibility() {
+    const config = state.menuConfig || {};
+    const items = contextMenu.querySelectorAll('[data-menu-key]');
+    items.forEach((item) => {
+      const key = item.getAttribute('data-menu-key');
+      if (key === 'openAntigravity') return;
+      if (key && config[key] === false) {
+        item.classList.add('hidden');
+      } else {
+        item.classList.remove('hidden');
+      }
+    });
+
+    const agItem = contextMenu.querySelector('[data-menu-key="openAntigravity"]');
+    if (agItem) {
+      if (config.openAntigravity === false) {
+        agItem.classList.add('hidden');
+      } else {
+        try {
+          const res = await fetch('/api/antigravity/status');
+          if (res.ok) {
+            const data = await res.json();
+            // If already running/open, hide this option! If not running, show it!
+            agItem.classList.toggle('hidden', Boolean(data.running));
+          } else {
+            agItem.classList.remove('hidden');
+          }
+        } catch (err) {
+          agItem.classList.remove('hidden');
+        }
+      }
+    }
+
+    // Clean up redundant dividers
+    const children = Array.from(contextMenu.children);
+    let prevWasItem = false;
+    children.forEach((el) => {
+      if (el.classList.contains('menu-divider')) {
+        if (!prevWasItem) {
+          el.classList.add('hidden');
+        } else {
+          el.classList.remove('hidden');
+          prevWasItem = false;
+        }
+      } else if (!el.classList.contains('hidden')) {
+        prevWasItem = true;
+      }
+    });
+    for (let i = children.length - 1; i >= 0; i--) {
+      if (!children[i].classList.contains('hidden')) {
+        if (children[i].classList.contains('menu-divider')) {
+          children[i].classList.add('hidden');
+        }
+        break;
+      }
+    }
+  }
+
+  container.addEventListener('contextmenu', async (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (state.dndPassthrough) return;
+
+    await updateContextMenuVisibility();
 
     // Make visible first so offsetWidth and offsetHeight are accurately measured
     contextMenu.classList.remove('hidden');
@@ -1309,6 +1369,10 @@
     const action = item.dataset.action;
 
     switch (action) {
+      case 'open-antigravity':
+        fetch('/api/antigravity/open', { method: 'POST' });
+        showBubble('正在为你启动 Antigravity...', 3000);
+        break;
       case 'open-settings':
         openSettings();
         break;
@@ -1393,6 +1457,9 @@
     if (remote.skinId && remote.skinId !== state.skinId) {
       loadSkin(remote.skinId);
     }
+    if (remote.menuConfig && typeof remote.menuConfig === 'object') {
+      state.menuConfig = remote.menuConfig;
+    }
   }
 
   async function initSettings() {
@@ -1465,6 +1532,9 @@
         }
         if (remote.skinId) {
           state.skinId = remote.skinId;
+        }
+        if (remote.menuConfig && typeof remote.menuConfig === 'object') {
+          state.menuConfig = remote.menuConfig;
         }
         if (typeof remote.posX === 'number' && typeof remote.posY === 'number') {
           const maxW = window.innerWidth - (container.offsetWidth || 136);

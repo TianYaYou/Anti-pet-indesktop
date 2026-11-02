@@ -27,6 +27,9 @@
         <button class="nav-item" data-tab="dialogue">
           <span class="nav-text">台词与问候</span>
         </button>
+        <button class="nav-item" data-tab="menu">
+          <span class="nav-text">右键菜单</span>
+        </button>
       </nav>
     </aside>
 
@@ -245,11 +248,22 @@
 
           <!-- Import Skin Form (Hidden by default) -->
           <div id="import-skin-form" class="section-card expand-form hidden">
-            <div class="section-card-title">导入皮肤配置</div>
-            <div class="form-field">
-              <label for="import-skin-json" class="field-label">粘贴 skin.json 配置内容</label>
-              <textarea id="import-skin-json" class="native-textarea" rows="6" placeholder='{\n  "id": "my-custom-cat",\n  "name": "我的猫猫",\n  "version": "1.0.0"\n}'></textarea>
+            <div class="section-card-title">导入皮肤与 dsh-pet 宠物配置</div>
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="import-skin-file" class="field-label">选择配置文件 (skin.json / pet.json)</label>
+                <input type="file" id="import-skin-file" class="native-input" accept=".json">
+              </div>
+              <div class="form-field">
+                <label for="import-skin-frame-file" class="field-label">可选: 宠物立绘图片 (PNG / WebP / GIF)</label>
+                <input type="file" id="import-skin-frame-file" class="native-input" accept="image/*">
+              </div>
             </div>
+            <div class="form-field" style="margin-top: 6px;">
+              <label for="import-skin-json" class="field-label">或直接粘贴配置代码 (支持本程序 skin.json 与 dsh-pet pet.json)</label>
+              <textarea id="import-skin-json" class="native-textarea" rows="6" placeholder='{\n  "id": "blue-fish",\n  "displayName": "大肥鱼",\n  "description": "兼容 dsh-pet 规范"\n}'></textarea>
+            </div>
+            <div id="import-detected-format" class="status-bar neutral hidden"></div>
             <div class="form-actions">
               <button id="btn-cancel-import-skin" class="native-btn">取消</button>
               <button id="btn-confirm-import-skin" class="native-btn primary">确认导入</button>
@@ -340,6 +354,169 @@
                 <button class="native-btn btn-add-line" data-cat="error">添加条目</button>
               </div>
               <div class="lines-list" id="lines-error"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 5: Right-Click Context Menu Settings -->
+        <section id="tab-menu" class="tab-pane">
+          <div class="pane-header">
+            <h2 class="pane-title">右键菜单设置</h2>
+            <p class="pane-subtitle">自定义在屏幕上右键点击大肥猫时呈现的功能项与启动开关</p>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-title">常用快捷操作</div>
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">打开 Antigravity</div>
+                <div class="setting-desc">快速呼出或激活开发环境 (智能检测: 当 Antigravity 已在运行时会自动隐藏该项)</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="menu-cfg-openAntigravity" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">偏好设置...</div>
+                <div class="setting-desc">快速打开本配置窗口 (Cmd+,)</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="menu-cfg-settings" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-title">状态与互动项</div>
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">切换额度卡片</div>
+                <div class="setting-desc">在对话气泡中切换展开/收起实时配额监控</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="menu-cfg-quota" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">换一句台词</div>
+                <div class="setting-desc">随机切换一条待机闲聊台词</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="menu-cfg-randomDialogue" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">互动抚摸</div>
+                <div class="setting-desc">触发抚摸猫耳特效与专属语音互动</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="menu-cfg-petAction" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-title">桌面行为控制</div>
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">缩放大小 (滚轮微调)</div>
+                <div class="setting-desc">重置或查看当前缩放比例</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="menu-cfg-zoom" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">完全穿透 (免打扰)</div>
+                <div class="setting-desc">让挂件完全不拦截鼠标，仅在角落留唤醒胶囊</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="menu-cfg-dnd" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">仅在 IDE 活跃时显示</div>
+                <div class="setting-desc">切换工作区活跃自动隐匿/唤醒</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="menu-cfg-ideOnly" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">重力下落吸附</div>
+                <div class="setting-desc">松手时模拟弹性重力回弹落底</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="menu-cfg-gravity" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-card">
+            <div class="section-card-title">外观与声音</div>
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">切换皮肤</div>
+                <div class="setting-desc">右键直接循环切换已安装的角色外观</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="menu-cfg-switchSkin" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <div class="settings-row">
+              <div class="setting-meta">
+                <div class="setting-title">动作音效</div>
+                <div class="setting-desc">右键快速切换声音静音或开启</div>
+              </div>
+              <div class="setting-control">
+                <label class="toggle-switch">
+                  <input type="checkbox" id="menu-cfg-sound" checked>
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
             </div>
           </div>
         </section>
