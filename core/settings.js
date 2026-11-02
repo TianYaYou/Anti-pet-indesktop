@@ -20,6 +20,48 @@
   // DOM Elements
   const tabButtons = document.querySelectorAll('.nav-item');
   const tabPanes = document.querySelectorAll('.tab-pane');
+  const macHeaderTitle = document.getElementById('mac-header-title');
+  const navPrev = document.getElementById('nav-prev');
+  const navNext = document.getElementById('nav-next');
+  const sidebarSearch = document.getElementById('sidebar-search');
+
+  const tabHistory = ['general'];
+  let historyIndex = 0;
+
+  const TAB_TITLES = {
+    general: '常规与显示',
+    system: '自启动与更新',
+    skins: '皮肤管理',
+    dialogue: '台词与问候',
+    menu: '右键菜单'
+  };
+
+  function updateNavArrows() {
+    if (navPrev) navPrev.disabled = historyIndex <= 0;
+    if (navNext) navNext.disabled = historyIndex >= tabHistory.length - 1;
+  }
+
+  function switchToTab(targetTab, addToHistory = true) {
+    if (!targetTab) return;
+    tabButtons.forEach(b => {
+      const isTarget = b.getAttribute('data-tab') === targetTab;
+      b.classList.toggle('active', isTarget);
+    });
+    tabPanes.forEach(pane => {
+      pane.classList.toggle('active', pane.id === `tab-${targetTab}`);
+    });
+    if (macHeaderTitle) {
+      macHeaderTitle.textContent = TAB_TITLES[targetTab] || '偏好设置';
+    }
+    if (addToHistory) {
+      if (tabHistory[historyIndex] !== targetTab) {
+        tabHistory.splice(historyIndex + 1);
+        tabHistory.push(targetTab);
+        historyIndex = tabHistory.length - 1;
+      }
+    }
+    updateNavArrows();
+  }
 
   // Controls - General
   const settingScale = document.getElementById('setting-scale');
@@ -101,16 +143,48 @@
     }, 2200);
   }
 
-  // Tab Navigation
+  // Tab Navigation & History Arrows
   tabButtons.forEach(btn => {
     btn.addEventListener('click', () => {
       const targetTab = btn.getAttribute('data-tab');
-      tabButtons.forEach(b => b.classList.toggle('active', b === btn));
-      tabPanes.forEach(pane => {
-        pane.classList.toggle('active', pane.id === `tab-${targetTab}`);
-      });
+      switchToTab(targetTab, true);
     });
   });
+
+  if (navPrev) {
+    navPrev.addEventListener('click', () => {
+      if (historyIndex > 0) {
+        historyIndex -= 1;
+        switchToTab(tabHistory[historyIndex], false);
+      }
+    });
+  }
+
+  if (navNext) {
+    navNext.addEventListener('click', () => {
+      if (historyIndex < tabHistory.length - 1) {
+        historyIndex += 1;
+        switchToTab(tabHistory[historyIndex], false);
+      }
+    });
+  }
+
+  // Sidebar Search
+  if (sidebarSearch) {
+    sidebarSearch.addEventListener('input', () => {
+      const q = sidebarSearch.value.trim().toLowerCase();
+      const menuRows = document.querySelectorAll('.mac-menu-row');
+      menuRows.forEach(row => {
+        const text = (row.textContent || '').toLowerCase();
+        row.style.display = !q || text.includes(q) ? '' : 'none';
+      });
+      const settingsRows = document.querySelectorAll('.settings-row');
+      settingsRows.forEach(row => {
+        const text = (row.textContent || '').toLowerCase();
+        row.style.display = !q || text.includes(q) ? '' : 'none';
+      });
+    });
+  }
 
   // Sliders Dynamic Value Updates
   if (settingScale && settingScaleVal) {
@@ -165,12 +239,76 @@
 
       const menuConfig = data.menuConfig || {};
       MENU_KEYS.forEach((key) => {
-        const el = document.getElementById(`menu-cfg-${key}`);
-        if (el) el.checked = menuConfig[key] !== false;
+        const chk = document.getElementById(`menu-cfg-${key}`);
+        const sel = document.getElementById(`menu-select-${key}`);
+        const row = document.querySelector(`.mac-menu-row[data-key="${key}"]`);
+        const val = menuConfig[key];
+
+        if (val === false || val === 'never') {
+          if (chk) chk.checked = false;
+          if (sel) sel.value = 'never';
+          if (row) row.classList.add('row-disabled');
+        } else if (val === 'auto') {
+          if (chk) chk.checked = true;
+          if (sel) sel.value = 'auto';
+          if (row) row.classList.remove('row-disabled');
+        } else if (val === 'active') {
+          if (chk) chk.checked = true;
+          if (sel) sel.value = 'active';
+          if (row) row.classList.remove('row-disabled');
+        } else {
+          // true or 'always' (default)
+          if (chk) chk.checked = true;
+          if (sel) sel.value = key === 'openAntigravity' ? 'auto' : 'always';
+          if (row) row.classList.remove('row-disabled');
+        }
       });
     } catch (e) {
       console.error('加载设置失败:', e);
     }
+  }
+
+  function syncMenuRow(key) {
+    const chk = document.getElementById(`menu-cfg-${key}`);
+    const sel = document.getElementById(`menu-select-${key}`);
+    const row = document.querySelector(`.mac-menu-row[data-key="${key}"]`);
+    if (!chk || !sel) return;
+
+    if (sel.value === 'never') {
+      chk.checked = false;
+      if (row) row.classList.add('row-disabled');
+    } else {
+      chk.checked = true;
+      if (row) row.classList.remove('row-disabled');
+    }
+  }
+
+  function setupMenuControls() {
+    MENU_KEYS.forEach((key) => {
+      const chk = document.getElementById(`menu-cfg-${key}`);
+      const sel = document.getElementById(`menu-select-${key}`);
+      const row = document.querySelector(`.mac-menu-row[data-key="${key}"]`);
+
+      if (chk) {
+        chk.addEventListener('change', () => {
+          if (chk.checked) {
+            if (sel && sel.value === 'never') {
+              sel.value = key === 'openAntigravity' ? 'auto' : 'always';
+            }
+            if (row) row.classList.remove('row-disabled');
+          } else {
+            if (sel) sel.value = 'never';
+            if (row) row.classList.add('row-disabled');
+          }
+        });
+      }
+
+      if (sel) {
+        sel.addEventListener('change', () => {
+          syncMenuRow(key);
+        });
+      }
+    });
   }
 
   // Load Autostart Info
@@ -551,8 +689,13 @@
       try {
         const menuConfig = {};
         MENU_KEYS.forEach((key) => {
-          const el = document.getElementById(`menu-cfg-${key}`);
-          if (el) menuConfig[key] = el.checked;
+          const chk = document.getElementById(`menu-cfg-${key}`);
+          const sel = document.getElementById(`menu-select-${key}`);
+          if (sel && sel.value) {
+            menuConfig[key] = sel.value;
+          } else if (chk) {
+            menuConfig[key] = chk.checked ? (key === 'openAntigravity' ? 'auto' : 'always') : 'never';
+          }
         });
 
         const newSettings = {
@@ -624,6 +767,7 @@
 
   // Initialization
   async function init() {
+    setupMenuControls();
     await loadSettings();
     await loadAutostartInfo();
     await loadSkins();
