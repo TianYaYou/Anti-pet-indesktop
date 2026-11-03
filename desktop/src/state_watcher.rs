@@ -306,7 +306,7 @@ fn find_file(root_dir: &PathBuf, filename: &str) -> PathBuf {
     project_p
 }
 
-fn resolve_project_root() -> PathBuf {
+pub fn resolve_project_root() -> PathBuf {
     if let Ok(cwd) = std::env::current_dir() {
         if cwd.join("skins").exists() {
             return cwd;

@@ -54,9 +54,8 @@ mod cpu_2d_app {
     use crate::{
         hit_test::PixelHitTester,
         menu_audio::{
-            pick_random_line, NativeAudioPlayer, NativeMenuManager, PetMenuAction, SoundEffect,
-            DRAGGED_DIALOGUES, ERROR_DIALOGUES, IDLE_DIALOGUES, PETTING_DIALOGUES,
-            SUCCESS_DIALOGUES, THINKING_DIALOGUES,
+            DialogueBank, NativeAudioPlayer, NativeMenuManager, PetMenuAction,
+            SoundEffect,
         },
         physics::{PetMotionState, PetPhysics, COMPACT_WIN_H, COMPACT_WIN_W},
         quota::{NativeQuotaProber, QuotaSnapshot},
@@ -761,11 +760,14 @@ mod cpu_2d_app {
         physics.zoom_scale = settings.scale;
         physics.gravity_enabled = settings.gravity_enabled;
 
+        let mut dialogue_bank = DialogueBank::load_from_root(state_watcher.root_dir(), "fat-cat");
+        settings_ui.dialogue_bank = dialogue_bank.clone();
+
         let initial_quota = crate::quota::read_state_file_quota()
             .or_else(crate::quota::read_fallback_ledger_quota);
         let mut bubble = ThoughtBubble {
             visible: !settings.dnd_passthrough,
-            text: pick_random_line(IDLE_DIALOGUES).to_string(),
+            text: dialogue_bank.pick_random("idle"),
             show_quota: settings.show_quota,
             five_hour_pct: initial_quota.as_ref().map(|q| q.five_hour).unwrap_or(100.0),
             weekly_pct: initial_quota.as_ref().map(|q| q.weekly).unwrap_or(100.0),
@@ -862,6 +864,11 @@ mod cpu_2d_app {
         let mut cursor_left_since: Option<Instant> = None;
         let mut dirty_frame = true;
 
+        let mut is_dragging_settings = false;
+        let mut current_settings_cursor = (0.0_f64, 0.0_f64);
+        let mut settings_drag_start_cursor = (0.0_f64, 0.0_f64);
+        let mut settings_drag_win_pos = (0, 0);
+
         println!("Anti-Pet v0.4.0 Pure CPU 2D 软渲染引擎已启动 (Zero WebKit / Zero Node.js)");
 
         event_loop.run(move |event, _, control_flow| {
@@ -905,12 +912,11 @@ mod cpu_2d_app {
                         if !settings.dnd_passthrough {
                             bubble.text = upd.bubble_text.unwrap_or_else(|| {
                                 match upd.motion {
-                                    PetMotionState::Thinking => pick_random_line(THINKING_DIALOGUES),
-                                    PetMotionState::Success => pick_random_line(SUCCESS_DIALOGUES),
-                                    PetMotionState::Error => pick_random_line(ERROR_DIALOGUES),
-                                    _ => pick_random_line(IDLE_DIALOGUES),
+                                    PetMotionState::Thinking => dialogue_bank.pick_random("thinking"),
+                                    PetMotionState::Success => dialogue_bank.pick_random("success"),
+                                    PetMotionState::Error => dialogue_bank.pick_random("error"),
+                                    _ => dialogue_bank.pick_random("idle"),
                                 }
-                                .to_string()
                             });
                             bubble.visible = true;
                             bubble.opacity = 1.0;
@@ -994,6 +1000,8 @@ mod cpu_2d_app {
                                         bubble_hide_deadline =
                                             Some(Instant::now() + Duration::from_millis(3500));
                                         settings_ui.open(&settings);
+                                        settings_ui.reload_dialogues();
+                                        dialogue_bank = settings_ui.dialogue_bank.clone();
                                         is_settings_open = true;
                                         settings_window.set_visible(true);
                                         settings_window.set_focus();
@@ -1011,7 +1019,7 @@ mod cpu_2d_app {
 
                                     PetMenuAction::NextDialogue => {
                                         audio.play(SoundEffect::ClickRelease);
-                                        bubble.text = pick_random_line(IDLE_DIALOGUES).to_string();
+                                        bubble.text = dialogue_bank.pick_random("idle");
                                         bubble.visible = true;
                                         bubble.opacity = 1.0;
                                         bubble_hide_deadline =
@@ -1024,8 +1032,7 @@ mod cpu_2d_app {
                                         physics.motion = PetMotionState::Petting;
                                         physics.motion_until =
                                             Some(Instant::now() + Duration::from_millis(2400));
-                                        bubble.text =
-                                            pick_random_line(PETTING_DIALOGUES).to_string();
+                                        bubble.text = dialogue_bank.pick_random("petting");
                                         bubble.visible = !settings.dnd_passthrough;
                                         bubble.opacity = 1.0;
                                         bubble_hide_deadline =
@@ -1217,8 +1224,7 @@ mod cpu_2d_app {
                                     if !is_dragging {
                                         is_dragging = true;
                                         if !settings.dnd_passthrough {
-                                            bubble.text =
-                                                pick_random_line(DRAGGED_DIALOGUES).to_string();
+                                            bubble.text = dialogue_bank.pick_random("dragged");
                                             bubble.visible = true;
                                             bubble.opacity = 1.0;
                                         }
@@ -1279,8 +1285,7 @@ mod cpu_2d_app {
                                     // Petting gesture triggered!
                                     audio.play(SoundEffect::PopRelease);
                                     if !settings.dnd_passthrough {
-                                        bubble.text =
-                                            pick_random_line(PETTING_DIALOGUES).to_string();
+                                        bubble.text = dialogue_bank.pick_random("petting");
                                         bubble.visible = true;
                                         bubble.opacity = 1.0;
                                         bubble_hide_deadline =
@@ -1348,6 +1353,16 @@ mod cpu_2d_app {
                                 is_settings_open = false;
                             }
                             WindowEvent::CursorMoved { position, .. } => {
+                                current_settings_cursor = (position.x, position.y);
+                                if is_dragging_settings {
+                                    let dx = (position.x - settings_drag_start_cursor.0) as i32;
+                                    let dy = (position.y - settings_drag_start_cursor.1) as i32;
+                                    let new_pos = tao::dpi::PhysicalPosition::new(
+                                        settings_drag_win_pos.0 + dx,
+                                        settings_drag_win_pos.1 + dy,
+                                    );
+                                    settings_window.set_outer_position(new_pos);
+                                }
                                 let s_scale = settings_window.scale_factor() as f32;
                                 let lx = position.x / (s_scale as f64);
                                 let ly = position.y / (s_scale as f64);
@@ -1403,13 +1418,42 @@ mod cpu_2d_app {
                                                 settings_ui.render(&mut settings_pixmap, s_scale);
                                                 settings_surface.present(&settings_pixmap, s_scale as f64);
                                             }
-                                            SettingsAction::DragWindow => {
-                                                let _ = settings_window.drag_window();
+                                            SettingsAction::BeginTitleDrag => {
+                                                is_dragging_settings = true;
+                                                settings_drag_start_cursor = current_settings_cursor;
+                                                if let Ok(pos) = settings_window.outer_position() {
+                                                    settings_drag_win_pos = (pos.x, pos.y);
+                                                }
+                                            }
+                                            SettingsAction::OpenDialogueConfig => {
+                                                let dialogue_path = state_watcher
+                                                    .root_dir()
+                                                    .join("skins")
+                                                    .join("fat-cat")
+                                                    .join("dialogue.json");
+                                                #[cfg(target_os = "windows")]
+                                                {
+                                                    let _ = std::process::Command::new("cmd")
+                                                        .args(["/C", "start", "", &dialogue_path.to_string_lossy()])
+                                                        .spawn();
+                                                }
+                                                #[cfg(target_os = "macos")]
+                                                {
+                                                    let _ = std::process::Command::new("open")
+                                                        .arg(&dialogue_path)
+                                                        .spawn();
+                                                }
+                                                settings_ui.reload_dialogues();
+                                                dialogue_bank = settings_ui.dialogue_bank.clone();
+                                                settings_ui.show_toast("已打开专属台词库 (dialogue.json)");
+                                                settings_ui.render(&mut settings_pixmap, s_scale);
+                                                settings_surface.present(&settings_pixmap, s_scale as f64);
                                             }
                                             SettingsAction::None => {}
                                         }
                                     }
                                 } else if let Some(action) = settings_ui.handle_mouse_up() {
+                                    is_dragging_settings = false;
                                     match action {
                                         SettingsAction::Save(new_settings) => {
                                             state_watcher.save_settings(&new_settings);
@@ -1428,6 +1472,8 @@ mod cpu_2d_app {
                                             settings_surface.present(&settings_pixmap, s_scale as f64);
                                         }
                                     }
+                                } else {
+                                    is_dragging_settings = false;
                                 }
                             }
                             WindowEvent::MouseWheel { delta, .. } => {
@@ -1586,7 +1632,7 @@ mod cpu_2d_app {
                                         // Short click -> Duang rebound + next tsundere dialogue!
                                         audio.play(SoundEffect::ClickRelease);
                                         physics.trigger_duang_rebound(460);
-                                        bubble.text = pick_random_line(IDLE_DIALOGUES).to_string();
+                                        bubble.text = dialogue_bank.pick_random("idle");
                                         bubble.visible = true;
                                         bubble.opacity = 1.0;
                                         bubble_hide_deadline =

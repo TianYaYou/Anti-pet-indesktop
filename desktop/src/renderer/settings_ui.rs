@@ -26,7 +26,8 @@ pub enum SettingsAction {
     CheckUpdate,
     SelectTab(SettingsTab),
     Redraw,
-    DragWindow,
+    OpenDialogueConfig,
+    BeginTitleDrag,
     MinimizeWindow,
 }
 
@@ -47,10 +48,14 @@ pub struct SettingsUi {
     pub dragging_slider: Option<String>,
     pub mouse_pos: (f32, f32),
     pub cat_sprite: super::sprite::CatSprite,
+    pub dialogue_bank: crate::menu_audio::DialogueBank,
 }
 
 impl SettingsUi {
     pub fn new(settings: PetSettings) -> Self {
+        let cat_sprite = super::sprite::CatSprite::load_default();
+        let root_dir = crate::state_watcher::resolve_project_root();
+        let dialogue_bank = crate::menu_audio::DialogueBank::load_from_root(&root_dir, "fat-cat");
         Self {
             active_tab: SettingsTab::General,
             temp_settings: settings.clone(),
@@ -62,8 +67,14 @@ impl SettingsUi {
             pressed_id: None,
             dragging_slider: None,
             mouse_pos: (0.0, 0.0),
-            cat_sprite: super::sprite::CatSprite::load_default(),
+            cat_sprite,
+            dialogue_bank,
         }
+    }
+
+    pub fn reload_dialogues(&mut self) {
+        let root_dir = crate::state_watcher::resolve_project_root();
+        self.dialogue_bank = crate::menu_audio::DialogueBank::load_from_root(&root_dir, "fat-cat");
     }
 
     pub fn open(&mut self, current_settings: &PetSettings) {
@@ -119,7 +130,7 @@ impl SettingsUi {
             if mx >= win_w - 92.0 && mx < win_w - 46.0 {
                 return Some(SettingsAction::MinimizeWindow);
             }
-            return Some(SettingsAction::DragWindow);
+            return Some(SettingsAction::BeginTitleDrag);
         }
 
         // 1. Sidebar clicks (tabs start at y = 56.0 with 36.0 spacing, 5 tabs end at 236.0)
@@ -140,20 +151,14 @@ impl SettingsUi {
                     return Some(SettingsAction::SelectTab(tab));
                 }
             }
-            // Clicking empty sidebar header or sidebar bottom area begins window drag
-            return Some(SettingsAction::DragWindow);
+            // Empty sidebar clicks do nothing (never lock or modal-drag)
+            return None;
         }
 
         // 2. Tab content clicks
         let action = self.interact_tab_controls(mx, my);
         match action {
-            SettingsAction::None => {
-                if my < 56.0 {
-                    Some(SettingsAction::DragWindow)
-                } else {
-                    None
-                }
-            }
+            SettingsAction::None => None,
             other => Some(other),
         }
     }
@@ -274,6 +279,13 @@ impl SettingsUi {
                     }
                 }
             }
+            SettingsTab::Dialogue => {
+                let btn_w = 190.0;
+                let btn_x = cw_right - btn_w;
+                if (32.0..68.0).contains(&content_y) && (btn_x..cw_right).contains(&mx) {
+                    return Some("open_dialogue_config".to_string());
+                }
+            }
             SettingsTab::Menu => {
                 for i in 0..9 {
                     let ry = 80.0 + (i as f32) * 44.0;
@@ -282,7 +294,6 @@ impl SettingsUi {
                     }
                 }
             }
-            _ => {}
         }
 
         None
@@ -364,7 +375,11 @@ impl SettingsUi {
                 }
             }
             SettingsTab::Dialogue => {
-                // Readonly showcase
+                let btn_w = 190.0;
+                let btn_x = cw_right - btn_w;
+                if (32.0..68.0).contains(&content_y) && (btn_x..cw_right).contains(&mx) {
+                    return SettingsAction::OpenDialogueConfig;
+                }
             }
             SettingsTab::Menu => {
                 let row_h = 44.0;
@@ -527,7 +542,7 @@ impl SettingsUi {
             let is_hovered = self.hovered_id.as_deref() == Some(&tab_id);
             let is_pressed = self.pressed_id.as_deref() == Some(&tab_id);
 
-            let (bg_pill, icon_col, txt_col) = if is_win {
+            let (bg_pill, txt_col) = if is_win {
                 let bg = if is_pressed {
                     if is_dark { [255, 255, 255, 24] } else { [0, 0, 0, 18] }
                 } else if is_active {
@@ -537,20 +552,15 @@ impl SettingsUi {
                 } else {
                     [0, 0, 0, 0]
                 };
-                let icon_c = if is_active {
-                    accent_color
-                } else {
-                    [text_pri[0], text_pri[1], text_pri[2], 210]
-                };
-                (bg, icon_c, text_pri)
+                (bg, text_pri)
             } else if is_active {
-                (accent_color, [255, 255, 255, 255], [255, 255, 255])
+                (accent_color, [255, 255, 255])
             } else if is_pressed {
-                (if is_dark { [255, 255, 255, 26] } else { [0, 0, 0, 18] }, [text_pri[0], text_pri[1], text_pri[2], 240], text_pri)
+                (if is_dark { [255, 255, 255, 26] } else { [0, 0, 0, 18] }, text_pri)
             } else if is_hovered {
-                (if is_dark { [255, 255, 255, 18] } else { [0, 0, 0, 12] }, [text_pri[0], text_pri[1], text_pri[2], 240], text_pri)
+                (if is_dark { [255, 255, 255, 18] } else { [0, 0, 0, 12] }, text_pri)
             } else {
-                ([0, 0, 0, 0], [text_pri[0], text_pri[1], text_pri[2], 180], text_pri)
+                ([0, 0, 0, 0], text_pri)
             };
 
             let pill_x = if is_win { 10.0 * s } else { 12.0 * s };
@@ -568,11 +578,9 @@ impl SettingsUi {
                 pixmap.fill_rounded_rect_sdf(10.0 * s, ind_y, 3.0 * s, ind_h, 1.5 * s, accent_color, 0.0, [0, 0, 0, 0]);
             }
 
-            // Draw vector icon for tab
-            Self::draw_nav_icon(pixmap, tab, 20.0 * s, ty + 8.0 * s, s, icon_col);
-
+            let text_x = if is_win { 22.0 * s } else { 24.0 * s };
             let weight = if is_active { 0.3 } else { 0.0 };
-            draw_text_into_pixmap(pixmap, title, 42.0 * s, ty + 8.0 * s, (SIDEBAR_W - 52.0) * s, 16.0 * s, 12.5 * s, weight, txt_col, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, title, text_x, ty + 8.0 * s, (SIDEBAR_W - 32.0) * s, 16.0 * s, 12.5 * s, weight, txt_col, 1.0, TextAlignment::Left);
         }
 
         // Version badge at the bottom of the sidebar
@@ -594,7 +602,7 @@ impl SettingsUi {
                 self.render_skins_tab(pixmap, cx, cw, s, bg_card, border_card, text_pri, text_sec, accent_color, card_radius, is_win);
             }
             SettingsTab::Dialogue => {
-                self.render_dialogue_tab(pixmap, cx, cw, s, bg_card, border_card, text_pri, text_sec, card_radius);
+                self.render_dialogue_tab(pixmap, cx, cw, s, bg_card, border_card, text_pri, text_sec, accent_color, card_radius, is_win, is_dark);
             }
             SettingsTab::Menu => {
                 self.render_menu_tab(pixmap, cx, cw, s, bg_card, border_card, row_div, text_pri, text_sec, accent_color, card_radius, is_win, is_dark);
@@ -622,55 +630,6 @@ impl SettingsUi {
                 };
                 pixmap.fill_rounded_rect_sdf(toast_x, toast_y, toast_w, 28.0 * s, toast_r, toast_bg, 1.0 * s, toast_border);
                 draw_text_into_pixmap(pixmap, msg, toast_x, toast_y + 6.0 * s, toast_w, 16.0 * s, 11.5 * s, 0.0, toast_txt, alpha, TextAlignment::Center);
-            }
-        }
-    }
-
-    fn draw_nav_icon(
-        pixmap: &mut Pixmap,
-        tab: SettingsTab,
-        x: f32,
-        y: f32,
-        s: f32,
-        color: [u8; 4],
-    ) {
-        match tab {
-            SettingsTab::General => {
-                // Two horizontal slider tracks with knobs
-                let thick = 1.4 * s;
-                pixmap.draw_line_sdf(x + 1.5 * s, y + 4.5 * s, x + 14.5 * s, y + 4.5 * s, thick, color);
-                pixmap.fill_circle_sdf(x + 5.5 * s, y + 4.5 * s, 2.4 * s, color, 0.0, [0, 0, 0, 0]);
-
-                pixmap.draw_line_sdf(x + 1.5 * s, y + 11.5 * s, x + 14.5 * s, y + 11.5 * s, thick, color);
-                pixmap.fill_circle_sdf(x + 10.5 * s, y + 11.5 * s, 2.4 * s, color, 0.0, [0, 0, 0, 0]);
-            }
-            SettingsTab::Autostart => {
-                // Rocket / launch arrow
-                let thick = 1.4 * s;
-                pixmap.draw_line_sdf(x + 8.0 * s, y + 1.5 * s, x + 8.0 * s, y + 12.0 * s, thick * 1.2, color);
-                pixmap.draw_line_sdf(x + 8.0 * s, y + 1.5 * s, x + 4.0 * s, y + 8.0 * s, thick, color);
-                pixmap.draw_line_sdf(x + 8.0 * s, y + 1.5 * s, x + 12.0 * s, y + 8.0 * s, thick, color);
-                pixmap.draw_line_sdf(x + 4.0 * s, y + 11.0 * s, x + 12.0 * s, y + 11.0 * s, thick, color);
-                pixmap.fill_circle_sdf(x + 8.0 * s, y + 14.0 * s, 1.2 * s, color, 0.0, [0, 0, 0, 0]);
-            }
-            SettingsTab::Skins => {
-                // Cat head & cute pointed ears
-                pixmap.fill_rounded_rect_sdf(x + 2.5 * s, y + 5.0 * s, 11.0 * s, 9.0 * s, 3.2 * s, color, 0.0, [0, 0, 0, 0]);
-                pixmap.fill_circle_sdf(x + 4.5 * s, y + 3.8 * s, 2.2 * s, color, 0.0, [0, 0, 0, 0]);
-                pixmap.fill_circle_sdf(x + 11.5 * s, y + 3.8 * s, 2.2 * s, color, 0.0, [0, 0, 0, 0]);
-            }
-            SettingsTab::Dialogue => {
-                // Speech bubble
-                pixmap.fill_rounded_rect_sdf(x + 2.0 * s, y + 2.5 * s, 12.0 * s, 9.5 * s, 3.0 * s, color, 0.0, [0, 0, 0, 0]);
-                let thick = 1.4 * s;
-                pixmap.draw_line_sdf(x + 4.5 * s, y + 11.0 * s, x + 2.5 * s, y + 14.0 * s, thick, color);
-            }
-            SettingsTab::Menu => {
-                // 3 horizontal bars (hamburger / menu icon)
-                let thick = 1.5 * s;
-                pixmap.draw_line_sdf(x + 2.5 * s, y + 4.0 * s, x + 13.5 * s, y + 4.0 * s, thick, color);
-                pixmap.draw_line_sdf(x + 2.5 * s, y + 8.0 * s, x + 13.5 * s, y + 8.0 * s, thick, color);
-                pixmap.draw_line_sdf(x + 2.5 * s, y + 12.0 * s, x + 13.5 * s, y + 12.0 * s, thick, color);
             }
         }
     }
@@ -906,33 +865,98 @@ impl SettingsUi {
         border_card: [u8; 4],
         text_pri: [u8; 3],
         text_sec: [u8; 3],
+        accent: [u8; 4],
         card_radius: f32,
+        is_win: bool,
+        is_dark: bool,
     ) {
         let base_y = 28.0 * s;
-        draw_text_into_pixmap(pixmap, "台词与问候", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "预设在特定状态与触发条件下的气泡台词展示库", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "台词与问候", cx, base_y, cw - 200.0 * s, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "绑定 Antigravity 模型状态与桌面交互台词库", cx, base_y + 24.0 * s, cw - 200.0 * s, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
-        let lines = [
-            ("日常闲置 (idle)", "本喵在看你写代码呢，别偷懒！"),
-            ("摸头互动 (petting)", "呼噜呼噜... 勉为其难让你摸一下下喵~"),
-            ("深度推理 (thinking)", "本喵正在探头思考，高速运转脑回路..."),
-            ("终端执行 (working)", "正在执行终端命令...，稍等喵~"),
-            ("任务成功 (success)", "Antigravity 成功完成代码交付或构建时"),
-            ("编译报错 (error)", "呜... 工具执行好像报错了，陪你一起排查！"),
+        // Header Action Button: "编辑专属台词库 (dialogue.json)"
+        let btn_w = 190.0 * s;
+        let btn_h = 28.0 * s;
+        let btn_x = cx + cw - btn_w;
+        let btn_y = base_y + 10.0 * s;
+        let is_btn_hover = self.hovered_id.as_deref() == Some("open_dialogue_config");
+        let is_btn_press = self.pressed_id.as_deref() == Some("open_dialogue_config");
+
+        let (btn_bg, btn_border) = if is_win {
+            let bg = if is_btn_press {
+                if is_dark { [255, 255, 255, 24] } else { [0, 0, 0, 18] }
+            } else if is_btn_hover {
+                if is_dark { [255, 255, 255, 14] } else { [0, 0, 0, 10] }
+            } else {
+                if is_dark { [255, 255, 255, 8] } else { [255, 255, 255, 200] }
+            };
+            (bg, border_card)
+        } else {
+            let bg = if is_btn_press {
+                [accent[0], accent[1], accent[2], 220]
+            } else if is_btn_hover {
+                [accent[0], accent[1], accent[2], 240]
+            } else {
+                accent
+            };
+            (bg, [0, 0, 0, 0])
+        };
+
+        pixmap.fill_rounded_rect_sdf(btn_x, btn_y, btn_w, btn_h, 4.0 * s, btn_bg, 1.0 * s, btn_border);
+        let btn_txt_col = if is_win { text_pri } else { [255, 255, 255] };
+        draw_text_into_pixmap(pixmap, "编辑台词配置 (dialogue.json)", btn_x, btn_y + 6.0 * s, btn_w, 16.0 * s, 11.0 * s, 0.25, btn_txt_col, 1.0, TextAlignment::Center);
+
+        // 5 Model-bound Categories
+        let idle_sample = self.dialogue_bank.idle.first().map(|s| s.as_str()).unwrap_or("今天也在认真营业，绝对没有偷偷晒太阳。");
+        let thinking_sample = self.dialogue_bank.thinking.first().map(|s| s.as_str()).unwrap_or("喵式推理中，先别揪耳朵。");
+        let success_sample = self.dialogue_bank.success.first().map(|s| s.as_str()).unwrap_or("又走完一步啦，夸本喵！");
+        let error_sample = self.dialogue_bank.error.first().map(|s| s.as_str()).unwrap_or("这步没走通，陪你再看看。");
+        let petting_sample = self.dialogue_bank.petting.first().map(|s| s.as_str()).unwrap_or("只准摸一下……再一下也行。");
+
+        let categories = [
+            ("待机日常 (idle)", format!("{}条 · 周期性随机陪伴", self.dialogue_bank.idle.len()), idle_sample),
+            ("深度思考 (thinking)", format!("{}条 · 模型推理工具执行", self.dialogue_bank.thinking.len()), thinking_sample),
+            ("任务成功 (success)", format!("{}条 · 交付完成构建通过", self.dialogue_bank.success.len()), success_sample),
+            ("任务遇阻 (error)", format!("{}条 · 编译报错异常慰劳", self.dialogue_bank.error.len()), error_sample),
+            ("互动抚摸 (petting)", format!("{}条 · 双击互动回应", self.dialogue_bank.petting.len()), petting_sample),
         ];
 
         let c1_y = 80.0 * s;
-        let c1_h = 270.0 * s;
+        let c1_h = 246.0 * s;
         pixmap.fill_rounded_rect_sdf(cx, c1_y, cw, c1_h, card_radius, bg_card, 1.0 * s, border_card);
 
-        for (i, (tag, sample)) in lines.into_iter().enumerate() {
-            let row_y = c1_y + 6.0 * s + (i as f32) * 44.0 * s;
-            draw_text_into_pixmap(pixmap, tag, cx + 14.0 * s, row_y + 4.0 * s, 180.0 * s, 16.0 * s, 12.0 * s, 0.25, text_pri, 1.0, TextAlignment::Left);
-            draw_text_into_pixmap(pixmap, sample, cx + 180.0 * s, row_y + 4.0 * s, cw - 194.0 * s, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-            if i < 5 {
-                pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, row_y + 36.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, border_card, 0.0, [0, 0, 0, 0]);
+        for (i, (tag, meta_info, sample)) in categories.into_iter().enumerate() {
+            let row_y = c1_y + 4.0 * s + (i as f32) * 48.0 * s;
+            // Title + Tag
+            draw_text_into_pixmap(pixmap, tag, cx + 16.0 * s, row_y + 6.0 * s, 160.0 * s, 16.0 * s, 12.0 * s, 0.3, text_pri, 1.0, TextAlignment::Left);
+            // Meta info (e.g. 65条 · 周期性随机陪伴)
+            draw_text_into_pixmap(pixmap, &meta_info, cx + 16.0 * s, row_y + 24.0 * s, 160.0 * s, 14.0 * s, 10.0 * s, 0.0, text_sec, 0.8, TextAlignment::Left);
+            // Sample line
+            draw_text_into_pixmap(pixmap, sample, cx + 180.0 * s, row_y + 15.0 * s, cw - 196.0 * s, 16.0 * s, 11.5 * s, 0.0, text_sec, 0.95, TextAlignment::Left);
+            if i < 4 {
+                let div_col = if is_win {
+                    if is_dark { [255, 255, 255, 14] } else { [0, 0, 0, 10] }
+                } else {
+                    border_card
+                };
+                pixmap.fill_rounded_rect_sdf(cx + 16.0 * s, row_y + 46.0 * s, cw - 32.0 * s, 1.0 * s, 0.0, div_col, 0.0, [0, 0, 0, 0]);
             }
         }
+
+        // Subtext / instruction hint
+        draw_text_into_pixmap(
+            pixmap,
+            "💡 提示：台词与 Antigravity IDE 状态实时绑定，点击右上角即可在编辑器中增删自定义台词，保存后自动同步。",
+            cx,
+            c1_y + c1_h + 12.0 * s,
+            cw,
+            16.0 * s,
+            11.0 * s,
+            0.0,
+            text_sec,
+            0.85,
+            TextAlignment::Left,
+        );
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1208,15 +1232,21 @@ mod tests {
         assert!(matches!(up_action, Some(SettingsAction::Save(_))));
         assert!(ui.dragging_slider.is_none());
 
-        // Clicking empty window header begins DragWindow
-        ui.mouse_pos = (350.0, 30.0);
-        let drag_action = ui.handle_mouse_down(1.0);
-        assert!(matches!(drag_action, Some(SettingsAction::DragWindow)));
+        // Clicking empty window header does not return DragWindow
+        ui.mouse_pos = (350.0, 45.0);
+        let empty_action = ui.handle_mouse_down(1.0);
+        assert_eq!(empty_action, None);
 
-        // Clicking empty sidebar bottom begins DragWindow
+        // Clicking empty sidebar bottom returns None
         ui.mouse_pos = (50.0, 350.0);
         let drag_sidebar = ui.handle_mouse_down(1.0);
-        assert!(matches!(drag_sidebar, Some(SettingsAction::DragWindow)));
+        assert_eq!(drag_sidebar, None);
+
+        // Clicking "编辑台词配置" on Dialogue tab
+        ui.active_tab = SettingsTab::Dialogue;
+        ui.mouse_pos = (SETTINGS_WIN_W as f32 - 50.0, 45.0);
+        let diag_act = ui.handle_mouse_down(1.0);
+        assert_eq!(diag_act, Some(SettingsAction::OpenDialogueConfig));
 
         #[cfg(target_os = "windows")]
         {
@@ -1229,6 +1259,11 @@ mod tests {
             ui.mouse_pos = (710.0, 15.0);
             let min_act = ui.handle_mouse_down(1.0);
             assert_eq!(min_act, Some(SettingsAction::MinimizeWindow));
+
+            // Test Windows title drag area
+            ui.mouse_pos = (300.0, 15.0);
+            let title_act = ui.handle_mouse_down(1.0);
+            assert_eq!(title_act, Some(SettingsAction::BeginTitleDrag));
         }
     }
 

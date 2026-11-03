@@ -68,12 +68,87 @@ pub const ERROR_DIALOGUES: &[&str] = &[
     "本喵也会卡壳，不许笑！",
 ];
 
+#[allow(dead_code)]
 pub fn pick_random_line(lines: &[&'static str]) -> &'static str {
     if lines.is_empty() {
         return "本喵随时待命~";
     }
     let idx = fastrand::usize(..lines.len());
     lines[idx]
+}
+
+/// Dynamic dialogue bank loaded from `skins/{skinId}/dialogue.json` with fallback to built-in corpus.
+#[derive(Clone, Debug, PartialEq)]
+pub struct DialogueBank {
+    pub idle: Vec<String>,
+    pub thinking: Vec<String>,
+    pub success: Vec<String>,
+    pub error: Vec<String>,
+    pub petting: Vec<String>,
+    pub dragged: Vec<String>,
+}
+
+impl Default for DialogueBank {
+    fn default() -> Self {
+        Self {
+            idle: IDLE_DIALOGUES.iter().map(|s| s.to_string()).collect(),
+            thinking: THINKING_DIALOGUES.iter().map(|s| s.to_string()).collect(),
+            success: SUCCESS_DIALOGUES.iter().map(|s| s.to_string()).collect(),
+            error: ERROR_DIALOGUES.iter().map(|s| s.to_string()).collect(),
+            petting: PETTING_DIALOGUES.iter().map(|s| s.to_string()).collect(),
+            dragged: DRAGGED_DIALOGUES.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+}
+
+impl DialogueBank {
+    pub fn load_from_root(root_dir: &std::path::Path, skin_id: &str) -> Self {
+        let dialogue_file = root_dir.join("skins").join(skin_id).join("dialogue.json");
+        if let Ok(raw) = std::fs::read_to_string(&dialogue_file) {
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&raw) {
+                if let Some(lines) = val.get("lines").and_then(|x| x.as_object()) {
+                    let parse_cat = |cat: &str, def: &[&'static str]| -> Vec<String> {
+                        if let Some(arr) = lines.get(cat).and_then(|x| x.as_array()) {
+                            let items: Vec<String> = arr
+                                .iter()
+                                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                .collect();
+                            if !items.is_empty() {
+                                return items;
+                            }
+                        }
+                        def.iter().map(|s| s.to_string()).collect()
+                    };
+
+                    return Self {
+                        idle: parse_cat("idle", IDLE_DIALOGUES),
+                        thinking: parse_cat("thinking", THINKING_DIALOGUES),
+                        success: parse_cat("success", SUCCESS_DIALOGUES),
+                        error: parse_cat("error", ERROR_DIALOGUES),
+                        petting: parse_cat("petting", PETTING_DIALOGUES),
+                        dragged: parse_cat("dragged", DRAGGED_DIALOGUES),
+                    };
+                }
+            }
+        }
+        Self::default()
+    }
+
+    pub fn pick_random(&self, category: &str) -> String {
+        let pool = match category {
+            "thinking" => &self.thinking,
+            "success" => &self.success,
+            "error" => &self.error,
+            "petting" => &self.petting,
+            "dragged" => &self.dragged,
+            _ => &self.idle,
+        };
+        if pool.is_empty() {
+            return "今天也在认真营业，绝对没有偷偷晒太阳。".to_string();
+        }
+        let idx = fastrand::usize(..pool.len());
+        pool[idx].clone()
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
