@@ -30,6 +30,7 @@ jobs:
           node -c server/index.js
           node -c core/pet.js
           node -c core/settings.js
+          node -c scripts/audit_memory_leak.js
           node -e "JSON.parse(require('fs').readFileSync('package.json'))"
           node -e "JSON.parse(require('fs').readFileSync('plugin.json'))"
           node scripts/audit_zero_emojis.js
@@ -40,7 +41,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -49,7 +50,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -62,3 +63,36 @@ jobs:
       - name: Cargo Check
         run: |
           cargo check --manifest-path desktop/Cargo.toml
+
+  memory-audit:
+    name: Multi-Platform Memory Footprint & Leak Audit (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop
+
+      - name: Run Memory & Leak Audit
+        run: node scripts/audit_memory_leak.js

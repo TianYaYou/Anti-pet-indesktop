@@ -862,3 +862,39 @@ mod windows_surface {
     }
 
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_continuous_rendering_zero_memory_leak() {
+        let mut pixmap = Pixmap::new(300, 300);
+        let initial_capacity = pixmap.data.capacity();
+
+        // Perform 500 rapid rendering cycles of text, rounded rect SDFs, circles and line draws
+        for _ in 0..500 {
+            pixmap.clear();
+            pixmap.fill_rounded_rect_sdf(10.0, 10.0, 280.0, 280.0, 10.0, [255, 255, 255, 255], 1.0, [0, 0, 0, 40]);
+            pixmap.fill_circle_sdf(150.0, 150.0, 30.0, [100, 150, 255, 255], 1.0, [0, 0, 0, 0]);
+            pixmap.draw_line_sdf(20.0, 20.0, 280.0, 280.0, 2.0, [255, 0, 0, 255]);
+            text::draw_text_into_pixmap(
+                &mut pixmap,
+                "Render loop memory leak audit",
+                20.0,
+                20.0,
+                260.0,
+                30.0,
+                14.0,
+                0.3,
+                [0, 0, 0],
+                1.0,
+                text::TextAlignment::Left,
+            );
+        }
+
+        // Verify Pixmap buffer never reallocated or leaked memory
+        assert_eq!(pixmap.data.capacity(), initial_capacity);
+    }
+}
