@@ -97,6 +97,14 @@ impl SettingsStore {
         self.reload_dialogues();
     }
 
+    pub fn commit_to_disk(&mut self) {
+        let watcher = crate::state_watcher::NativeStateWatcher::new();
+        watcher.save_settings(&self.temp_settings);
+        let _ = self.dialogue_bank.save_to_root(&self.root_dir, "fat-cat");
+        self.original_settings = self.temp_settings.clone();
+        self.original_dialogue_bank = self.dialogue_bank.clone();
+    }
+
     pub fn reload_dialogues(&mut self) {
         let bank = DialogueBank::load_from_root(&self.root_dir, "fat-cat");
         self.dialogue_bank = bank.clone();
@@ -267,9 +275,7 @@ impl SettingsStore {
                 StoreEvent::Redraw
             }
             SettingsAction::Save => {
-                self.original_settings = self.temp_settings.clone();
-                let _ = self.dialogue_bank.save_to_root(&self.root_dir, "fat-cat");
-                self.original_dialogue_bank = self.dialogue_bank.clone();
+                self.commit_to_disk();
                 StoreEvent::SettingsSaved(self.original_settings.clone())
             }
             SettingsAction::Cancel => {
