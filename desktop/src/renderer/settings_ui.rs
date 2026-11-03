@@ -26,6 +26,7 @@ pub enum SettingsAction {
     CheckUpdate,
     SelectTab(SettingsTab),
     Redraw,
+    DragWindow,
 }
 
 /// Native pure 2D CPU software-rendered Preferences Settings Window UI.
@@ -95,28 +96,39 @@ impl SettingsUi {
     pub fn handle_mouse_down(&mut self, _scale: f32) -> Option<SettingsAction> {
         let (mx, my) = self.mouse_pos;
 
-        // 1. Sidebar clicks (tabs start at y = 56.0 with 36.0 spacing)
-        if mx < SIDEBAR_W && my >= 56.0 {
-            let tab_idx = ((my - 56.0) / 36.0).floor() as i32;
-            let target_tab = match tab_idx {
-                0 => Some(SettingsTab::General),
-                1 => Some(SettingsTab::Autostart),
-                2 => Some(SettingsTab::Skins),
-                3 => Some(SettingsTab::Dialogue),
-                4 => Some(SettingsTab::Menu),
-                _ => None,
-            };
-            if let Some(tab) = target_tab {
-                self.active_tab = tab;
-                self.scroll_y = 0.0;
-                return Some(SettingsAction::SelectTab(tab));
-            }
+        // Skip macOS native traffic lights (top-left 0..72 x 0..36)
+        if mx < 72.0 && my < 36.0 {
             return None;
+        }
+
+        // 1. Sidebar clicks (tabs start at y = 56.0 with 36.0 spacing, 5 tabs end at 236.0)
+        if mx < SIDEBAR_W {
+            if (56.0..236.0).contains(&my) {
+                let tab_idx = ((my - 56.0) / 36.0).floor() as i32;
+                let target_tab = match tab_idx {
+                    0 => Some(SettingsTab::General),
+                    1 => Some(SettingsTab::Autostart),
+                    2 => Some(SettingsTab::Skins),
+                    3 => Some(SettingsTab::Dialogue),
+                    4 => Some(SettingsTab::Menu),
+                    _ => None,
+                };
+                if let Some(tab) = target_tab {
+                    self.active_tab = tab;
+                    self.scroll_y = 0.0;
+                    return Some(SettingsAction::SelectTab(tab));
+                }
+            }
+            // Clicking empty sidebar header or sidebar bottom area begins window drag
+            return Some(SettingsAction::DragWindow);
         }
 
         // 2. Tab content clicks
         let action = self.interact_tab_controls(mx, my);
-        Some(action)
+        match action {
+            SettingsAction::None => Some(SettingsAction::DragWindow),
+            other => Some(other),
+        }
     }
 
     pub fn handle_mouse_up(&mut self) -> Option<SettingsAction> {
@@ -736,5 +748,32 @@ mod tests {
         let action = ui.handle_mouse_down(1.0);
         assert!(matches!(action, Some(SettingsAction::Save(_))));
         assert_eq!(ui.temp_settings.menu_config.open_antigravity, false);
+
+        // Click scale slider on General tab: should drag slider, NOT drag window
+        ui.active_tab = SettingsTab::General;
+        ui.mouse_pos = (610.0, 160.0);
+        let action = ui.handle_mouse_down(1.0);
+        assert!(matches!(action, Some(SettingsAction::Save(_))));
+        assert_eq!(ui.dragging_slider.as_deref(), Some("scale"));
+
+        // Moving cursor updates slider
+        let changed = ui.handle_cursor_move(660.0, 160.0, 1.0);
+        assert!(changed);
+        assert!(ui.temp_settings.scale > 1.0);
+
+        // Releasing mouse ends slider drag
+        let up_action = ui.handle_mouse_up();
+        assert!(matches!(up_action, Some(SettingsAction::Save(_))));
+        assert!(ui.dragging_slider.is_none());
+
+        // Clicking empty window header begins DragWindow
+        ui.mouse_pos = (350.0, 30.0);
+        let drag_action = ui.handle_mouse_down(1.0);
+        assert!(matches!(drag_action, Some(SettingsAction::DragWindow)));
+
+        // Clicking empty sidebar bottom begins DragWindow
+        ui.mouse_pos = (50.0, 350.0);
+        let drag_sidebar = ui.handle_mouse_down(1.0);
+        assert!(matches!(drag_sidebar, Some(SettingsAction::DragWindow)));
     }
 }

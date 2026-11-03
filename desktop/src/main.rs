@@ -574,7 +574,7 @@ mod cpu_2d_app {
                 .with_fullsize_content_view(true)
                 .with_title_hidden(true)
                 .with_traffic_light_inset(LogicalPosition::new(20.0, 20.0))
-                .with_movable_by_window_background(true);
+                .with_movable_by_window_background(false);
         }
 
         let settings_window = settings_win_builder.build(&event_loop)?;
@@ -1285,6 +1285,9 @@ mod cpu_2d_app {
                                             SettingsAction::SelectTab(_) | SettingsAction::Redraw => {
                                                 settings_ui.render(&mut settings_pixmap, s_scale);
                                                 settings_surface.present(&settings_pixmap, s_scale as f64);
+                                            }
+                                            SettingsAction::DragWindow => {
+                                                let _ = settings_window.drag_window();
                                             }
                                             SettingsAction::None => {}
                                         }
