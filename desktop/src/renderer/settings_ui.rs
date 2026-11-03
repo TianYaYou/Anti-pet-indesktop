@@ -74,20 +74,7 @@ impl SettingsUi {
     }
 
     pub fn is_dark_mode(&self) -> bool {
-        match self.temp_settings.theme.as_str() {
-            "dark" => true,
-            "light" => false,
-            _ => {
-                #[cfg(target_os = "macos")]
-                {
-                    macos_is_dark_mode()
-                }
-                #[cfg(not(target_os = "macos"))]
-                {
-                    false
-                }
-            }
-        }
+        super::is_dark_mode_active(&self.temp_settings.theme)
     }
 
     pub fn handle_cursor_move(&mut self, x: f64, y: f64, _scale: f32) -> bool {
@@ -709,46 +696,6 @@ impl SettingsUi {
         } else {
             pixmap.fill_rounded_rect_sdf(x, y, size, size, r, [0, 0, 0, 0], 1.2 * s, [142, 142, 147, 180]);
         }
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn macos_is_dark_mode() -> bool {
-    use std::ffi::c_void;
-    extern "C" {
-        fn objc_getClass(name: *const u8) -> *mut c_void;
-        fn sel_registerName(name: *const u8) -> *mut c_void;
-        fn objc_msgSend();
-    }
-    unsafe {
-        let app_cls = objc_getClass(b"NSApplication\0".as_ptr());
-        if app_cls.is_null() {
-            return false;
-        }
-        let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
-            std::mem::transmute(objc_msgSend as *const ());
-        let shared_app = msg_ptr(app_cls, sel_registerName(b"sharedApplication\0".as_ptr()));
-        if shared_app.is_null() {
-            return false;
-        }
-        let app_appearance = msg_ptr(shared_app, sel_registerName(b"effectiveAppearance\0".as_ptr()));
-        if app_appearance.is_null() {
-            return false;
-        }
-        let name_str = msg_ptr(app_appearance, sel_registerName(b"name\0".as_ptr()));
-        if name_str.is_null() {
-            return false;
-        }
-        let msg_utf8: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *const i8 =
-            std::mem::transmute(objc_msgSend as *const ());
-        let utf8_ptr = msg_utf8(name_str, sel_registerName(b"UTF8String\0".as_ptr()));
-        if !utf8_ptr.is_null() {
-            let cstr = std::ffi::CStr::from_ptr(utf8_ptr);
-            if let Ok(s) = cstr.to_str() {
-                return s.contains("Dark");
-            }
-        }
-        false
     }
 }
 

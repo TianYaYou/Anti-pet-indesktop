@@ -13,6 +13,7 @@ pub struct ThoughtBubble {
     pub weekly_pct: f32,
     pub quota_meta: String,
     pub opacity: f32,
+    pub is_dark: bool,
 }
 
 impl Default for ThoughtBubble {
@@ -25,6 +26,7 @@ impl Default for ThoughtBubble {
             weekly_pct: 100.0,
             quota_meta: "Antigravity 实时额度已同步".to_string(),
             opacity: 1.0,
+            is_dark: false,
         }
     }
 }
@@ -88,12 +90,41 @@ impl ThoughtBubble {
         let px_h = card_h * s;
         let radius = 26.0 * s;
 
-        // v0.2.x authentic colors: #283666 deep navy outline, rgba(252, 251, 255, 0.96) creamy background, soft navy shadow
-        let shadow_a = (46.0 * alpha_scale).round() as u8;
+        // Light vs Dark mode styling
+        let shadow_a = if self.is_dark {
+            (75.0 * alpha_scale).round() as u8
+        } else {
+            (46.0 * alpha_scale).round() as u8
+        };
         let fill_a = (246.0 * alpha_scale).round() as u8;
-        let border_a = (230.0 * alpha_scale).round() as u8;
-        let border_rgba = [40, 54, 102, border_a];
-        let fill_rgba = [252, 251, 255, fill_a];
+        let border_a = if self.is_dark {
+            (220.0 * alpha_scale).round() as u8
+        } else {
+            (230.0 * alpha_scale).round() as u8
+        };
+
+        // Dark mode: dark slate card with glowing indigo outline
+        // Light mode: creamy white card with deep navy outline
+        let fill_rgba = if self.is_dark {
+            [32, 34, 42, fill_a]
+        } else {
+            [252, 251, 255, fill_a]
+        };
+        let border_rgba = if self.is_dark {
+            [86, 104, 152, border_a]
+        } else {
+            [40, 54, 102, border_a]
+        };
+        let shadow_color = if self.is_dark {
+            [0, 0, 0, shadow_a]
+        } else {
+            [28, 36, 75, shadow_a]
+        };
+        let dot_shadow_color = if self.is_dark {
+            [0, 0, 0, (60.0 * alpha_scale) as u8]
+        } else {
+            [28, 36, 75, (36.0 * alpha_scale) as u8]
+        };
 
         // 1. Draw the two thought-cloud connector dots (`o -> O`) between cat head and cloud card
         let dot_anchor_x = cat_anchor_x.clamp(card_x + 24.0, card_x + card_w - 24.0);
@@ -114,7 +145,7 @@ impl ThoughtBubble {
             3.2 * s,
             3.5 * s,
             1.2 * s,
-            [28, 36, 75, (36.0 * alpha_scale) as u8],
+            dot_shadow_color,
         );
         pixmap.fill_circle_sdf(
             small_dot_x * s,
@@ -134,7 +165,7 @@ impl ThoughtBubble {
             5.0 * s,
             5.0 * s,
             1.8 * s,
-            [28, 36, 75, (40.0 * alpha_scale) as u8],
+            dot_shadow_color,
         );
         pixmap.fill_circle_sdf(
             big_dot_x * s,
@@ -154,10 +185,10 @@ impl ThoughtBubble {
             radius,
             16.0 * s,
             6.0 * s,
-            [28, 36, 75, shadow_a],
+            shadow_color,
         );
 
-        // Main rounded card body with 2.4px #283666 stroke
+        // Main rounded card body with 2.4px stroke
         pixmap.fill_rounded_rect_sdf(
             px_x,
             px_y,
@@ -172,13 +203,18 @@ impl ThoughtBubble {
         // 3. Draw 5h & Weekly Quota Progress Bars inside bottom of cloud card if enabled
         if self.show_quota {
             let divider_y = (card_y + text_block_h + 3.0) * s;
+            let div_color = if self.is_dark {
+                [255, 255, 255, (26.0 * alpha_scale) as u8]
+            } else {
+                [40, 54, 102, (38.0 * alpha_scale) as u8]
+            };
             pixmap.fill_rounded_rect_sdf(
                 (card_x + 14.0) * s,
                 divider_y,
                 (card_w - 28.0) * s,
                 1.2 * s,
                 0.6 * s,
-                [40, 54, 102, (38.0 * alpha_scale) as u8],
+                div_color,
                 0.0,
                 [0, 0, 0, 0],
             );
@@ -189,13 +225,18 @@ impl ThoughtBubble {
             let bar_h = 5.0 * s;
 
             let bar1_y = (card_y + text_block_h + 12.0) * s;
+            let track_color = if self.is_dark {
+                [255, 255, 255, (28.0 * alpha_scale) as u8]
+            } else {
+                [124, 77, 255, (36.0 * alpha_scale) as u8]
+            };
             pixmap.fill_rounded_rect_sdf(
                 bar_x,
                 bar1_y,
                 bar_w,
                 bar_h,
                 2.5 * s,
-                [124, 77, 255, (36.0 * alpha_scale) as u8],
+                track_color,
                 0.0,
                 [0, 0, 0, 0],
             );
@@ -221,7 +262,7 @@ impl ThoughtBubble {
                 bar_w,
                 bar_h,
                 2.5 * s,
-                [124, 77, 255, (36.0 * alpha_scale) as u8],
+                track_color,
                 0.0,
                 [0, 0, 0, 0],
             );
@@ -254,6 +295,7 @@ impl ThoughtBubble {
             text_block_h,
             s,
             alpha_scale,
+            self.is_dark,
         );
 
         Some(LogicalRect {
@@ -296,8 +338,12 @@ fn draw_bubble_texts(
     text_block_h: f32,
     dpi_scale: f32,
     alpha_scale: f32,
+    is_dark: bool,
 ) {
-    // Dialogue text: centered, #1f2642 deep ink color, 12px, semibold/normal weight
+    let text_pri = if is_dark { [242, 244, 250] } else { [31, 38, 66] };
+    let text_sec = if is_dark { [160, 168, 196] } else { [92, 100, 132] };
+
+    // Dialogue text: centered, 12px, semibold/normal weight
     draw_text_into_pixmap(
         pixmap,
         dialogue,
@@ -307,7 +353,7 @@ fn draw_bubble_texts(
         (text_block_h - 6.0) * dpi_scale,
         12.0 * dpi_scale,
         0.5,
-        [31, 38, 66],
+        text_pri,
         alpha_scale,
         TextAlignment::Center,
     );
@@ -317,7 +363,7 @@ fn draw_bubble_texts(
         let row2_y = (card_y + text_block_h + 21.0) * dpi_scale;
         let meta_y = (card_y + text_block_h + 35.5) * dpi_scale;
 
-        // 5h label: left-aligned, #5c6484, 9.8px
+        // 5h label: left-aligned, 9.8px
         draw_text_into_pixmap(
             pixmap,
             "5h额度",
@@ -327,12 +373,12 @@ fn draw_bubble_texts(
             15.0 * dpi_scale,
             9.8 * dpi_scale,
             0.4,
-            [92, 100, 132],
+            text_sec,
             alpha_scale,
             TextAlignment::Left,
         );
 
-        // 5h percentage: right-aligned, #1f2642, bold
+        // 5h percentage: right-aligned, bold
         let pct5_str = format!("{:.0}%", five_hour_pct);
         draw_text_into_pixmap(
             pixmap,
@@ -343,12 +389,12 @@ fn draw_bubble_texts(
             15.0 * dpi_scale,
             9.8 * dpi_scale,
             0.7,
-            [31, 38, 66],
+            text_pri,
             alpha_scale,
             TextAlignment::Right,
         );
 
-        // Weekly label: left-aligned, #5c6484, 9.8px
+        // Weekly label: left-aligned, 9.8px
         draw_text_into_pixmap(
             pixmap,
             "周额度",
@@ -358,12 +404,12 @@ fn draw_bubble_texts(
             15.0 * dpi_scale,
             9.8 * dpi_scale,
             0.4,
-            [92, 100, 132],
+            text_sec,
             alpha_scale,
             TextAlignment::Left,
         );
 
-        // Weekly percentage: right-aligned, #1f2642, bold
+        // Weekly percentage: right-aligned, bold
         let pctw_str = format!("{:.0}%", weekly_pct);
         draw_text_into_pixmap(
             pixmap,
@@ -374,12 +420,12 @@ fn draw_bubble_texts(
             15.0 * dpi_scale,
             9.8 * dpi_scale,
             0.7,
-            [31, 38, 66],
+            text_pri,
             alpha_scale,
             TextAlignment::Right,
         );
 
-        // Quota meta: centered, #5c6484, 9.5px
+        // Quota meta: centered, 9.5px
         if !quota_meta.is_empty() {
             draw_text_into_pixmap(
                 pixmap,
@@ -390,7 +436,7 @@ fn draw_bubble_texts(
                 14.0 * dpi_scale,
                 9.5 * dpi_scale,
                 0.4,
-                [92, 100, 132],
+                text_sec,
                 alpha_scale,
                 TextAlignment::Center,
             );
@@ -428,5 +474,22 @@ mod tests {
         assert!(label_right < bar_left, "Label right ({}) must be strictly less than bar left ({})", label_right, bar_left);
         assert!(bar_right < pct_left, "Bar right ({}) must be strictly less than pct left ({})", bar_right, pct_left);
         assert_eq!(pct_right + 14.0, 204.0, "Symmetric margins must add up to exact card width");
+    }
+
+    #[test]
+    fn test_bubble_dark_and_light_mode_rendering() {
+        let mut bubble = ThoughtBubble::default();
+        let mut pixmap_light = Pixmap::new(400, 400);
+        let mut pixmap_dark = Pixmap::new(400, 400);
+
+        bubble.is_dark = false;
+        let r_light = bubble.draw(&mut pixmap_light, 200.0, 200.0, 500.0, 500.0, 1440.0, 1.0);
+        assert!(r_light.is_some());
+
+        bubble.is_dark = true;
+        let r_dark = bubble.draw(&mut pixmap_dark, 200.0, 200.0, 500.0, 500.0, 1440.0, 1.0);
+        assert!(r_dark.is_some());
+
+        assert_eq!(r_light.unwrap(), r_dark.unwrap());
     }
 }

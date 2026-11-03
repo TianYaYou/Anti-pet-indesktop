@@ -62,6 +62,7 @@ mod cpu_2d_app {
         quota::{NativeQuotaProber, QuotaSnapshot},
         renderer::{
             bubble::ThoughtBubble,
+            is_dark_mode_active,
             settings_ui::{SettingsAction, SettingsUi, SETTINGS_WIN_H, SETTINGS_WIN_W},
             sprite::CatSprite,
             Pixmap, SoftwareSurface,
@@ -641,6 +642,7 @@ mod cpu_2d_app {
                 .map(|q| q.meta)
                 .unwrap_or_else(|| "正在同步 Antigravity 额度...".to_string()),
             opacity: if settings.dnd_passthrough { 0.0 } else { 1.0 },
+            is_dark: is_dark_mode_active(&settings.theme),
         };
         let mut bubble_hide_deadline: Option<Instant> =
             Some(Instant::now() + Duration::from_millis(5000));
@@ -1200,6 +1202,7 @@ mod cpu_2d_app {
                             let (_, min_py, _, _) = cat_sprite.draw(&mut pixmap, &tf, scale);
                             let cat_top_logical_y = (min_py as f32) / scale.max(1.0);
 
+                            bubble.is_dark = is_dark_mode_active(&settings.theme);
                             hit_tester.cat_rect = Some(physics.cat_bounding_rect());
                             hit_tester.bubble_rect = bubble.draw(
                                 &mut pixmap,

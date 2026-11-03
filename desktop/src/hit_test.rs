@@ -1,7 +1,7 @@
 use crate::renderer::Pixmap;
 
 /// Logical bounding rectangle (used for thought bubble or auxiliary interactive regions).
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct LogicalRect {
     pub x: f32,
     pub y: f32,
