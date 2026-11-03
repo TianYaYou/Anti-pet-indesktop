@@ -37,18 +37,21 @@ pub enum SettingsAction {
 pub struct SettingsUi {
     pub active_tab: SettingsTab,
     pub temp_settings: PetSettings,
-    #[allow(dead_code)]
     pub original_settings: PetSettings,
     pub autostart_enabled: bool,
     pub scroll_y: f32,
     pub toast: Option<(String, Instant)>,
-    #[allow(dead_code)]
     pub hovered_id: Option<String>,
     pub pressed_id: Option<String>,
     pub dragging_slider: Option<String>,
     pub mouse_pos: (f32, f32),
     pub cat_sprite: super::sprite::CatSprite,
     pub dialogue_bank: crate::menu_audio::DialogueBank,
+    // Direct in-place dialogue editing state
+    pub dialogue_cat: usize,
+    pub dialogue_scroll: f32,
+    pub editing_dialogue_idx: Option<usize>,
+    pub editing_buffer: String,
 }
 
 impl SettingsUi {
@@ -69,6 +72,10 @@ impl SettingsUi {
             mouse_pos: (0.0, 0.0),
             cat_sprite,
             dialogue_bank,
+            dialogue_cat: 0,
+            dialogue_scroll: 0.0,
+            editing_dialogue_idx: None,
+            editing_buffer: String::new(),
         }
     }
 
@@ -81,10 +88,14 @@ impl SettingsUi {
         self.temp_settings = current_settings.clone();
         self.original_settings = current_settings.clone();
         self.scroll_y = 0.0;
+        self.dialogue_scroll = 0.0;
+        self.editing_dialogue_idx = None;
+        self.editing_buffer.clear();
         self.toast = None;
         self.hovered_id = None;
         self.pressed_id = None;
         self.dragging_slider = None;
+        self.reload_dialogues();
     }
 
     pub fn show_toast(&mut self, msg: &str) {
@@ -93,6 +104,102 @@ impl SettingsUi {
 
     pub fn is_dark_mode(&self) -> bool {
         super::is_dark_mode_active(&self.temp_settings.theme)
+    }
+
+    pub fn active_dialogues(&self) -> &Vec<String> {
+        match self.dialogue_cat {
+            1 => &self.dialogue_bank.petting,
+            2 => &self.dialogue_bank.thinking,
+            3 => &self.dialogue_bank.success,
+            4 => &self.dialogue_bank.error,
+            _ => &self.dialogue_bank.idle,
+        }
+    }
+
+    pub fn active_dialogues_mut(&mut self) -> &mut Vec<String> {
+        match self.dialogue_cat {
+            1 => &mut self.dialogue_bank.petting,
+            2 => &mut self.dialogue_bank.thinking,
+            3 => &mut self.dialogue_bank.success,
+            4 => &mut self.dialogue_bank.error,
+            _ => &mut self.dialogue_bank.idle,
+        }
+    }
+
+    pub fn handle_char(&mut self, ch: char) -> bool {
+        if let Some(idx) = self.editing_dialogue_idx {
+            if ch == '\r' || ch == '\n' {
+                let text = self.editing_buffer.clone();
+                let list = self.active_dialogues_mut();
+                if idx < list.len() {
+                    list[idx] = text;
+                }
+                self.editing_dialogue_idx = None;
+                return true;
+            } else if ch == '\x08' {
+                self.editing_buffer.pop();
+                let text = self.editing_buffer.clone();
+                let list = self.active_dialogues_mut();
+                if idx < list.len() {
+                    list[idx] = text;
+                }
+                return true;
+            } else if !ch.is_control() {
+                self.editing_buffer.push(ch);
+                let text = self.editing_buffer.clone();
+                let list = self.active_dialogues_mut();
+                if idx < list.len() {
+                    list[idx] = text;
+                }
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn handle_key_event(&mut self, event: &tao::event::KeyEvent) -> bool {
+        if event.state != tao::event::ElementState::Pressed {
+            return false;
+        }
+        if self.editing_dialogue_idx.is_some() {
+            if event.physical_key == tao::keyboard::KeyCode::Escape {
+                self.cancel_editing();
+                return true;
+            } else if event.physical_key == tao::keyboard::KeyCode::Enter {
+                return self.handle_char('\n');
+            } else if event.physical_key == tao::keyboard::KeyCode::Backspace {
+                return self.handle_char('\x08');
+            } else if let Some(text) = event.text {
+                let mut changed = false;
+                for ch in text.chars() {
+                    if !ch.is_control() {
+                        self.handle_char(ch);
+                        changed = true;
+                    }
+                }
+                return changed;
+            }
+        }
+        false
+    }
+
+    pub fn handle_ime_text(&mut self, text: &str) -> bool {
+        if self.editing_dialogue_idx.is_some() {
+            let mut changed = false;
+            for ch in text.chars() {
+                if !ch.is_control() {
+                    self.handle_char(ch);
+                    changed = true;
+                }
+            }
+            return changed;
+        }
+        false
+    }
+
+    pub fn cancel_editing(&mut self) {
+        self.editing_dialogue_idx = None;
+        self.editing_buffer.clear();
     }
 
     pub fn handle_cursor_move(&mut self, x: f64, y: f64, _scale: f32) -> bool {
@@ -133,10 +240,24 @@ impl SettingsUi {
             return Some(SettingsAction::BeginTitleDrag);
         }
 
-        // 1. Sidebar clicks (tabs start at y = 56.0 with 36.0 spacing, 5 tabs end at 236.0)
+        // Bottom Action Footer Buttons
+        if my >= (SETTINGS_WIN_H as f32 - 48.0) {
+            let win_w = SETTINGS_WIN_W as f32;
+            let save_x = win_w - 88.0;
+            if (save_x..save_x + 76.0).contains(&mx) {
+                return Some(SettingsAction::Save(self.temp_settings.clone()));
+            }
+            let cancel_x = win_w - 176.0;
+            if (cancel_x..cancel_x + 76.0).contains(&mx) {
+                return Some(SettingsAction::Cancel);
+            }
+            return None;
+        }
+
+        // 1. Sidebar clicks (tabs start at y = 58.0 with 36.0 spacing, 5 tabs end at 238.0)
         if mx < SIDEBAR_W {
-            if (56.0..236.0).contains(&my) {
-                let tab_idx = ((my - 56.0) / 36.0).floor() as i32;
+            if (58.0..238.0).contains(&my) {
+                let tab_idx = ((my - 58.0) / 36.0).floor() as i32;
                 let target_tab = match tab_idx {
                     0 => Some(SettingsTab::General),
                     1 => Some(SettingsTab::Autostart),
@@ -148,10 +269,11 @@ impl SettingsUi {
                 if let Some(tab) = target_tab {
                     self.active_tab = tab;
                     self.scroll_y = 0.0;
+                    self.dialogue_scroll = 0.0;
+                    self.cancel_editing();
                     return Some(SettingsAction::SelectTab(tab));
                 }
             }
-            // Empty sidebar clicks do nothing (never lock or modal-drag)
             return None;
         }
 
@@ -176,17 +298,27 @@ impl SettingsUi {
     }
 
     pub fn handle_mouse_wheel(&mut self, dy: f32) -> bool {
-        let max_scroll = match self.active_tab {
-            SettingsTab::Menu => 180.0,
-            SettingsTab::Dialogue => 120.0,
-            _ => 60.0,
-        };
-        let new_scroll = (self.scroll_y - dy).clamp(0.0, max_scroll);
-        if (new_scroll - self.scroll_y).abs() > 0.5 {
-            self.scroll_y = new_scroll;
-            return true;
+        match self.active_tab {
+            SettingsTab::Dialogue => {
+                let count = self.active_dialogues().len();
+                let max_scroll = ((count as f32 * 40.0) - 300.0).max(0.0);
+                let new_scroll = (self.dialogue_scroll - dy).clamp(0.0, max_scroll);
+                if (new_scroll - self.dialogue_scroll).abs() > 0.5 {
+                    self.dialogue_scroll = new_scroll;
+                    return true;
+                }
+                false
+            }
+            SettingsTab::Menu => {
+                let new_scroll = (self.scroll_y - dy).clamp(0.0, 180.0);
+                if (new_scroll - self.scroll_y).abs() > 0.5 {
+                    self.scroll_y = new_scroll;
+                    return true;
+                }
+                false
+            }
+            _ => false,
         }
-        false
     }
 
     fn update_slider(&mut self, key: &str, mouse_x: f32) {
@@ -196,7 +328,6 @@ impl SettingsUi {
 
         match key {
             "scale" => {
-                // 50% ~ 200%
                 let val = 0.5 + pct * 1.5;
                 self.temp_settings.scale = ((val * 20.0).round() / 20.0).clamp(0.5, 2.0);
             }
@@ -216,74 +347,104 @@ impl SettingsUi {
             }
         }
 
-        if mx < SIDEBAR_W && (56.0..236.0).contains(&my) {
-            let tab_idx = ((my - 56.0) / 36.0).floor() as i32;
+        // Action Footer buttons
+        if my >= (SETTINGS_WIN_H as f32 - 48.0) {
+            let win_w = SETTINGS_WIN_W as f32;
+            let save_x = win_w - 88.0;
+            if (save_x..save_x + 76.0).contains(&mx) {
+                return Some("btn_save".to_string());
+            }
+            let cancel_x = win_w - 176.0;
+            if (cancel_x..cancel_x + 76.0).contains(&mx) {
+                return Some("btn_cancel".to_string());
+            }
+        }
+
+        if mx < SIDEBAR_W && (58.0..238.0).contains(&my) {
+            let tab_idx = ((my - 58.0) / 36.0).floor() as i32;
             if (0..=4).contains(&tab_idx) {
                 return Some(format!("tab_{}", tab_idx));
             }
         }
 
-        let content_y = my + self.scroll_y;
+        let cw_left = SIDEBAR_W + 28.0;
         let cw_right = SETTINGS_WIN_W as f32 - 28.0;
 
         match self.active_tab {
             SettingsTab::General => {
-                // Theme button (Card 1: y approx 80..126)
-                if (80.0..126.0).contains(&content_y) && (cw_right - 96.0..cw_right).contains(&mx) {
+                // Fixed coordinates (General does not scroll)
+                if (80.0..126.0).contains(&my) && (cw_right - 96.0..cw_right).contains(&mx) {
                     return Some("theme".to_string());
                 }
-                // Scale slider (Card 2: y approx 138..182)
-                if (138.0..182.0).contains(&content_y) && (cw_right - 180.0..cw_right).contains(&mx) {
+                if (138.0..182.0).contains(&my) && (cw_right - 180.0..cw_right).contains(&mx) {
                     return Some("scale".to_string());
                 }
-                // Gravity toggle (Card 2: y approx 182..226)
-                if (182.0..226.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (182.0..226.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("gravity".to_string());
                 }
-                // Reset position button (Card 2: y approx 226..270)
-                if (226.0..270.0).contains(&content_y) && (cw_right - 88.0..cw_right).contains(&mx) {
+                if (226.0..270.0).contains(&my) && (cw_right - 88.0..cw_right).contains(&mx) {
                     return Some("reset_pos".to_string());
                 }
-                // Quota toggle (Card 3: y approx 282..326)
-                if (282.0..326.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (282.0..326.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("show_quota".to_string());
                 }
-                // IDE only toggle (Card 3: y approx 326..370)
-                if (326.0..370.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (326.0..370.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("ide_only".to_string());
                 }
-                // DND toggle (Card 3: y approx 370..414)
-                if (370.0..414.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (370.0..414.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("dnd".to_string());
                 }
-                // Sound toggle (Card 3: y approx 414..458)
-                if (414.0..458.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (414.0..458.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("sound".to_string());
                 }
             }
             SettingsTab::Autostart => {
-                if (80.0..126.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (80.0..126.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("autostart".to_string());
                 }
-                if (138.0..182.0).contains(&content_y) && (cw_right - 96.0..cw_right).contains(&mx) {
+                if (138.0..182.0).contains(&my) && (cw_right - 96.0..cw_right).contains(&mx) {
                     return Some("check_update".to_string());
                 }
             }
             SettingsTab::Skins => {
-                let cw_left = SIDEBAR_W + 28.0;
                 let card_w = 180.0;
-                if (80.0..240.0).contains(&content_y) && (cw_left..cw_left + card_w).contains(&mx) {
+                if (80.0..240.0).contains(&my) && (cw_left..cw_left + card_w).contains(&mx) {
                     return Some("skin_0".to_string());
                 }
             }
             SettingsTab::Dialogue => {
-                let btn_w = 190.0;
-                let btn_x = cw_right - btn_w;
-                if (32.0..68.0).contains(&content_y) && (btn_x..cw_right).contains(&mx) {
-                    return Some("open_dialogue_config".to_string());
+                // Category Pills (y: 66.0 .. 94.0)
+                if (66.0..94.0).contains(&my) && (cw_left..cw_right).contains(&mx) {
+                    let pill_w = (cw_right - cw_left) / 5.0;
+                    let idx = ((mx - cw_left) / pill_w).floor() as usize;
+                    if idx < 5 {
+                        return Some(format!("diag_cat_{}", idx));
+                    }
+                }
+                // Add dialogue button (y: 98.0 .. 124.0, right-aligned)
+                let btn_w = 92.0;
+                if (98.0..124.0).contains(&my) && (cw_right - btn_w..cw_right).contains(&mx) {
+                    return Some("add_dialogue".to_string());
+                }
+                // Dialogue items list (y: 128.0 .. SETTINGS_WIN_H - 54.0)
+                if my >= 128.0 && my <= (SETTINGS_WIN_H as f32 - 54.0) {
+                    let rel_y = my - 128.0 + self.dialogue_scroll;
+                    let row_idx = (rel_y / 40.0).floor() as i32;
+                    if row_idx >= 0 {
+                        let uidx = row_idx as usize;
+                        let count = self.active_dialogues().len();
+                        if uidx < count {
+                            if mx >= cw_right - 52.0 && mx <= cw_right - 6.0 {
+                                return Some(format!("del_diag_{}", uidx));
+                            } else if mx >= cw_left && mx < cw_right - 56.0 {
+                                return Some(format!("edit_diag_{}", uidx));
+                            }
+                        }
+                    }
                 }
             }
             SettingsTab::Menu => {
+                let content_y = my + self.scroll_y;
                 for i in 0..9 {
                     let ry = 80.0 + (i as f32) * 44.0;
                     if (ry..ry + 44.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
@@ -297,13 +458,12 @@ impl SettingsUi {
     }
 
     fn interact_tab_controls(&mut self, mx: f32, my: f32) -> SettingsAction {
-        let content_y = my + self.scroll_y;
+        let cw_left = SIDEBAR_W + 28.0;
         let cw_right = SETTINGS_WIN_W as f32 - 28.0;
 
         match self.active_tab {
             SettingsTab::General => {
-                // Row 1: 外观与主题 (y approx 80..126)
-                if (80.0..126.0).contains(&content_y) && (cw_right - 96.0..cw_right).contains(&mx) {
+                if (80.0..126.0).contains(&my) && (cw_right - 96.0..cw_right).contains(&mx) {
                     self.temp_settings.theme = match self.temp_settings.theme.as_str() {
                         "system" => "light".to_string(),
                         "light" => "dark".to_string(),
@@ -311,71 +471,110 @@ impl SettingsUi {
                     };
                     return SettingsAction::Save(self.temp_settings.clone());
                 }
-                // Row 2: 缩放大小 (y approx 138..182)
-                if (138.0..182.0).contains(&content_y) && (cw_right - 180.0..cw_right).contains(&mx) {
+                if (138.0..182.0).contains(&my) && (cw_right - 180.0..cw_right).contains(&mx) {
                     self.dragging_slider = Some("scale".to_string());
                     self.update_slider("scale", mx);
                     return SettingsAction::Save(self.temp_settings.clone());
                 }
-                // Row 3: 重力加速度 (y approx 182..226)
-                if (182.0..226.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (182.0..226.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.gravity_enabled = !self.temp_settings.gravity_enabled;
                     return SettingsAction::Save(self.temp_settings.clone());
                 }
-                // Row 4: 屏幕位置校准 (复位居中) (y approx 226..270)
-                if (226.0..270.0).contains(&content_y) && (cw_right - 88.0..cw_right).contains(&mx) {
+                if (226.0..270.0).contains(&my) && (cw_right - 88.0..cw_right).contains(&mx) {
                     return SettingsAction::ResetPosition;
                 }
-                // Row 5: 实时额度卡片 (y approx 282..326)
-                if (282.0..326.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (282.0..326.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.show_quota = !self.temp_settings.show_quota;
                     return SettingsAction::Save(self.temp_settings.clone());
                 }
-                // Row 6: 仅在 IDE 活跃 (y approx 326..370)
-                if (326.0..370.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (326.0..370.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.menu_config.ide_only = !self.temp_settings.menu_config.ide_only;
                     return SettingsAction::Save(self.temp_settings.clone());
                 }
-                // Row 7: 完全穿透免打扰 (y approx 370..414)
-                if (370.0..414.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (370.0..414.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.dnd_passthrough = !self.temp_settings.dnd_passthrough;
                     return SettingsAction::Save(self.temp_settings.clone());
                 }
-                // Row 8: 动作音效 (y approx 414..458)
-                if (414.0..458.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (414.0..458.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.sound_enabled = !self.temp_settings.sound_enabled;
                     return SettingsAction::Save(self.temp_settings.clone());
                 }
             }
             SettingsTab::Autostart => {
-                // Row 1: 开机自启动 (y approx 80..126)
-                if (80.0..126.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (80.0..126.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.autostart_enabled = !self.autostart_enabled;
                     let msg = if self.autostart_enabled { "已开启开机自动启动" } else { "已关闭开机自动启动" };
                     self.show_toast(msg);
                     return SettingsAction::Redraw;
                 }
-                // Row 2: 检查版本更新 (y approx 138..182)
-                if (138.0..182.0).contains(&content_y) && (cw_right - 96.0..cw_right).contains(&mx) {
+                if (138.0..182.0).contains(&my) && (cw_right - 96.0..cw_right).contains(&mx) {
                     return SettingsAction::CheckUpdate;
                 }
             }
             SettingsTab::Skins => {
                 let card_w = 180.0;
-                let base_x = SIDEBAR_W + 28.0;
-                if (80.0..240.0).contains(&content_y) && (base_x..base_x + card_w).contains(&mx) {
-                    self.show_toast("当前皮肤已生效");
+                if (80.0..240.0).contains(&my) && (cw_left..cw_left + card_w).contains(&mx) {
+                    self.show_toast("当前经典紫毛猫已生效");
                     return SettingsAction::Redraw;
                 }
             }
             SettingsTab::Dialogue => {
-                let btn_w = 190.0;
-                let btn_x = cw_right - btn_w;
-                if (32.0..68.0).contains(&content_y) && (btn_x..cw_right).contains(&mx) {
-                    return SettingsAction::OpenDialogueConfig;
+                // Category Pills
+                if (66.0..94.0).contains(&my) && (cw_left..cw_right).contains(&mx) {
+                    let pill_w = (cw_right - cw_left) / 5.0;
+                    let idx = ((mx - cw_left) / pill_w).floor() as usize;
+                    if idx < 5 {
+                        self.dialogue_cat = idx;
+                        self.dialogue_scroll = 0.0;
+                        self.cancel_editing();
+                        return SettingsAction::Redraw;
+                    }
+                }
+                // Add button
+                let btn_w = 92.0;
+                if (98.0..124.0).contains(&my) && (cw_right - btn_w..cw_right).contains(&mx) {
+                    let total = {
+                        let list = self.active_dialogues_mut();
+                        list.push("新台词条目".to_string());
+                        list.len()
+                    };
+                    let new_idx = total - 1;
+                    self.editing_dialogue_idx = Some(new_idx);
+                    self.editing_buffer = "新台词条目".to_string();
+                    self.dialogue_scroll = ((total as f32 * 40.0) - 300.0).max(0.0);
+                    return SettingsAction::Redraw;
+                }
+                // Dialogue items
+                if my >= 128.0 && my <= (SETTINGS_WIN_H as f32 - 54.0) {
+                    let rel_y = my - 128.0 + self.dialogue_scroll;
+                    let row_idx = (rel_y / 40.0).floor() as i32;
+                    if row_idx >= 0 {
+                        let uidx = row_idx as usize;
+                        let count = self.active_dialogues().len();
+                        if uidx < count {
+                            if mx >= cw_right - 52.0 && mx <= cw_right - 6.0 {
+                                let list = self.active_dialogues_mut();
+                                list.remove(uidx);
+                                if self.editing_dialogue_idx == Some(uidx) {
+                                    self.editing_dialogue_idx = None;
+                                } else if let Some(ref mut cur) = self.editing_dialogue_idx {
+                                    if *cur > uidx {
+                                        *cur -= 1;
+                                    }
+                                }
+                                return SettingsAction::Redraw;
+                            } else if mx >= cw_left && mx < cw_right - 56.0 {
+                                let line_text = self.active_dialogues()[uidx].clone();
+                                self.editing_dialogue_idx = Some(uidx);
+                                self.editing_buffer = line_text;
+                                return SettingsAction::Redraw;
+                            }
+                        }
+                    }
                 }
             }
             SettingsTab::Menu => {
+                let content_y = my + self.scroll_y;
                 let row_h = 44.0;
                 let base_y = 80.0;
                 let row_idx = ((content_y - base_y) / row_h).floor() as i32;
@@ -413,25 +612,26 @@ impl SettingsUi {
 
         // Theme palette: WinUI 3 (Fluent) vs macOS HIG
         let accent_color = if is_win {
-            if is_dark { [96, 205, 255, 255] } else { [0, 103, 192, 255] } // WinUI 3 Accent (#60CDFF / #0067C0)
+            if is_dark { [96, 205, 255, 255] } else { [0, 103, 192, 255] }
         } else {
-            if is_dark { [10, 132, 255, 255] } else { [0, 122, 255, 255] } // Apple Blue (#0A84FF / #007AFF)
+            if is_dark { [10, 132, 255, 255] } else { [0, 122, 255, 255] }
         };
 
+        // Fully opaque background on Windows to prevent any transparent terminal bleed-through
         let bg_sidebar = if is_win {
-            if is_dark { [32, 32, 32, 255] } else { [243, 243, 243, 255] } // Mica smoke (#202020 / #F3F3F3)
+            if is_dark { [32, 32, 32, 255] } else { [243, 243, 243, 255] }
         } else {
-            if is_dark { [18, 18, 20, 38] } else { [255, 255, 255, 55] } // macOS vibrancy
+            if is_dark { [18, 18, 20, 38] } else { [255, 255, 255, 55] }
         };
 
         let bg_content = if is_win {
-            if is_dark { [39, 39, 39, 255] } else { [249, 249, 249, 255] } // WinUI solid content surface (#272727 / #F9F9F9)
+            if is_dark { [39, 39, 39, 255] } else { [249, 249, 249, 255] }
         } else {
             if is_dark { [30, 30, 32, 255] } else { [246, 246, 248, 255] }
         };
 
         let bg_card = if is_win {
-            if is_dark { [45, 45, 45, 255] } else { [255, 255, 255, 255] } // WinUI Settings Card: pure white / #2D2D2D
+            if is_dark { [45, 45, 45, 255] } else { [255, 255, 255, 255] }
         } else {
             if is_dark { [44, 44, 46, 255] } else { [255, 255, 255, 255] }
         };
@@ -440,7 +640,7 @@ impl SettingsUi {
         let text_sec = if is_dark { [160, 160, 160] } else { [93, 93, 93] };
 
         let border_card = if is_win {
-            if is_dark { [255, 255, 255, 20] } else { [0, 0, 0, 18] } // WinUI hairline border
+            if is_dark { [255, 255, 255, 20] } else { [0, 0, 0, 18] }
         } else {
             if is_dark { [255, 255, 255, 14] } else { [0, 0, 0, 12] }
         };
@@ -451,16 +651,43 @@ impl SettingsUi {
             if is_dark { [255, 255, 255, 12] } else { [0, 0, 0, 10] }
         };
 
-        let card_radius = if is_win { 4.0 * s } else { 10.0 * s }; // WinUI 3 4px subtle rounded corner
+        let card_radius = if is_win { 4.0 * s } else { 10.0 * s };
 
-        // 1. Fill sidebar
+        // 1. Fill sidebar with solid background
         pixmap.fill_rounded_rect_sdf(0.0, 0.0, SIDEBAR_W * s, h_px as f32, 0.0, bg_sidebar, 0.0, [0, 0, 0, 0]);
 
-        // On Windows: WinUI 3 Navigation Header (Title & Subtitle)
-        if is_win {
-            draw_text_into_pixmap(pixmap, "Anti-Pet", 22.0 * s, 18.0 * s, (SIDEBAR_W - 44.0) * s, 18.0 * s, 14.5 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
-            draw_text_into_pixmap(pixmap, "伴侣偏好设置", 22.0 * s, 36.0 * s, (SIDEBAR_W - 44.0) * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 0.9, TextAlignment::Left);
-        }
+        // Sidebar Header: App Icon Thumbnail + Titles
+        let icon_box_x = 14.0 * s;
+        let icon_box_y = 12.0 * s;
+        let icon_box_size = 34.0 * s;
+        pixmap.fill_rounded_rect_sdf(
+            icon_box_x,
+            icon_box_y,
+            icon_box_size,
+            icon_box_size,
+            6.0 * s,
+            bg_card,
+            1.0 * s,
+            border_card,
+        );
+        let tf_avatar = super::sprite::SpriteTransform {
+            anchor_x: (icon_box_x + 17.0 * s) / s,
+            anchor_y: (icon_box_y + 29.0 * s) / s,
+            base_size: 26.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            flip_x: 1.0,
+            rotation_rad: 0.0,
+            gaze_offset_x: 0.0,
+            gaze_offset_y: 0.0,
+            opacity: 1.0,
+            draw_ground_shadow: false,
+        };
+        let _ = self.cat_sprite.draw(pixmap, &tf_avatar, s);
+
+        let header_txt_x = icon_box_x + icon_box_size + 8.0 * s;
+        draw_text_into_pixmap(pixmap, "Anti-Pet", header_txt_x, icon_box_y + 2.0 * s, (SIDEBAR_W - 64.0) * s, 16.0 * s, 13.5 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "伴侣偏好设置", header_txt_x, icon_box_y + 18.0 * s, (SIDEBAR_W - 64.0) * s, 14.0 * s, 10.0 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
 
         // 2. Fill content area with solid background
         let content_x = SIDEBAR_W * s;
@@ -471,7 +698,7 @@ impl SettingsUi {
         let div_col = if is_dark { [255, 255, 255, 18] } else { [0, 0, 0, 18] };
         pixmap.fill_rounded_rect_sdf(content_x, 0.0, 1.0 * s, h_px as f32, 0.0, div_col, 0.0, [0, 0, 0, 0]);
 
-        // On Windows: WinUI 3 Window Caption Controls (Minimize and Close buttons at top right)
+        // Windows Caption Controls (Minimize and Close buttons at top right)
         if is_win {
             let win_w = SETTINGS_WIN_W as f32 * s;
             let close_x = win_w - 46.0 * s;
@@ -494,11 +721,11 @@ impl SettingsUi {
                 [text_pri[0], text_pri[1], text_pri[2], 220]
             };
             // Draw '✕'
-            let cx = close_x + 23.0 * s;
-            let cy = 16.0 * s;
+            let cx_c = close_x + 23.0 * s;
+            let cy_c = 16.0 * s;
             let d = 4.5 * s;
-            pixmap.draw_line_sdf(cx - d, cy - d, cx + d, cy + d, 1.2 * s, close_icon_col);
-            pixmap.draw_line_sdf(cx + d, cy - d, cx - d, cy + d, 1.2 * s, close_icon_col);
+            pixmap.draw_line_sdf(cx_c - d, cy_c - d, cx_c + d, cy_c + d, 1.2 * s, close_icon_col);
+            pixmap.draw_line_sdf(cx_c + d, cy_c - d, cx_c - d, cy_c + d, 1.2 * s, close_icon_col);
 
             // Minimize '─'
             let min_x = close_x - 46.0 * s;
@@ -516,8 +743,8 @@ impl SettingsUi {
                 pixmap.fill_rounded_rect_sdf(min_x, 0.0, 46.0 * s, 32.0 * s, 0.0, min_bg, 0.0, [0, 0, 0, 0]);
             }
             let min_icon_col = [text_pri[0], text_pri[1], text_pri[2], 220];
-            let mx = min_x + 23.0 * s;
-            pixmap.draw_line_sdf(mx - 5.0 * s, cy, mx + 5.0 * s, cy, 1.2 * s, min_icon_col);
+            let mx_c = min_x + 23.0 * s;
+            pixmap.draw_line_sdf(mx_c - 5.0 * s, cy_c, mx_c + 5.0 * s, cy_c, 1.2 * s, min_icon_col);
         }
 
         // 4. Sidebar nav items
@@ -530,7 +757,7 @@ impl SettingsUi {
         ];
 
         for (i, (tab, title)) in tabs.into_iter().enumerate() {
-            let ty = (56.0 + (i as f32) * 36.0) * s;
+            let ty = (58.0 + (i as f32) * 36.0) * s;
             let is_active = self.active_tab == tab;
             let tab_id = format!("tab_{}", i);
             let is_hovered = self.hovered_id.as_deref() == Some(&tab_id);
@@ -578,8 +805,8 @@ impl SettingsUi {
         }
 
         // Version badge at the bottom of the sidebar
-        let version_y = (SETTINGS_WIN_H as f32 - 30.0) * s;
-        draw_text_into_pixmap(pixmap, "Anti-Pet v0.4.0", 22.0 * s, version_y, (SIDEBAR_W - 44.0) * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
+        let version_y = (SETTINGS_WIN_H as f32 - 68.0) * s;
+        draw_text_into_pixmap(pixmap, "Anti-Pet v0.4.0", 22.0 * s, version_y, (SIDEBAR_W - 44.0) * s, 16.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
 
         // 5. Render Right Content Area
         let cx = (SIDEBAR_W + 28.0) * s;
@@ -603,13 +830,40 @@ impl SettingsUi {
             }
         }
 
-        // 6. Toast Notification Pill
+        // 6. Action Footer Across All Tabs
+        let footer_y = (SETTINGS_WIN_H as f32 - 48.0) * s;
+        let footer_h = 48.0 * s;
+        let bg_footer = if is_win {
+            if is_dark { [32, 32, 32, 255] } else { [240, 240, 240, 255] }
+        } else {
+            if is_dark { [24, 24, 26, 255] } else { [242, 242, 244, 255] }
+        };
+        pixmap.fill_rounded_rect_sdf(0.0, footer_y, w_px as f32, footer_h, 0.0, bg_footer, 0.0, [0, 0, 0, 0]);
+        pixmap.fill_rounded_rect_sdf(0.0, footer_y, w_px as f32, 1.0 * s, 0.0, div_col, 0.0, [0, 0, 0, 0]);
+
+        draw_text_into_pixmap(pixmap, "配置与台词变更将在点击确定后立即保存生效", 22.0 * s, footer_y + 16.0 * s, 360.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
+
+        // Cancel Button
+        let cancel_w = 76.0 * s;
+        let cancel_h = 30.0 * s;
+        let cancel_x = (SETTINGS_WIN_W as f32 - 176.0) * s;
+        let cancel_y = footer_y + 9.0 * s;
+        self.render_button(pixmap, cancel_x, cancel_y, cancel_w, cancel_h, "取消", s, is_win, is_dark, border_card, text_pri, "btn_cancel");
+
+        // Save / Confirm Button
+        let save_w = 76.0 * s;
+        let save_h = 30.0 * s;
+        let save_x = (SETTINGS_WIN_W as f32 - 88.0) * s;
+        let save_y = footer_y + 9.0 * s;
+        self.render_primary_button(pixmap, save_x, save_y, save_w, save_h, "确定", s, accent_color, "btn_save");
+
+        // 7. Toast Notification Pill
         if let Some((ref msg, since)) = self.toast {
             if since.elapsed().as_secs_f32() < 2.5 {
                 let alpha = (1.0 - (since.elapsed().as_secs_f32() - 2.0).max(0.0) * 2.0).clamp(0.0, 1.0);
                 let toast_w = 260.0 * s;
                 let toast_x = ((SETTINGS_WIN_W as f32 * s) - toast_w) * 0.5;
-                let toast_y = (SETTINGS_WIN_H as f32 - 46.0) * s;
+                let toast_y = (SETTINGS_WIN_H as f32 - 44.0) * s;
                 let toast_r = if is_win { 6.0 * s } else { 14.0 * s };
                 let toast_bg = if is_win {
                     if is_dark { [45, 45, 45, (240.0 * alpha) as u8] } else { [255, 255, 255, (240.0 * alpha) as u8] }
@@ -658,7 +912,6 @@ impl SettingsUi {
         draw_text_into_pixmap(pixmap, "界面外观", cx + 14.0 * s, c1_y + 9.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "设置窗口明暗主题风格，默认自动跟随系统", cx + 14.0 * s, c1_y + 25.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
-        // Theme option button
         let theme_label = match self.temp_settings.theme.as_str() {
             "dark" => "深色模式",
             "light" => "浅色模式",
@@ -667,7 +920,7 @@ impl SettingsUi {
         let pill_x = cx + cw - 96.0 * s;
         self.render_button(pixmap, pill_x, c1_y + 11.0 * s, 84.0 * s, 24.0 * s, theme_label, s, is_win, is_dark, border_card, text_pri, "theme");
 
-        // Card 2: 体型与物理 (3 rows: scale, gravity, reset)
+        // Card 2: 体型与物理 (3 rows)
         let c2_y = c1_y + c1_h + 12.0 * s;
         let c2_h = 132.0 * s;
         pixmap.fill_rounded_rect_sdf(cx, c2_y, cw, c2_h, card_radius, bg_card, 1.0 * s, border_card);
@@ -688,7 +941,7 @@ impl SettingsUi {
         self.render_toggle(pixmap, cx + cw - 52.0 * s, r2_y + 11.0 * s, s, self.temp_settings.gravity_enabled, is_win, is_dark, accent, "gravity");
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r2_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
-        // Row 2.3: 屏幕位置校准 (复位居中)
+        // Row 2.3: 屏幕位置校准
         let r3_y = r2_y + 44.0 * s;
         draw_text_into_pixmap(pixmap, "屏幕位置校准", cx + 14.0 * s, r3_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "将桌宠一键拉回屏幕安全正中央，避免逃出屏幕或遮挡", cx + 14.0 * s, r3_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
@@ -781,7 +1034,7 @@ impl SettingsUi {
         text_sec: [u8; 3],
         accent: [u8; 4],
         card_radius: f32,
-        is_win: bool,
+        _is_win: bool,
     ) {
         let base_y = 28.0 * s;
         draw_text_into_pixmap(pixmap, "皮肤管理", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
@@ -790,23 +1043,14 @@ impl SettingsUi {
         let card_w = 180.0 * s;
         let card_h = 160.0 * s;
         let card_y = 80.0 * s;
-
         let card_x = cx;
-        let skin_id = "skin_0";
-        let is_hover = self.hovered_id.as_deref() == Some(skin_id);
-        let is_press = self.pressed_id.as_deref() == Some(skin_id);
 
-        let border_c = if is_press {
-            accent
-        } else if is_hover {
-            if is_win { [255, 255, 255, 45] } else { [142, 142, 147, 100] }
-        } else {
-            accent
-        };
+        let skin_id = "skin_0";
+        let is_press = self.pressed_id.as_deref() == Some(skin_id);
+        let border_c = if is_press { accent } else { accent };
 
         pixmap.fill_rounded_rect_sdf(card_x, card_y, card_w, card_h, card_radius, bg_card, 2.0 * s, border_c);
 
-        // Sprite thumbnail preview for 经典紫毛猫
         let tf = super::sprite::SpriteTransform {
             anchor_x: (card_x + (card_w * 0.5)) / s,
             anchor_y: (card_y + 86.0 * s) / s,
@@ -844,92 +1088,150 @@ impl SettingsUi {
         is_dark: bool,
     ) {
         let base_y = 28.0 * s;
-        draw_text_into_pixmap(pixmap, "台词与问候", cx, base_y, cw - 200.0 * s, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "绑定 Antigravity 模型状态与桌面交互台词库", cx, base_y + 24.0 * s, cw - 200.0 * s, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "台词与问候", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "绑定 Antigravity 模型状态与桌面交互台词库，支持直接增删修改", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
-        // Header Action Button: "编辑专属台词库 (dialogue.json)"
-        let btn_w = 190.0 * s;
-        let btn_h = 28.0 * s;
-        let btn_x = cx + cw - btn_w;
-        let btn_y = base_y + 10.0 * s;
-        let is_btn_hover = self.hovered_id.as_deref() == Some("open_dialogue_config");
-        let is_btn_press = self.pressed_id.as_deref() == Some("open_dialogue_config");
-
-        let (btn_bg, btn_border) = if is_win {
-            let bg = if is_btn_press {
-                if is_dark { [255, 255, 255, 24] } else { [0, 0, 0, 18] }
-            } else if is_btn_hover {
-                if is_dark { [255, 255, 255, 14] } else { [0, 0, 0, 10] }
-            } else {
-                if is_dark { [255, 255, 255, 8] } else { [255, 255, 255, 200] }
-            };
-            (bg, border_card)
-        } else {
-            let bg = if is_btn_press {
-                [accent[0], accent[1], accent[2], 220]
-            } else if is_btn_hover {
-                [accent[0], accent[1], accent[2], 240]
-            } else {
-                accent
-            };
-            (bg, [0, 0, 0, 0])
-        };
-
-        pixmap.fill_rounded_rect_sdf(btn_x, btn_y, btn_w, btn_h, 4.0 * s, btn_bg, 1.0 * s, btn_border);
-        let btn_txt_col = if is_win { text_pri } else { [255, 255, 255] };
-        draw_text_into_pixmap(pixmap, "编辑台词配置 (dialogue.json)", btn_x, btn_y + 6.0 * s, btn_w, 16.0 * s, 11.0 * s, 0.25, btn_txt_col, 1.0, TextAlignment::Center);
-
-        // 5 Model-bound Categories
-        let idle_sample = self.dialogue_bank.idle.first().map(|s| s.as_str()).unwrap_or("今天也在认真营业，绝对没有偷偷晒太阳。");
-        let thinking_sample = self.dialogue_bank.thinking.first().map(|s| s.as_str()).unwrap_or("喵式推理中，先别揪耳朵。");
-        let success_sample = self.dialogue_bank.success.first().map(|s| s.as_str()).unwrap_or("又走完一步啦，夸本喵！");
-        let error_sample = self.dialogue_bank.error.first().map(|s| s.as_str()).unwrap_or("这步没走通，陪你再看看。");
-        let petting_sample = self.dialogue_bank.petting.first().map(|s| s.as_str()).unwrap_or("只准摸一下……再一下也行。");
-
-        let categories = [
-            ("待机日常 (idle)", format!("{}条 · 周期性随机陪伴", self.dialogue_bank.idle.len()), idle_sample),
-            ("深度思考 (thinking)", format!("{}条 · 模型推理工具执行", self.dialogue_bank.thinking.len()), thinking_sample),
-            ("任务成功 (success)", format!("{}条 · 交付完成构建通过", self.dialogue_bank.success.len()), success_sample),
-            ("任务遇阻 (error)", format!("{}条 · 编译报错异常慰劳", self.dialogue_bank.error.len()), error_sample),
-            ("互动抚摸 (petting)", format!("{}条 · 双击互动回应", self.dialogue_bank.petting.len()), petting_sample),
+        // 1. Five Category Pills Navigation
+        let cats = [
+            ("待机日常 (idle)", self.dialogue_bank.idle.len()),
+            ("互动抚摸 (petting)", self.dialogue_bank.petting.len()),
+            ("深度思考 (thinking)", self.dialogue_bank.thinking.len()),
+            ("任务成功 (success)", self.dialogue_bank.success.len()),
+            ("任务遇阻 (error)", self.dialogue_bank.error.len()),
         ];
 
-        let c1_y = 80.0 * s;
-        let c1_h = 246.0 * s;
-        pixmap.fill_rounded_rect_sdf(cx, c1_y, cw, c1_h, card_radius, bg_card, 1.0 * s, border_card);
+        let pill_y = 66.0 * s;
+        let pill_h = 28.0 * s;
+        let pill_w = cw / 5.0;
 
-        for (i, (tag, meta_info, sample)) in categories.into_iter().enumerate() {
-            let row_y = c1_y + 4.0 * s + (i as f32) * 48.0 * s;
-            // Title + Tag
-            draw_text_into_pixmap(pixmap, tag, cx + 16.0 * s, row_y + 6.0 * s, 160.0 * s, 16.0 * s, 12.0 * s, 0.3, text_pri, 1.0, TextAlignment::Left);
-            // Meta info (e.g. 65条 · 周期性随机陪伴)
-            draw_text_into_pixmap(pixmap, &meta_info, cx + 16.0 * s, row_y + 24.0 * s, 160.0 * s, 14.0 * s, 10.0 * s, 0.0, text_sec, 0.8, TextAlignment::Left);
-            // Sample line
-            draw_text_into_pixmap(pixmap, sample, cx + 180.0 * s, row_y + 15.0 * s, cw - 196.0 * s, 16.0 * s, 11.5 * s, 0.0, text_sec, 0.95, TextAlignment::Left);
-            if i < 4 {
-                let div_col = if is_win {
-                    if is_dark { [255, 255, 255, 14] } else { [0, 0, 0, 10] }
+        for (i, (_tag, count)) in cats.iter().enumerate() {
+            let px = cx + (i as f32) * pill_w;
+            let is_sel = self.dialogue_cat == i;
+            let cat_id = format!("diag_cat_{}", i);
+            let is_hover = self.hovered_id.as_deref() == Some(&cat_id);
+
+            let pill_bg = if is_sel {
+                if is_win {
+                    if is_dark { [255, 255, 255, 24] } else { [0, 0, 0, 16] }
                 } else {
-                    border_card
-                };
-                pixmap.fill_rounded_rect_sdf(cx + 16.0 * s, row_y + 46.0 * s, cw - 32.0 * s, 1.0 * s, 0.0, div_col, 0.0, [0, 0, 0, 0]);
-            }
+                    accent
+                }
+            } else if is_hover {
+                if is_dark { [255, 255, 255, 12] } else { [0, 0, 0, 8] }
+            } else {
+                [0, 0, 0, 0]
+            };
+
+            let stroke = if is_sel && is_win {
+                accent
+            } else {
+                [0, 0, 0, 0]
+            };
+
+            pixmap.fill_rounded_rect_sdf(px + 2.0 * s, pill_y, pill_w - 4.0 * s, pill_h, 4.0 * s, pill_bg, 1.0 * s, stroke);
+
+            let label = match i {
+                0 => format!("待机 ({})", count),
+                1 => format!("抚摸 ({})", count),
+                2 => format!("思考 ({})", count),
+                3 => format!("成功 ({})", count),
+                _ => format!("遇阻 ({})", count),
+            };
+            let txt_c = if is_sel {
+                if is_win { [accent[0], accent[1], accent[2]] } else { [255, 255, 255] }
+            } else {
+                text_sec
+            };
+            draw_text_into_pixmap(pixmap, &label, px + 2.0 * s, pill_y + 6.0 * s, pill_w - 4.0 * s, 16.0 * s, 11.5 * s, if is_sel { 0.3 } else { 0.0 }, txt_c, 1.0, TextAlignment::Center);
         }
 
-        // Subtext / instruction hint
-        draw_text_into_pixmap(
-            pixmap,
-            "💡 提示：台词与 Antigravity IDE 状态实时绑定，点击右上角即可在编辑器中增删自定义台词，保存后自动同步。",
-            cx,
-            c1_y + c1_h + 12.0 * s,
-            cw,
-            16.0 * s,
-            11.0 * s,
-            0.0,
-            text_sec,
-            0.85,
-            TextAlignment::Left,
-        );
+        // 2. Action Bar: Subtitle on left, "+ 添加台词" button on right
+        let bar_y = 100.0 * s;
+        let cat_desc = match self.dialogue_cat {
+            0 => "空闲时随时间周期性随机说出的台词",
+            1 => "鼠标双击或在猫头连续抚摸摩擦时触发",
+            2 => "模型在执行深度推理或调用工具流时",
+            3 => "Antigravity 成功完成编译、测试或代码交付时",
+            _ => "代码构建失败或运行异常时安慰用户的提示",
+        };
+        draw_text_into_pixmap(pixmap, cat_desc, cx, bar_y + 4.0 * s, cw - 100.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 0.9, TextAlignment::Left);
+
+        let add_btn_w = 92.0 * s;
+        let add_btn_h = 24.0 * s;
+        let add_btn_x = cx + cw - add_btn_w;
+        self.render_button(pixmap, add_btn_x, bar_y, add_btn_w, add_btn_h, "+ 添加台词", s, is_win, is_dark, border_card, text_pri, "add_dialogue");
+
+        // 3. Scrollable List of Dialogue Lines
+        let list_y = 128.0 * s;
+        let list_bottom = (SETTINGS_WIN_H as f32 - 56.0) * s;
+        let lines = self.active_dialogues();
+
+        for (i, line) in lines.iter().enumerate() {
+            let row_y = list_y + (i as f32 * 40.0 * s) - self.dialogue_scroll * s;
+            if row_y + 34.0 * s < list_y || row_y > list_bottom {
+                continue; // culled
+            }
+
+            let is_editing = self.editing_dialogue_idx == Some(i);
+            let edit_id = format!("edit_diag_{}", i);
+            let del_id = format!("del_diag_{}", i);
+
+            let is_hover_row = self.hovered_id.as_deref() == Some(&edit_id);
+            let row_bg = if is_editing {
+                if is_dark { [52, 52, 52, 255] } else { [255, 255, 255, 255] }
+            } else if is_hover_row {
+                if is_dark { [48, 48, 48, 255] } else { [250, 250, 250, 255] }
+            } else {
+                bg_card
+            };
+
+            let row_stroke = if is_editing {
+                accent
+            } else {
+                border_card
+            };
+
+            // Card row
+            pixmap.fill_rounded_rect_sdf(cx, row_y, cw, 34.0 * s, card_radius, row_bg, if is_editing { 1.5 * s } else { 1.0 * s }, row_stroke);
+
+            // Display text
+            let text_val = if is_editing {
+                format!("{}|", self.editing_buffer)
+            } else {
+                line.clone()
+            };
+            let text_color = if is_editing {
+                if is_dark { [255, 255, 255] } else { [0, 0, 0] }
+            } else {
+                text_pri
+            };
+            draw_text_into_pixmap(pixmap, &text_val, cx + 12.0 * s, row_y + 8.0 * s, cw - 66.0 * s, 18.0 * s, 12.0 * s, 0.0, text_color, 1.0, TextAlignment::Left);
+
+            // "删除" button
+            let del_w = 42.0 * s;
+            let del_h = 22.0 * s;
+            let del_x = cx + cw - 48.0 * s;
+            let del_y = row_y + 6.0 * s;
+
+            let is_del_hover = self.hovered_id.as_deref() == Some(&del_id);
+            let is_del_press = self.pressed_id.as_deref() == Some(&del_id);
+            let del_bg = if is_del_press {
+                [176, 32, 18, 40]
+            } else if is_del_hover {
+                [196, 43, 28, 25]
+            } else {
+                [0, 0, 0, 0]
+            };
+            if del_bg[3] > 0 {
+                pixmap.fill_rounded_rect_sdf(del_x, del_y, del_w, del_h, 3.0 * s, del_bg, 0.0, [0, 0, 0, 0]);
+            }
+            let del_txt_c = if is_del_hover || is_del_press {
+                [220, 60, 60]
+            } else {
+                text_sec
+            };
+            draw_text_into_pixmap(pixmap, "删除", del_x, del_y + 4.0 * s, del_w, 14.0 * s, 10.5 * s, 0.0, del_txt_c, 0.9, TextAlignment::Center);
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -965,7 +1267,7 @@ impl SettingsUi {
             ("重力下落吸附", self.temp_settings.menu_config.gravity),
         ];
 
-        let c1_y = 80.0 * s;
+        let c1_y = 80.0 * s - self.scroll_y * s;
         let c1_h = 398.0 * s;
         pixmap.fill_rounded_rect_sdf(cx, c1_y, cw, c1_h, card_radius, bg_card, 1.0 * s, border_card);
 
@@ -1030,6 +1332,44 @@ impl SettingsUi {
         let text_y_offset = if is_pressed { 5.0 * s } else { 4.0 * s };
         pixmap.fill_rounded_rect_sdf(x, y, w, h, r, bg, 1.0 * s, stroke);
         draw_text_into_pixmap(pixmap, text, x, y + text_y_offset, w, h - 8.0 * s, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_primary_button(
+        &self,
+        pixmap: &mut Pixmap,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        text: &str,
+        s: f32,
+        accent: [u8; 4],
+        button_id: &str,
+    ) {
+        let r = 4.0 * s;
+        let is_hovered = self.hovered_id.as_deref() == Some(button_id);
+        let is_pressed = self.pressed_id.as_deref() == Some(button_id);
+
+        let bg = if is_pressed {
+            let mut c = accent;
+            c[0] = (c[0] as f32 * 0.85) as u8;
+            c[1] = (c[1] as f32 * 0.85) as u8;
+            c[2] = (c[2] as f32 * 0.85) as u8;
+            c
+        } else if is_hovered {
+            let mut c = accent;
+            c[0] = (c[0] as f32 * 1.1).min(255.0) as u8;
+            c[1] = (c[1] as f32 * 1.1).min(255.0) as u8;
+            c[2] = (c[2] as f32 * 1.1).min(255.0) as u8;
+            c
+        } else {
+            accent
+        };
+
+        pixmap.fill_rounded_rect_sdf(x, y, w, h, r, bg, 0.0, [0, 0, 0, 0]);
+        let text_y_offset = if is_pressed { 7.0 * s } else { 6.0 * s };
+        draw_text_into_pixmap(pixmap, text, x, y + text_y_offset, w, h - 8.0 * s, 12.0 * s, 0.25, [255, 255, 255], 1.0, TextAlignment::Center);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1116,7 +1456,6 @@ impl SettingsUi {
         }
         let knob_x = x + filled_w;
         if is_win {
-            // WinUI 3 Slider Thumb
             pixmap.fill_circle_sdf(knob_x, y + 2.0 * s, 7.5 * s, if is_dark { [32, 32, 32, 255] } else { [255, 255, 255, 255] }, 2.0 * s, accent);
         } else {
             pixmap.fill_circle_sdf(knob_x, y + 2.0 * s, 7.0 * s, [255, 255, 255, 255], 0.5 * s, [0, 0, 0, 40]);
@@ -1163,63 +1502,49 @@ mod tests {
         assert_eq!(ui.active_tab, SettingsTab::General);
         assert_eq!(ui.temp_settings.scale, 1.0);
 
-        // Click sidebar tab 4 (Menu) at y = 56.0 + 4 * 36.0 + 10.0 = 210.0
+        // Click sidebar tab 4 (Menu)
         ui.mouse_pos = (50.0, 210.0);
         let action = ui.handle_mouse_down(1.0);
         assert!(matches!(action, Some(SettingsAction::SelectTab(SettingsTab::Menu))));
         assert_eq!(ui.active_tab, SettingsTab::Menu);
 
-        // Re-render
-        ui.render(&mut pixmap, 1.0);
-
-        // Click sidebar tab 2 (Skins) at y = 56.0 + 2 * 36.0 + 10.0 = 138.0
+        // Click sidebar tab 2 (Skins)
         ui.mouse_pos = (50.0, 138.0);
         let action = ui.handle_mouse_down(1.0);
         assert!(matches!(action, Some(SettingsAction::SelectTab(SettingsTab::Skins))));
         assert_eq!(ui.active_tab, SettingsTab::Skins);
 
-        // Render skins tab with cat sprite preview
+        // Test Dialogue Tab direct in-place editing
+        ui.active_tab = SettingsTab::Dialogue;
         ui.render(&mut pixmap, 1.0);
 
-        // Click row 0 in Menu (Toggle openAntigravity) at y = 80.0 + 10.0 = 90.0, x = 740.0
-        ui.active_tab = SettingsTab::Menu;
-        ui.mouse_pos = (740.0, 90.0);
-        let action = ui.handle_mouse_down(1.0);
-        assert!(matches!(action, Some(SettingsAction::Save(_))));
-        assert_eq!(ui.temp_settings.menu_config.open_antigravity, false);
+        // Switch to category 1 (petting) via pill click
+        let cw_left = SIDEBAR_W + 28.0;
+        let cw_right = SETTINGS_WIN_W as f32 - 28.0;
+        let pill_w = (cw_right - cw_left) / 5.0;
+        ui.mouse_pos = (cw_left + pill_w * 1.5, 78.0);
+        let cat_action = ui.handle_mouse_down(1.0);
+        assert_eq!(cat_action, Some(SettingsAction::Redraw));
+        assert_eq!(ui.dialogue_cat, 1);
 
-        // Click scale slider on General tab: should drag slider, NOT drag window
-        ui.active_tab = SettingsTab::General;
-        ui.mouse_pos = (610.0, 160.0);
-        let action = ui.handle_mouse_down(1.0);
-        assert!(matches!(action, Some(SettingsAction::Save(_))));
-        assert_eq!(ui.dragging_slider.as_deref(), Some("scale"));
+        // Click "+ 添加台词"
+        ui.mouse_pos = (cw_right - 40.0, 110.0);
+        let add_action = ui.handle_mouse_down(1.0);
+        assert_eq!(add_action, Some(SettingsAction::Redraw));
+        assert!(ui.editing_dialogue_idx.is_some());
 
-        // Moving cursor updates slider
-        let changed = ui.handle_cursor_move(660.0, 160.0, 1.0);
-        assert!(changed);
-        assert!(ui.temp_settings.scale > 1.0);
+        // Type characters
+        assert!(ui.handle_char('!'));
+        assert_eq!(ui.editing_buffer, "新台词条目!");
 
-        // Releasing mouse ends slider drag
-        let up_action = ui.handle_mouse_up();
-        assert!(matches!(up_action, Some(SettingsAction::Save(_))));
-        assert!(ui.dragging_slider.is_none());
+        // Test bottom footer "取消" and "确定"
+        ui.mouse_pos = (SETTINGS_WIN_W as f32 - 140.0, SETTINGS_WIN_H as f32 - 20.0);
+        let cancel_act = ui.handle_mouse_down(1.0);
+        assert_eq!(cancel_act, Some(SettingsAction::Cancel));
 
-        // Clicking empty window header does not return DragWindow
-        ui.mouse_pos = (350.0, 45.0);
-        let empty_action = ui.handle_mouse_down(1.0);
-        assert_eq!(empty_action, None);
-
-        // Clicking empty sidebar bottom returns None
-        ui.mouse_pos = (50.0, 350.0);
-        let drag_sidebar = ui.handle_mouse_down(1.0);
-        assert_eq!(drag_sidebar, None);
-
-        // Clicking "编辑台词配置" on Dialogue tab
-        ui.active_tab = SettingsTab::Dialogue;
-        ui.mouse_pos = (SETTINGS_WIN_W as f32 - 50.0, 45.0);
-        let diag_act = ui.handle_mouse_down(1.0);
-        assert_eq!(diag_act, Some(SettingsAction::OpenDialogueConfig));
+        ui.mouse_pos = (SETTINGS_WIN_W as f32 - 50.0, SETTINGS_WIN_H as f32 - 20.0);
+        let save_act = ui.handle_mouse_down(1.0);
+        assert!(matches!(save_act, Some(SettingsAction::Save(_))));
 
         #[cfg(target_os = "windows")]
         {
@@ -1244,7 +1569,7 @@ mod tests {
     fn test_winui_theme_and_toggle_rendering() {
         let mut ui = SettingsUi::new(PetSettings::default());
         let mut pixmap = Pixmap::new(SETTINGS_WIN_W as u32, SETTINGS_WIN_H as u32);
-        
+
         // Test light mode render
         ui.temp_settings.theme = "light".to_string();
         ui.render(&mut pixmap, 1.0);

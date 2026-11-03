@@ -345,7 +345,7 @@ mod cpu_2d_app {
     mod windows_window {
         use windows::Win32::Foundation::{HWND, POINT, WPARAM, LPARAM};
         use windows::Win32::Graphics::Gdi::{
-            CreateCompatibleBitmap, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject,
+            CreateBitmap, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject,
             GetMonitorInfoW, MonitorFromWindow, ScreenToClient, BITMAPINFO, BITMAPINFOHEADER,
             BI_RGB, DIB_RGB_COLORS, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
         };
@@ -353,11 +353,13 @@ mod cpu_2d_app {
             DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWA_USE_IMMERSIVE_DARK_MODE,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
-            CreateIconIndirect, GetCursorPos, LoadImageW, SendMessageW, SetClassLongPtrW,
-            SetWindowPos, GCLP_HICON, GCLP_HICONSM, HICON, HWND_TOPMOST, ICONINFO, IMAGE_ICON,
-            LR_DEFAULTSIZE, LR_LOADFROMFILE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WM_SETICON,
+            CreateIconIndirect, GetCursorPos, GetWindowLongPtrW, LoadImageW, SendMessageW,
+            SetClassLongPtrW, SetWindowLongPtrW, SetWindowPos, GCLP_HICON, GCLP_HICONSM,
+            GWL_EXSTYLE, HICON, HWND_TOPMOST, ICONINFO, IMAGE_ICON, LR_DEFAULTSIZE,
+            LR_LOADFROMFILE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WM_SETICON, WS_EX_APPWINDOW,
         };
-        use windows::core::PCWSTR;
+        use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+        use windows::core::{w, PCWSTR};
 
         #[derive(Clone, Copy, Debug, Default)]
         pub struct TaskbarInsets {
@@ -366,39 +368,33 @@ mod cpu_2d_app {
             pub right: f64,
         }
 
+        pub fn init_app_user_model_id() {
+            unsafe {
+                let _ = SetCurrentProcessExplicitAppUserModelID(w!("AntiPet.DesktopApp"));
+            }
+        }
+
         pub fn set_window_icon(hwnd_isize: isize, tray_rgba: &[u8]) {
             unsafe {
                 let hwnd = HWND(hwnd_isize as *mut _);
+                let ex_style = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+                let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style | (WS_EX_APPWINDOW.0 as isize));
+
                 let mut loaded_hicon: Option<HICON> = None;
-                let candidate_rel_paths = [
-                    "assets/icon.ico",
-                    "../assets/icon.ico",
-                    "../../assets/icon.ico",
-                ];
-                if let Ok(mut dir) = std::env::current_exe() {
-                    for _ in 0..4 {
-                        dir.pop();
-                        for rel in &candidate_rel_paths {
-                            let p = dir.join(rel);
-                            if p.exists() {
-                                let wpath: Vec<u16> = p.to_string_lossy().encode_utf16().chain(Some(0)).collect();
-                                if let Ok(handle) = LoadImageW(
-                                    None,
-                                    PCWSTR(wpath.as_ptr()),
-                                    IMAGE_ICON,
-                                    0,
-                                    0,
-                                    LR_LOADFROMFILE | LR_DEFAULTSIZE,
-                                ) {
-                                    if !handle.0.is_null() {
-                                        loaded_hicon = Some(HICON(handle.0));
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        if loaded_hicon.is_some() {
-                            break;
+                let root_dir = crate::state_watcher::resolve_project_root();
+                let ico_path = root_dir.join("assets").join("icon.ico");
+                if ico_path.exists() {
+                    let wpath: Vec<u16> = ico_path.to_string_lossy().encode_utf16().chain(Some(0)).collect();
+                    if let Ok(handle) = LoadImageW(
+                        None,
+                        PCWSTR(wpath.as_ptr()),
+                        IMAGE_ICON,
+                        0,
+                        0,
+                        LR_LOADFROMFILE | LR_DEFAULTSIZE,
+                    ) {
+                        if !handle.0.is_null() {
+                            loaded_hicon = Some(HICON(handle.0));
                         }
                     }
                 }
@@ -431,7 +427,8 @@ mod cpu_2d_app {
                                 dst[o + 3] = tray_rgba[o + 3];
                             }
                         }
-                        let hmask = CreateCompatibleBitmap(hdc, 32, 32);
+                        let mask_bytes = [0u8; 128];
+                        let hmask = CreateBitmap(32, 32, 1, 1, Some(mask_bytes.as_ptr() as *const _));
                         let ii = ICONINFO {
                             fIcon: true.into(),
                             xHotspot: 0,
@@ -628,6 +625,9 @@ mod cpu_2d_app {
 
         let tray_rgba = include_bytes!("../../assets/tray.rgba");
         let win_icon = tao::window::Icon::from_rgba(tray_rgba.to_vec(), 32, 32).ok();
+
+        #[cfg(target_os = "windows")]
+        windows_window::init_app_user_model_id();
 
         #[allow(unused_mut)]
         let mut win_builder = WindowBuilder::new()
@@ -1005,6 +1005,11 @@ mod cpu_2d_app {
                                         is_settings_open = true;
                                         settings_window.set_visible(true);
                                         settings_window.set_focus();
+                                        #[cfg(target_os = "windows")]
+                                        {
+                                            windows_window::set_window_icon(settings_window.hwnd(), tray_rgba);
+                                            windows_window::apply_settings_window_style(settings_window.hwnd(), settings_ui.is_dark_mode());
+                                        }
                                         #[cfg(target_os = "macos")]
                                         macos_window::show_settings_window(settings_window.ns_window());
                                         let s_scale = settings_window.scale_factor() as f32;
@@ -1386,17 +1391,26 @@ mod cpu_2d_app {
                                         match action {
                                             SettingsAction::Save(new_settings) => {
                                                 state_watcher.save_settings(&new_settings);
-                                                settings = new_settings;
+                                                settings = new_settings.clone();
+                                                settings_ui.original_settings = new_settings;
+                                                let root = state_watcher.root_dir();
+                                                let _ = settings_ui.dialogue_bank.save_to_root(&root, "fat-cat");
+                                                dialogue_bank = settings_ui.dialogue_bank.clone();
                                                 physics.zoom_scale = settings.scale;
                                                 physics.gravity_enabled = settings.gravity_enabled;
                                                 audio.enabled = settings.sound_enabled;
                                                 bubble.show_quota = settings.show_quota;
+                                                bubble.text = dialogue_bank.pick_random("idle");
                                                 menu_mgr.rebuild_menu(&settings);
                                                 dirty_frame = true;
-                                                settings_ui.render(&mut settings_pixmap, s_scale);
-                                                settings_surface.present(&settings_pixmap, s_scale as f64);
+                                                settings_ui.show_toast("设置与台词已成功保存");
+                                                settings_window.set_visible(false);
+                                                is_settings_open = false;
                                             }
                                             SettingsAction::Cancel => {
+                                                settings_ui.temp_settings = settings_ui.original_settings.clone();
+                                                settings_ui.reload_dialogues();
+                                                settings_ui.cancel_editing();
                                                 settings_window.set_visible(false);
                                                 is_settings_open = false;
                                             }
@@ -1426,26 +1440,7 @@ mod cpu_2d_app {
                                                 }
                                             }
                                             SettingsAction::OpenDialogueConfig => {
-                                                let dialogue_path = state_watcher
-                                                    .root_dir()
-                                                    .join("skins")
-                                                    .join("fat-cat")
-                                                    .join("dialogue.json");
-                                                #[cfg(target_os = "windows")]
-                                                {
-                                                    let _ = std::process::Command::new("cmd")
-                                                        .args(["/C", "start", "", &dialogue_path.to_string_lossy()])
-                                                        .spawn();
-                                                }
-                                                #[cfg(target_os = "macos")]
-                                                {
-                                                    let _ = std::process::Command::new("open")
-                                                        .arg(&dialogue_path)
-                                                        .spawn();
-                                                }
-                                                settings_ui.reload_dialogues();
-                                                dialogue_bank = settings_ui.dialogue_bank.clone();
-                                                settings_ui.show_toast("已打开专属台词库 (dialogue.json)");
+                                                settings_ui.active_tab = crate::renderer::settings_ui::SettingsTab::Dialogue;
                                                 settings_ui.render(&mut settings_pixmap, s_scale);
                                                 settings_surface.present(&settings_pixmap, s_scale as f64);
                                             }
@@ -1457,7 +1452,8 @@ mod cpu_2d_app {
                                     match action {
                                         SettingsAction::Save(new_settings) => {
                                             state_watcher.save_settings(&new_settings);
-                                            settings = new_settings;
+                                            settings = new_settings.clone();
+                                            settings_ui.original_settings = new_settings;
                                             physics.zoom_scale = settings.scale;
                                             physics.gravity_enabled = settings.gravity_enabled;
                                             audio.enabled = settings.sound_enabled;
@@ -1474,6 +1470,20 @@ mod cpu_2d_app {
                                     }
                                 } else {
                                     is_dragging_settings = false;
+                                }
+                            }
+                            WindowEvent::ReceivedImeText(text) => {
+                                let s_scale = settings_window.scale_factor() as f32;
+                                if settings_ui.handle_ime_text(&text) {
+                                    settings_ui.render(&mut settings_pixmap, s_scale);
+                                    settings_surface.present(&settings_pixmap, s_scale as f64);
+                                }
+                            }
+                            WindowEvent::KeyboardInput { event: key_event, .. } => {
+                                let s_scale = settings_window.scale_factor() as f32;
+                                if settings_ui.handle_key_event(&key_event) {
+                                    settings_ui.render(&mut settings_pixmap, s_scale);
+                                    settings_surface.present(&settings_pixmap, s_scale as f64);
                                 }
                             }
                             WindowEvent::MouseWheel { delta, .. } => {

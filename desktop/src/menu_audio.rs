@@ -149,6 +149,38 @@ impl DialogueBank {
         let idx = fastrand::usize(..pool.len());
         pool[idx].clone()
     }
+
+    pub fn save_to_root(&self, root_dir: &std::path::Path, skin_id: &str) -> std::io::Result<()> {
+        let dialogue_file = root_dir.join("skins").join(skin_id).join("dialogue.json");
+        let mut val: serde_json::Value = if let Ok(raw) = std::fs::read_to_string(&dialogue_file) {
+            serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+        if !val.is_object() {
+            val = serde_json::json!({});
+        }
+        val["lines"] = serde_json::json!({
+            "idle": self.idle,
+            "petting": self.petting,
+            "thinking": self.thinking,
+            "success": self.success,
+            "error": self.error,
+            "dragged": self.dragged,
+        });
+        if val.get("schemaVersion").is_none() {
+            val["schemaVersion"] = serde_json::json!(1);
+        }
+        if val.get("locale").is_none() {
+            val["locale"] = serde_json::json!("zh-CN");
+        }
+        let pretty = serde_json::to_string_pretty(&val)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        if let Some(parent) = dialogue_file.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        std::fs::write(&dialogue_file, pretty)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
