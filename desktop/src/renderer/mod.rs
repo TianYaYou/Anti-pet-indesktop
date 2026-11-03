@@ -435,7 +435,11 @@ pub fn is_system_dark_mode() -> bool {
     unsafe {
         macos_surface::macos_is_dark_mode()
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
+    unsafe {
+        windows_surface::windows_is_dark_mode()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         false
     }
@@ -815,4 +819,46 @@ mod windows_surface {
         let _ = DeleteDC(mem_dc);
         ReleaseDC(None, screen_dc);
     }
+
+    pub unsafe fn windows_is_dark_mode() -> bool {
+        use windows::Win32::System::Registry::{
+            RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
+            REG_DWORD,
+        };
+        use windows::core::PCWSTR;
+
+        let subkey: Vec<u16> =
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize\0"
+                .encode_utf16()
+                .collect();
+        let value_name: Vec<u16> = "AppsUseLightTheme\0".encode_utf16().collect();
+        let mut hkey = HKEY::default();
+        if RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subkey.as_ptr()),
+            Some(0),
+            KEY_READ,
+            &mut hkey,
+        )
+        .is_ok()
+        {
+            let mut val: u32 = 0;
+            let mut val_type = REG_DWORD;
+            let mut val_size = std::mem::size_of::<u32>() as u32;
+            let res = RegQueryValueExW(
+                hkey,
+                PCWSTR(value_name.as_ptr()),
+                None,
+                Some(&mut val_type),
+                Some(&mut val as *mut u32 as *mut u8),
+                Some(&mut val_size),
+            );
+            let _ = RegCloseKey(hkey);
+            if res.is_ok() {
+                return val == 0;
+            }
+        }
+        false
+    }
+
 }

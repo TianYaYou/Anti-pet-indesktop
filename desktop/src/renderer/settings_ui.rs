@@ -30,6 +30,7 @@ pub enum SettingsAction {
 }
 
 /// Native pure 2D CPU software-rendered Preferences Settings Window UI.
+/// Supports native WinUI 3 (Windows 11 Fluent) and macOS HIG styling.
 /// Zero WebKit, zero Node.js, and under 2MB RAM footprint.
 pub struct SettingsUi {
     pub active_tab: SettingsTab,
@@ -96,7 +97,8 @@ impl SettingsUi {
     pub fn handle_mouse_down(&mut self, _scale: f32) -> Option<SettingsAction> {
         let (mx, my) = self.mouse_pos;
 
-        // Skip macOS native traffic lights (top-left 0..72 x 0..36)
+        // Skip macOS native traffic lights (top-left 0..72 x 0..36) ONLY on macOS
+        #[cfg(target_os = "macos")]
         if mx < 72.0 && my < 36.0 {
             return None;
         }
@@ -231,7 +233,7 @@ impl SettingsUi {
                     self.temp_settings.dnd_passthrough = !self.temp_settings.dnd_passthrough;
                     return SettingsAction::Save(self.temp_settings.clone());
                 }
-                // Row 9: 互动音效 (y approx 458..506)
+                // Row 9: 动作音效 (y approx 458..506)
                 if (458.0..506.0).contains(&content_y) && (560.0..735.0).contains(&mx) {
                     self.temp_settings.sound_enabled = !self.temp_settings.sound_enabled;
                     return SettingsAction::Save(self.temp_settings.clone());
@@ -290,6 +292,7 @@ impl SettingsUi {
     /// Renders the full native settings window into `pixmap`.
     pub fn render(&mut self, pixmap: &mut Pixmap, dpi_scale: f32) {
         let is_dark = self.is_dark_mode();
+        let is_win = cfg!(target_os = "windows");
         let s = dpi_scale;
 
         let w_px = ((SETTINGS_WIN_W as f32) * s).round() as u32;
@@ -297,18 +300,51 @@ impl SettingsUi {
         pixmap.resize(w_px, h_px);
         pixmap.clear();
 
-        // Theme palette
-        let bg_sidebar = if is_dark { [18, 18, 20, 38] } else { [255, 255, 255, 55] };
-        let bg_content = if is_dark { [30, 30, 32, 255] } else { [246, 246, 248, 255] };
-        let bg_card = if is_dark { [44, 44, 46, 255] } else { [255, 255, 255, 255] };
-        let text_pri = if is_dark { [245, 245, 247] } else { [29, 29, 31] };
-        let text_sec = if is_dark { [152, 152, 157] } else { [110, 110, 115] };
-        let border_card = if is_dark { [255, 255, 255, 20] } else { [0, 0, 0, 20] };
-        let row_div = if is_dark { [255, 255, 255, 12] } else { [0, 0, 0, 12] };
-        let accent_blue = if is_dark { [10, 132, 255, 255] } else { [0, 122, 255, 255] };
+        // Theme palette: WinUI 3 (Fluent) vs macOS HIG
+        let accent_color = if is_win {
+            if is_dark { [96, 205, 255, 255] } else { [0, 103, 192, 255] } // WinUI 3 Accent (#60CDFF / #0067C0)
+        } else {
+            if is_dark { [10, 132, 255, 255] } else { [0, 122, 255, 255] } // Apple Blue (#0A84FF / #007AFF)
+        };
 
-        // 1. Fill sidebar with translucent wash to reveal genuine macOS NSVisualEffectView vibrancy
+        let bg_sidebar = if is_win {
+            if is_dark { [32, 32, 32, 255] } else { [243, 243, 243, 255] } // Mica smoke (#202020 / #F3F3F3)
+        } else {
+            if is_dark { [18, 18, 20, 38] } else { [255, 255, 255, 55] } // macOS vibrancy
+        };
+
+        let bg_content = if is_win {
+            if is_dark { [39, 39, 39, 255] } else { [249, 249, 249, 255] } // WinUI solid content surface (#272727 / #F9F9F9)
+        } else {
+            if is_dark { [30, 30, 32, 255] } else { [246, 246, 248, 255] }
+        };
+
+        let bg_card = if is_win {
+            if is_dark { [45, 45, 45, 255] } else { [255, 255, 255, 255] } // WinUI Settings Card: pure white / #2D2D2D
+        } else {
+            if is_dark { [44, 44, 46, 255] } else { [255, 255, 255, 255] }
+        };
+
+        let text_pri = if is_dark { [255, 255, 255] } else { [26, 26, 26] };
+        let text_sec = if is_dark { [160, 160, 160] } else { [93, 93, 93] };
+
+        let border_card = if is_win {
+            if is_dark { [255, 255, 255, 18] } else { [0, 0, 0, 16] }
+        } else {
+            if is_dark { [255, 255, 255, 20] } else { [0, 0, 0, 20] }
+        };
+
+        let row_div = if is_dark { [255, 255, 255, 12] } else { [0, 0, 0, 12] };
+        let card_radius = if is_win { 6.0 * s } else { 8.0 * s };
+
+        // 1. Fill sidebar
         pixmap.fill_rounded_rect_sdf(0.0, 0.0, SIDEBAR_W * s, h_px as f32, 0.0, bg_sidebar, 0.0, [0, 0, 0, 0]);
+
+        // On Windows: WinUI 3 Navigation Header (Title & Subtitle)
+        if is_win {
+            draw_text_into_pixmap(pixmap, "Anti-Pet", 22.0 * s, 18.0 * s, (SIDEBAR_W - 44.0) * s, 18.0 * s, 14.5 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, "伴侣偏好设置", 22.0 * s, 36.0 * s, (SIDEBAR_W - 44.0) * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 0.9, TextAlignment::Left);
+        }
 
         // 2. Fill content area with solid background
         let content_x = SIDEBAR_W * s;
@@ -319,7 +355,7 @@ impl SettingsUi {
         let div_col = if is_dark { [255, 255, 255, 18] } else { [0, 0, 0, 18] };
         pixmap.fill_rounded_rect_sdf(content_x, 0.0, 1.0 * s, h_px as f32, 0.0, div_col, 0.0, [0, 0, 0, 0]);
 
-        // 4. Sidebar nav items (starting comfortably at y = 56.0 below macOS traffic lights)
+        // 4. Sidebar nav items
         let tabs = [
             (SettingsTab::General, "常规与显示"),
             (SettingsTab::Autostart, "自启动与更新"),
@@ -333,18 +369,42 @@ impl SettingsUi {
             let is_active = self.active_tab == tab;
             let is_hovered = self.hovered_id.as_deref() == Some(&format!("tab_{}", i));
 
-            let (bg_pill, txt_color, weight) = if is_active {
-                (accent_blue, [255, 255, 255], 0.22)
-            } else if is_hovered {
-                (if is_dark { [255, 255, 255, 18] } else { [0, 0, 0, 12] }, text_pri, 0.0)
-            } else {
-                ([0, 0, 0, 0], text_pri, 0.0)
-            };
+            if is_win {
+                // WinUI 3 NavigationViewItem style: subtle tinted card + left vertical accent indicator
+                let bg_pill = if is_active {
+                    if is_dark { [255, 255, 255, 16] } else { [0, 0, 0, 12] }
+                } else if is_hovered {
+                    if is_dark { [255, 255, 255, 10] } else { [0, 0, 0, 7] }
+                } else {
+                    [0, 0, 0, 0]
+                };
 
-            if bg_pill[3] > 0 {
-                pixmap.fill_rounded_rect_sdf(12.0 * s, ty, (SIDEBAR_W - 24.0) * s, 32.0 * s, 6.0 * s, bg_pill, 0.0, [0, 0, 0, 0]);
+                if bg_pill[3] > 0 {
+                    pixmap.fill_rounded_rect_sdf(10.0 * s, ty, (SIDEBAR_W - 20.0) * s, 32.0 * s, 4.0 * s, bg_pill, 0.0, [0, 0, 0, 0]);
+                }
+
+                // WinUI 3 left vertical selection indicator
+                if is_active {
+                    pixmap.fill_rounded_rect_sdf(10.0 * s, ty + 8.0 * s, 3.0 * s, 16.0 * s, 1.5 * s, accent_color, 0.0, [0, 0, 0, 0]);
+                }
+
+                let weight = if is_active { 0.3 } else { 0.0 };
+                draw_text_into_pixmap(pixmap, title, 24.0 * s, ty + 8.0 * s, (SIDEBAR_W - 44.0) * s, 16.0 * s, 12.5 * s, weight, text_pri, 1.0, TextAlignment::Left);
+            } else {
+                // macOS HIG style: solid blue pill for active
+                let (bg_pill, txt_color, weight) = if is_active {
+                    (accent_color, [255, 255, 255], 0.22)
+                } else if is_hovered {
+                    (if is_dark { [255, 255, 255, 18] } else { [0, 0, 0, 12] }, text_pri, 0.0)
+                } else {
+                    ([0, 0, 0, 0], text_pri, 0.0)
+                };
+
+                if bg_pill[3] > 0 {
+                    pixmap.fill_rounded_rect_sdf(12.0 * s, ty, (SIDEBAR_W - 24.0) * s, 32.0 * s, 6.0 * s, bg_pill, 0.0, [0, 0, 0, 0]);
+                }
+                draw_text_into_pixmap(pixmap, title, 24.0 * s, ty + 8.0 * s, (SIDEBAR_W - 44.0) * s, 16.0 * s, 12.5 * s, weight, txt_color, 1.0, TextAlignment::Left);
             }
-            draw_text_into_pixmap(pixmap, title, 24.0 * s, ty + 8.0 * s, (SIDEBAR_W - 44.0) * s, 16.0 * s, 12.5 * s, weight, txt_color, 1.0, TextAlignment::Left);
         }
 
         // Version badge at the bottom of the sidebar
@@ -357,19 +417,19 @@ impl SettingsUi {
 
         match self.active_tab {
             SettingsTab::General => {
-                self.render_general_tab(pixmap, cx, cw, s, bg_card, border_card, row_div, text_pri, text_sec, accent_blue);
+                self.render_general_tab(pixmap, cx, cw, s, bg_card, border_card, row_div, text_pri, text_sec, accent_color, card_radius, is_win, is_dark);
             }
             SettingsTab::Autostart => {
-                self.render_autostart_tab(pixmap, cx, cw, s, bg_card, border_card, row_div, text_pri, text_sec, accent_blue);
+                self.render_autostart_tab(pixmap, cx, cw, s, bg_card, border_card, row_div, text_pri, text_sec, accent_color, card_radius, is_win, is_dark);
             }
             SettingsTab::Skins => {
-                self.render_skins_tab(pixmap, cx, cw, s, bg_card, border_card, text_pri, text_sec, accent_blue);
+                self.render_skins_tab(pixmap, cx, cw, s, bg_card, border_card, text_pri, text_sec, accent_color, card_radius, is_win);
             }
             SettingsTab::Dialogue => {
-                self.render_dialogue_tab(pixmap, cx, cw, s, bg_card, border_card, text_pri, text_sec);
+                self.render_dialogue_tab(pixmap, cx, cw, s, bg_card, border_card, text_pri, text_sec, card_radius);
             }
             SettingsTab::Menu => {
-                self.render_menu_tab(pixmap, cx, cw, s, bg_card, border_card, row_div, text_pri, text_sec, accent_blue);
+                self.render_menu_tab(pixmap, cx, cw, s, bg_card, border_card, row_div, text_pri, text_sec, accent_color, card_radius, is_win, is_dark);
             }
         }
 
@@ -380,8 +440,20 @@ impl SettingsUi {
                 let toast_w = 260.0 * s;
                 let toast_x = ((SETTINGS_WIN_W as f32 * s) - toast_w) * 0.5;
                 let toast_y = (SETTINGS_WIN_H as f32 - 46.0) * s;
-                pixmap.fill_rounded_rect_sdf(toast_x, toast_y, toast_w, 28.0 * s, 14.0 * s, [28, 28, 30, (230.0 * alpha) as u8], 0.0, [0, 0, 0, 0]);
-                draw_text_into_pixmap(pixmap, msg, toast_x, toast_y + 6.0 * s, toast_w, 16.0 * s, 11.5 * s, 0.0, [255, 255, 255], alpha, TextAlignment::Center);
+                let toast_r = if is_win { 6.0 * s } else { 14.0 * s };
+                let toast_bg = if is_win {
+                    if is_dark { [45, 45, 45, (240.0 * alpha) as u8] } else { [255, 255, 255, (240.0 * alpha) as u8] }
+                } else {
+                    [28, 28, 30, (230.0 * alpha) as u8]
+                };
+                let toast_txt = if is_win && !is_dark { [26, 26, 26] } else { [255, 255, 255] };
+                let toast_border = if is_win {
+                    if is_dark { [255, 255, 255, (25.0 * alpha) as u8] } else { [0, 0, 0, (25.0 * alpha) as u8] }
+                } else {
+                    [0, 0, 0, 0]
+                };
+                pixmap.fill_rounded_rect_sdf(toast_x, toast_y, toast_w, 28.0 * s, toast_r, toast_bg, 1.0 * s, toast_border);
+                draw_text_into_pixmap(pixmap, msg, toast_x, toast_y + 6.0 * s, toast_w, 16.0 * s, 11.5 * s, 0.0, toast_txt, alpha, TextAlignment::Center);
             }
         }
     }
@@ -398,7 +470,10 @@ impl SettingsUi {
         row_div: [u8; 4],
         text_pri: [u8; 3],
         text_sec: [u8; 3],
-        accent_blue: [u8; 4],
+        accent: [u8; 4],
+        card_radius: f32,
+        is_win: bool,
+        is_dark: bool,
     ) {
         let base_y = 28.0 * s;
 
@@ -409,30 +484,29 @@ impl SettingsUi {
         // Card 1: 界面外观
         let c1_y = 80.0 * s;
         let c1_h = 46.0 * s;
-        pixmap.fill_rounded_rect_sdf(cx, c1_y, cw, c1_h, 8.0 * s, bg_card, 1.0 * s, border_card);
+        pixmap.fill_rounded_rect_sdf(cx, c1_y, cw, c1_h, card_radius, bg_card, 1.0 * s, border_card);
         draw_text_into_pixmap(pixmap, "界面外观", cx + 14.0 * s, c1_y + 9.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "设置窗口明暗主题风格，默认自动跟随系统", cx + 14.0 * s, c1_y + 25.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
-        // Theme option pill button
+        // Theme option button
         let theme_label = match self.temp_settings.theme.as_str() {
             "dark" => "深色模式",
             "light" => "浅色模式",
             _ => "跟随系统",
         };
         let pill_x = cx + cw - 96.0 * s;
-        pixmap.fill_rounded_rect_sdf(pill_x, c1_y + 11.0 * s, 84.0 * s, 24.0 * s, 6.0 * s, border_card, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, theme_label, pill_x, c1_y + 15.0 * s, 84.0 * s, 16.0 * s, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
+        self.render_button(pixmap, pill_x, c1_y + 11.0 * s, 84.0 * s, 24.0 * s, theme_label, s, is_win, is_dark, border_card, text_pri);
 
         // Card 2: 体型与物理
         let c2_y = c1_y + c1_h + 12.0 * s;
         let c2_h = 176.0 * s;
-        pixmap.fill_rounded_rect_sdf(cx, c2_y, cw, c2_h, 8.0 * s, bg_card, 1.0 * s, border_card);
+        pixmap.fill_rounded_rect_sdf(cx, c2_y, cw, c2_h, card_radius, bg_card, 1.0 * s, border_card);
 
         // Row 2.1: 缩放大小
         let r1_y = c2_y + 4.0 * s;
         draw_text_into_pixmap(pixmap, "缩放大小", cx + 14.0 * s, r1_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "挂件在屏幕上的呈现比例 (也可悬停直接滚轮平滑缩放)", cx + 14.0 * s, r1_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_slider(pixmap, cx + cw - 170.0 * s, r1_y + 15.0 * s, 110.0 * s, s, (self.temp_settings.scale - 0.5) / 1.5, accent_blue);
+        self.render_slider(pixmap, cx + cw - 170.0 * s, r1_y + 15.0 * s, 110.0 * s, s, (self.temp_settings.scale - 0.5) / 1.5, accent, is_win, is_dark);
         let scale_str = format!("{:.0}%", self.temp_settings.scale * 100.0);
         draw_text_into_pixmap(pixmap, &scale_str, cx + cw - 52.0 * s, r1_y + 13.0 * s, 40.0 * s, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Right);
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r1_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
@@ -447,15 +521,14 @@ impl SettingsUi {
             _ => "屏幕绝对落底 (0px)",
         };
         let floor_pill_x = cx + cw - 148.0 * s;
-        pixmap.fill_rounded_rect_sdf(floor_pill_x, r2_y + 10.0 * s, 136.0 * s, 24.0 * s, 6.0 * s, border_card, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, floor_label, floor_pill_x, r2_y + 14.0 * s, 136.0 * s, 16.0 * s, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
+        self.render_button(pixmap, floor_pill_x, r2_y + 10.0 * s, 136.0 * s, 24.0 * s, floor_label, s, is_win, is_dark, border_card, text_pri);
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r2_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 2.3: 重力加速度模拟
         let r3_y = r2_y + 44.0 * s;
         draw_text_into_pixmap(pixmap, "重力加速度模拟", cx + 14.0 * s, r3_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "释放后遵循弹性重力加速度下落，触底自然回弹", cx + 14.0 * s, r3_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_toggle(pixmap, cx + cw - 52.0 * s, r3_y + 11.0 * s, s, self.temp_settings.gravity_enabled);
+        self.render_toggle(pixmap, cx + cw - 52.0 * s, r3_y + 11.0 * s, s, self.temp_settings.gravity_enabled, is_win, is_dark, accent);
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r3_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 2.4: 屏幕位置校准 (复位居中)
@@ -463,40 +536,39 @@ impl SettingsUi {
         draw_text_into_pixmap(pixmap, "屏幕位置校准", cx + 14.0 * s, r4_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "将桌宠一键拉回屏幕安全正中央，避免逃出屏幕或遮挡", cx + 14.0 * s, r4_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         let reset_btn_x = cx + cw - 88.0 * s;
-        pixmap.fill_rounded_rect_sdf(reset_btn_x, r4_y + 10.0 * s, 76.0 * s, 24.0 * s, 6.0 * s, border_card, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, "复位居中", reset_btn_x, r4_y + 14.0 * s, 76.0 * s, 16.0 * s, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
+        self.render_button(pixmap, reset_btn_x, r4_y + 10.0 * s, 76.0 * s, 24.0 * s, "复位居中", s, is_win, is_dark, border_card, text_pri);
 
         // Card 3: 状态与交互
         let c3_y = c2_y + c2_h + 12.0 * s;
         let c3_h = 176.0 * s;
-        pixmap.fill_rounded_rect_sdf(cx, c3_y, cw, c3_h, 8.0 * s, bg_card, 1.0 * s, border_card);
+        pixmap.fill_rounded_rect_sdf(cx, c3_y, cw, c3_h, card_radius, bg_card, 1.0 * s, border_card);
 
         // Row 3.1: 实时额度卡片
         let r31_y = c3_y + 4.0 * s;
         draw_text_into_pixmap(pixmap, "实时额度卡片", cx + 14.0 * s, r31_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "在对话气泡中同步展示 Antigravity 5小时与周额度进度", cx + 14.0 * s, r31_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_toggle(pixmap, cx + cw - 52.0 * s, r31_y + 11.0 * s, s, self.temp_settings.show_quota);
+        self.render_toggle(pixmap, cx + cw - 52.0 * s, r31_y + 11.0 * s, s, self.temp_settings.show_quota, is_win, is_dark, accent);
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r31_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 3.2: 仅在 IDE 活跃
         let r32_y = r31_y + 44.0 * s;
         draw_text_into_pixmap(pixmap, "仅在 IDE 活跃时显示", cx + 14.0 * s, r32_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "前台为 Antigravity / VS Code / Cursor 时呈现，切出时隐匿", cx + 14.0 * s, r32_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_toggle(pixmap, cx + cw - 52.0 * s, r32_y + 11.0 * s, s, self.temp_settings.menu_config.ide_only);
+        self.render_toggle(pixmap, cx + cw - 52.0 * s, r32_y + 11.0 * s, s, self.temp_settings.menu_config.ide_only, is_win, is_dark, accent);
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r32_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 3.3: 完全穿透免打扰
         let r33_y = r32_y + 44.0 * s;
         draw_text_into_pixmap(pixmap, "完全穿透免打扰", cx + 14.0 * s, r33_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "猫猫处于只读透明状态，鼠标点击直接透传到底层应用", cx + 14.0 * s, r33_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_toggle(pixmap, cx + cw - 52.0 * s, r33_y + 11.0 * s, s, self.temp_settings.dnd_passthrough);
+        self.render_toggle(pixmap, cx + cw - 52.0 * s, r33_y + 11.0 * s, s, self.temp_settings.dnd_passthrough, is_win, is_dark, accent);
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r33_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 3.4: 动作音效
         let r34_y = r33_y + 44.0 * s;
         draw_text_into_pixmap(pixmap, "动作音效", cx + 14.0 * s, r34_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "播放挂件拖拽释放、抚摸互动与提示音效", cx + 14.0 * s, r34_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_toggle(pixmap, cx + cw - 52.0 * s, r34_y + 11.0 * s, s, self.temp_settings.sound_enabled);
+        self.render_toggle(pixmap, cx + cw - 52.0 * s, r34_y + 11.0 * s, s, self.temp_settings.sound_enabled, is_win, is_dark, accent);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -511,26 +583,28 @@ impl SettingsUi {
         _row_div: [u8; 4],
         text_pri: [u8; 3],
         text_sec: [u8; 3],
-        _accent_blue: [u8; 4],
+        accent: [u8; 4],
+        card_radius: f32,
+        is_win: bool,
+        is_dark: bool,
     ) {
         let base_y = 28.0 * s;
         draw_text_into_pixmap(pixmap, "自启动与更新", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "管理开机自启动配置与挂件版本检测", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
         let c1_y = 80.0 * s;
-        pixmap.fill_rounded_rect_sdf(cx, c1_y, cw, 68.0 * s, 8.0 * s, bg_card, 1.0 * s, border_card);
+        pixmap.fill_rounded_rect_sdf(cx, c1_y, cw, 68.0 * s, card_radius, bg_card, 1.0 * s, border_card);
         draw_text_into_pixmap(pixmap, "开机自动启动", cx + 14.0 * s, c1_y + 8.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "在系统登录完成后自动在托盘挂载大肥猫伴侣", cx + 14.0 * s, c1_y + 24.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_toggle(pixmap, cx + cw - 52.0 * s, c1_y + 12.0 * s, s, self.autostart_enabled);
+        self.render_toggle(pixmap, cx + cw - 52.0 * s, c1_y + 12.0 * s, s, self.autostart_enabled, is_win, is_dark, accent);
         draw_text_into_pixmap(pixmap, if self.autostart_enabled { "已开启系统开机自启" } else { "未开启自启，点击可在登录时自动拉起伴侣" }, cx + 14.0 * s, c1_y + 46.0 * s, cw - 28.0 * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
         let c2_y = c1_y + 80.0 * s;
-        pixmap.fill_rounded_rect_sdf(cx, c2_y, cw, 56.0 * s, 8.0 * s, bg_card, 1.0 * s, border_card);
+        pixmap.fill_rounded_rect_sdf(cx, c2_y, cw, 56.0 * s, card_radius, bg_card, 1.0 * s, border_card);
         draw_text_into_pixmap(pixmap, "当前版本", cx + 14.0 * s, c2_y + 8.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "v0.4.0 (Pure CPU 2D 软渲染引擎 · 单二进制)", cx + 14.0 * s, c2_y + 26.0 * s, 280.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         let btn_update_x = cx + cw - 88.0 * s;
-        pixmap.fill_rounded_rect_sdf(btn_update_x, c2_y + 14.0 * s, 76.0 * s, 26.0 * s, 6.0 * s, border_card, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, "检查更新", btn_update_x, c2_y + 19.0 * s, 76.0 * s, 16.0 * s, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
+        self.render_button(pixmap, btn_update_x, c2_y + 14.0 * s, 76.0 * s, 26.0 * s, "检查更新", s, is_win, is_dark, border_card, text_pri);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -544,7 +618,9 @@ impl SettingsUi {
         _border_card: [u8; 4],
         text_pri: [u8; 3],
         text_sec: [u8; 3],
-        accent_blue: [u8; 4],
+        accent: [u8; 4],
+        card_radius: f32,
+        is_win: bool,
     ) {
         let is_dark = self.is_dark_mode();
         let base_y = 28.0 * s;
@@ -555,12 +631,13 @@ impl SettingsUi {
         let card_w = 144.0 * s;
         let card_h = 168.0 * s;
 
-        // Outer Card Container with Active Blue Outline
-        pixmap.fill_rounded_rect_sdf(cx, card_y, card_w, card_h, 10.0 * s, bg_card, 1.5 * s, accent_blue);
+        // Outer Card Container with Active Accent Outline
+        pixmap.fill_rounded_rect_sdf(cx, card_y, card_w, card_h, card_radius + 2.0 * s, bg_card, 1.5 * s, accent);
 
         // Preview inner background box
         let preview_bg = if is_dark { [26, 26, 28, 220] } else { [240, 240, 244, 230] };
-        pixmap.fill_rounded_rect_sdf(cx + 8.0 * s, card_y + 8.0 * s, card_w - 16.0 * s, 98.0 * s, 8.0 * s, preview_bg, 0.0, [0, 0, 0, 0]);
+        let preview_r = if is_win { 4.0 * s } else { 8.0 * s };
+        pixmap.fill_rounded_rect_sdf(cx + 8.0 * s, card_y + 8.0 * s, card_w - 16.0 * s, 98.0 * s, preview_r, preview_bg, 0.0, [0, 0, 0, 0]);
 
         // Render the fat-cat sprite avatar into the preview area
         let tf = super::sprite::SpriteTransform {
@@ -581,8 +658,10 @@ impl SettingsUi {
         // "已启用" Badge in top-right of preview
         let badge_w = 42.0 * s;
         let badge_h = 18.0 * s;
-        pixmap.fill_rounded_rect_sdf(cx + card_w - badge_w - 12.0 * s, card_y + 12.0 * s, badge_w, badge_h, 4.0 * s, accent_blue, 0.0, [0, 0, 0, 0]);
-        draw_text_into_pixmap(pixmap, "已启用", cx + card_w - badge_w - 12.0 * s, card_y + 13.5 * s, badge_w, 14.0 * s, 10.0 * s, 0.2, [255, 255, 255], 1.0, TextAlignment::Center);
+        let badge_r = if is_win { 3.0 * s } else { 4.0 * s };
+        pixmap.fill_rounded_rect_sdf(cx + card_w - badge_w - 12.0 * s, card_y + 12.0 * s, badge_w, badge_h, badge_r, accent, 0.0, [0, 0, 0, 0]);
+        let badge_txt_color = if is_win && is_dark { [0, 0, 0] } else { [255, 255, 255] };
+        draw_text_into_pixmap(pixmap, "已启用", cx + card_w - badge_w - 12.0 * s, card_y + 13.5 * s, badge_w, 14.0 * s, 10.0 * s, 0.2, badge_txt_color, 1.0, TextAlignment::Center);
 
         // Character Name & Subtitle
         draw_text_into_pixmap(pixmap, "大肥猫", cx, card_y + 116.0 * s, card_w, 18.0 * s, 13.0 * s, 0.23, text_pri, 1.0, TextAlignment::Center);
@@ -599,6 +678,7 @@ impl SettingsUi {
         border_card: [u8; 4],
         text_pri: [u8; 3],
         text_sec: [u8; 3],
+        card_radius: f32,
     ) {
         let base_y = 28.0 * s;
         draw_text_into_pixmap(pixmap, "台词与问候", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
@@ -614,7 +694,7 @@ impl SettingsUi {
 
         for (i, (title, desc)) in cats.into_iter().enumerate() {
             let cy = (80.0 + (i as f32) * 58.0) * s;
-            pixmap.fill_rounded_rect_sdf(cx, cy, cw, 50.0 * s, 8.0 * s, bg_card, 1.0 * s, border_card);
+            pixmap.fill_rounded_rect_sdf(cx, cy, cw, 50.0 * s, card_radius, bg_card, 1.0 * s, border_card);
             draw_text_into_pixmap(pixmap, title, cx + 14.0 * s, cy + 8.0 * s, 260.0 * s, 16.0 * s, 12.5 * s, 0.2, text_pri, 1.0, TextAlignment::Left);
             draw_text_into_pixmap(pixmap, desc, cx + 14.0 * s, cy + 26.0 * s, 340.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         }
@@ -632,7 +712,10 @@ impl SettingsUi {
         row_div: [u8; 4],
         text_pri: [u8; 3],
         text_sec: [u8; 3],
-        accent_blue: [u8; 4],
+        accent: [u8; 4],
+        card_radius: f32,
+        is_win: bool,
+        is_dark: bool,
     ) {
         let base_y = 28.0 * s;
         draw_text_into_pixmap(pixmap, "右键菜单", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
@@ -654,11 +737,11 @@ impl SettingsUi {
 
         let card_y = 80.0 * s;
         let card_h = (menu_items.len() as f32) * 36.0 * s;
-        pixmap.fill_rounded_rect_sdf(cx, card_y, cw, card_h, 8.0 * s, bg_card, 1.0 * s, border_card);
+        pixmap.fill_rounded_rect_sdf(cx, card_y, cw, card_h, card_radius, bg_card, 1.0 * s, border_card);
 
         for (i, (name, checked)) in menu_items.into_iter().enumerate() {
             let ry = card_y + (i as f32) * 36.0 * s;
-            self.render_checkbox(pixmap, cx + 14.0 * s, ry + 10.0 * s, s, checked, accent_blue);
+            self.render_checkbox(pixmap, cx + 14.0 * s, ry + 9.0 * s, s, checked, accent, is_win, is_dark);
             draw_text_into_pixmap(pixmap, name, cx + 38.0 * s, ry + 9.0 * s, cw - 50.0 * s, 16.0 * s, 12.5 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
 
             if i < menu_items.len() - 1 {
@@ -667,46 +750,117 @@ impl SettingsUi {
         }
     }
 
-    fn render_toggle(&self, pixmap: &mut Pixmap, x: f32, y: f32, s: f32, on: bool) {
-        let w = 38.0 * s;
-        let h = 22.0 * s;
-        let r = 11.0 * s;
-        let track_col = if on { [52, 199, 89, 255] } else { [142, 142, 147, 120] };
-        pixmap.fill_rounded_rect_sdf(x, y, w, h, r, track_col, 0.0, [0, 0, 0, 0]);
-
-        let knob_x = if on { x + w - 19.0 * s } else { x + 3.0 * s };
-        pixmap.fill_circle_sdf(knob_x + 8.0 * s, y + 11.0 * s, 8.0 * s, [255, 255, 255, 255], 0.0, [0, 0, 0, 0]);
+    #[allow(clippy::too_many_arguments)]
+    fn render_button(
+        &self,
+        pixmap: &mut Pixmap,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        text: &str,
+        s: f32,
+        is_win: bool,
+        is_dark: bool,
+        border_card: [u8; 4],
+        text_pri: [u8; 3],
+    ) {
+        let r = if is_win { 4.0 * s } else { 6.0 * s };
+        let bg = if is_win {
+            if is_dark { [52, 52, 52, 255] } else { [251, 252, 253, 255] }
+        } else {
+            border_card
+        };
+        let stroke = if is_win {
+            if is_dark { [255, 255, 255, 22] } else { [209, 209, 209, 255] }
+        } else {
+            border_card
+        };
+        pixmap.fill_rounded_rect_sdf(x, y, w, h, r, bg, 1.0 * s, stroke);
+        draw_text_into_pixmap(pixmap, text, x, y + 4.0 * s, w, h - 8.0 * s, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
     }
 
-    fn render_slider(&self, pixmap: &mut Pixmap, x: f32, y: f32, w: f32, s: f32, pct: f32, accent: [u8; 4]) {
+    #[allow(clippy::too_many_arguments)]
+    fn render_toggle(&self, pixmap: &mut Pixmap, x: f32, y: f32, s: f32, on: bool, is_win: bool, is_dark: bool, accent: [u8; 4]) {
+        if is_win {
+            // WinUI 3 ToggleSwitch (Windows 11 Settings style)
+            let w = 40.0 * s;
+            let h = 20.0 * s;
+            let r = 10.0 * s;
+
+            if on {
+                // ON: filled with WinUI accent color (#0067C0 in light, #60CDFF in dark)
+                pixmap.fill_rounded_rect_sdf(x, y, w, h, r, accent, 0.0, [0, 0, 0, 0]);
+                let knob_x = x + w - 16.0 * s;
+                let knob_color = if is_dark { [0, 0, 0, 255] } else { [255, 255, 255, 255] };
+                pixmap.fill_circle_sdf(knob_x + 6.0 * s, y + 10.0 * s, 6.0 * s, knob_color, 0.0, [0, 0, 0, 0]);
+            } else {
+                // OFF: subtle background with crisp 1.2px stroke and contrasting knob
+                let track_bg = if is_dark { [40, 40, 40, 255] } else { [243, 243, 243, 255] };
+                let stroke_col = if is_dark { [158, 158, 158, 220] } else { [134, 134, 134, 220] };
+                pixmap.fill_rounded_rect_sdf(x, y, w, h, r, track_bg, 1.2 * s, stroke_col);
+                let knob_x = x + 4.0 * s;
+                let knob_color = if is_dark { [206, 206, 206, 255] } else { [93, 93, 93, 255] };
+                pixmap.fill_circle_sdf(knob_x + 5.0 * s, y + 10.0 * s, 5.0 * s, knob_color, 0.0, [0, 0, 0, 0]);
+            }
+        } else {
+            // macOS HIG style toggle
+            let w = 38.0 * s;
+            let h = 22.0 * s;
+            let r = 11.0 * s;
+            let track_col = if on { [52, 199, 89, 255] } else { [142, 142, 147, 120] };
+            pixmap.fill_rounded_rect_sdf(x, y, w, h, r, track_col, 0.0, [0, 0, 0, 0]);
+
+            let knob_x = if on { x + w - 19.0 * s } else { x + 3.0 * s };
+            pixmap.fill_circle_sdf(knob_x + 8.0 * s, y + 11.0 * s, 8.0 * s, [255, 255, 255, 255], 0.0, [0, 0, 0, 0]);
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_slider(&self, pixmap: &mut Pixmap, x: f32, y: f32, w: f32, s: f32, pct: f32, accent: [u8; 4], is_win: bool, is_dark: bool) {
         let track_h = 4.0 * s;
-        pixmap.fill_rounded_rect_sdf(x, y, w, track_h, 2.0 * s, [142, 142, 147, 80], 0.0, [0, 0, 0, 0]);
+        let track_bg = if is_win {
+            if is_dark { [255, 255, 255, 50] } else { [0, 0, 0, 50] }
+        } else {
+            [142, 142, 147, 80]
+        };
+        pixmap.fill_rounded_rect_sdf(x, y, w, track_h, 2.0 * s, track_bg, 0.0, [0, 0, 0, 0]);
         let filled_w = w * pct.clamp(0.0, 1.0);
         if filled_w > 1.0 {
             pixmap.fill_rounded_rect_sdf(x, y, filled_w, track_h, 2.0 * s, accent, 0.0, [0, 0, 0, 0]);
         }
         let knob_x = x + filled_w;
-        pixmap.fill_circle_sdf(knob_x, y + 2.0 * s, 7.0 * s, [255, 255, 255, 255], 0.5 * s, [0, 0, 0, 40]);
+        if is_win {
+            // WinUI 3 Slider Thumb
+            pixmap.fill_circle_sdf(knob_x, y + 2.0 * s, 7.5 * s, if is_dark { [32, 32, 32, 255] } else { [255, 255, 255, 255] }, 2.0 * s, accent);
+        } else {
+            pixmap.fill_circle_sdf(knob_x, y + 2.0 * s, 7.0 * s, [255, 255, 255, 255], 0.5 * s, [0, 0, 0, 40]);
+        }
     }
 
-    fn render_checkbox(&self, pixmap: &mut Pixmap, x: f32, y: f32, s: f32, checked: bool, accent: [u8; 4]) {
-        let size = 16.0 * s;
+    #[allow(clippy::too_many_arguments)]
+    fn render_checkbox(&self, pixmap: &mut Pixmap, x: f32, y: f32, s: f32, checked: bool, accent: [u8; 4], is_win: bool, is_dark: bool) {
+        let size = 18.0 * s;
         let r = 4.0 * s;
         if checked {
             pixmap.fill_rounded_rect_sdf(x, y, size, size, r, accent, 0.0, [0, 0, 0, 0]);
-            // Draw clean anti-aliased vector checkmark (Apple SF Symbols style)
             let thick = 1.8 * s;
-            let check_color = [255, 255, 255, 255];
-            let p1_x = x + 4.2 * s;
-            let p1_y = y + 8.2 * s;
-            let p2_x = x + 6.8 * s;
-            let p2_y = y + 11.4 * s;
-            let p3_x = x + 12.0 * s;
-            let p3_y = y + 4.8 * s;
+            let check_color = if is_win && is_dark { [0, 0, 0, 255] } else { [255, 255, 255, 255] };
+            let p1_x = x + 4.5 * s;
+            let p1_y = y + 9.2 * s;
+            let p2_x = x + 7.4 * s;
+            let p2_y = y + 12.8 * s;
+            let p3_x = x + 13.5 * s;
+            let p3_y = y + 5.2 * s;
             pixmap.draw_line_sdf(p1_x, p1_y, p2_x, p2_y, thick, check_color);
             pixmap.draw_line_sdf(p2_x, p2_y, p3_x, p3_y, thick, check_color);
         } else {
-            pixmap.fill_rounded_rect_sdf(x, y, size, size, r, [0, 0, 0, 0], 1.2 * s, [142, 142, 147, 180]);
+            let stroke_col = if is_win {
+                if is_dark { [158, 158, 158, 200] } else { [134, 134, 134, 200] }
+            } else {
+                [142, 142, 147, 180]
+            };
+            pixmap.fill_rounded_rect_sdf(x, y, size, size, r, [0, 0, 0, 0], 1.2 * s, stroke_col);
         }
     }
 }
@@ -775,5 +929,21 @@ mod tests {
         ui.mouse_pos = (50.0, 350.0);
         let drag_sidebar = ui.handle_mouse_down(1.0);
         assert!(matches!(drag_sidebar, Some(SettingsAction::DragWindow)));
+    }
+
+    #[test]
+    fn test_winui_theme_and_toggle_rendering() {
+        let mut ui = SettingsUi::new(PetSettings::default());
+        let mut pixmap = Pixmap::new(SETTINGS_WIN_W as u32, SETTINGS_WIN_H as u32);
+        
+        // Test light mode render
+        ui.temp_settings.theme = "light".to_string();
+        ui.render(&mut pixmap, 1.0);
+        assert!(!ui.is_dark_mode());
+
+        // Test dark mode render
+        ui.temp_settings.theme = "dark".to_string();
+        ui.render(&mut pixmap, 1.0);
+        assert!(ui.is_dark_mode());
     }
 }

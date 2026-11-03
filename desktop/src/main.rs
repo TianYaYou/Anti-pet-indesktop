@@ -350,7 +350,7 @@ mod cpu_2d_app {
             MONITOR_DEFAULTTOPRIMARY,
         };
         use windows::Win32::Graphics::Dwm::{
-            DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE,
+            DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWA_USE_IMMERSIVE_DARK_MODE,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
             GetCursorPos, SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
@@ -361,6 +361,26 @@ mod cpu_2d_app {
             pub bottom: f64,
             pub left: f64,
             pub right: f64,
+        }
+
+        pub fn apply_settings_window_style(hwnd_isize: isize, is_dark: bool) {
+            unsafe {
+                let hwnd = HWND(hwnd_isize as *mut _);
+                let corner_pref: u32 = 2; // DWMWCP_ROUND (Windows 11 rounded corners)
+                let _ = DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_WINDOW_CORNER_PREFERENCE,
+                    &corner_pref as *const _ as *const _,
+                    std::mem::size_of::<u32>() as u32,
+                );
+                let dark_val: i32 = if is_dark { 1 } else { 0 };
+                let _ = DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_USE_IMMERSIVE_DARK_MODE,
+                    &dark_val as *const _ as *const _,
+                    std::mem::size_of::<i32>() as u32,
+                );
+            }
         }
 
         pub fn strip_window_decorations(hwnd_isize: isize) {
@@ -592,6 +612,8 @@ mod cpu_2d_app {
 
         let mut settings_pixmap = Pixmap::new(SETTINGS_WIN_W as u32, SETTINGS_WIN_H as u32);
         let mut settings_ui = SettingsUi::new(settings.clone());
+        #[cfg(target_os = "windows")]
+        windows_window::apply_settings_window_style(settings_window.hwnd(), settings_ui.is_dark_mode());
         let mut is_settings_open = false;
 
         let mut pending_settings_save: Option<Instant> = None;
