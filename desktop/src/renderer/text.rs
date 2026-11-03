@@ -41,6 +41,12 @@ pub fn draw_text_into_pixmap(
         return;
     }
 
+    if let Some([cx0, cy0, cx1, cy1]) = pixmap.clip_rect {
+        if (x + w) <= cx0 as f32 || x >= cx1 as f32 || (y + h) <= cy0 as f32 || y >= cy1 as f32 {
+            return;
+        }
+    }
+
     #[cfg(target_os = "macos")]
     unsafe {
         macos_text::draw_text_into_pixmap(
@@ -151,6 +157,7 @@ pub mod macos_text {
         fn CGContextSetShouldSmoothFonts(c: *mut c_void, should: bool);
         fn CGContextSetAllowsFontSubpixelPositioning(c: *mut c_void, allows: bool);
         fn CGContextSetShouldSubpixelPositionFonts(c: *mut c_void, should: bool);
+        fn CGContextClipToRect(c: *mut c_void, rect: NSRect);
     }
 
     #[inline]
@@ -223,6 +230,14 @@ pub mod macos_text {
                 ty: 0.0,
             },
         );
+
+        if let Some([cx0, cy0, cx1, cy1]) = pixmap.clip_rect {
+            let clip = NSRect {
+                origin: NSPoint { x: cx0 as f64, y: cy0 as f64 },
+                size: NSSize { width: (cx1 - cx0) as f64, height: (cy1 - cy0) as f64 },
+            };
+            CGContextClipToRect(cg_ctx, clip);
+        }
 
         let ns_gfx_cls = objc_getClass(b"NSGraphicsContext\0".as_ptr());
         let ns_str_cls = objc_getClass(b"NSString\0".as_ptr());

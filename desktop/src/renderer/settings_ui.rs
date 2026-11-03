@@ -40,6 +40,7 @@ pub struct SettingsUi {
     pub original_settings: PetSettings,
     pub autostart_enabled: bool,
     pub scroll_y: f32,
+    pub general_scroll: f32,
     pub toast: Option<(String, Instant)>,
     pub hovered_id: Option<String>,
     pub pressed_id: Option<String>,
@@ -65,6 +66,7 @@ impl SettingsUi {
             original_settings: settings,
             autostart_enabled: false,
             scroll_y: 0.0,
+            general_scroll: 0.0,
             toast: None,
             hovered_id: None,
             pressed_id: None,
@@ -88,6 +90,7 @@ impl SettingsUi {
         self.temp_settings = current_settings.clone();
         self.original_settings = current_settings.clone();
         self.scroll_y = 0.0;
+        self.general_scroll = 0.0;
         self.dialogue_scroll = 0.0;
         self.editing_dialogue_idx = None;
         self.editing_buffer.clear();
@@ -275,6 +278,7 @@ impl SettingsUi {
                 if let Some(tab) = target_tab {
                     self.active_tab = tab;
                     self.scroll_y = 0.0;
+                    self.general_scroll = 0.0;
                     self.dialogue_scroll = 0.0;
                     self.cancel_editing();
                     return Some(SettingsAction::SelectTab(tab));
@@ -312,8 +316,9 @@ impl SettingsUi {
             SettingsTab::General => {
                 let (mx, my) = self.mouse_pos;
                 let cw_right = SETTINGS_WIN_W as f32 - 28.0;
+                let rel_y = my + self.general_scroll;
                 // Allow wheel over the scale slider row to smoothly adjust scale
-                if (130.0..170.0).contains(&my) && (cw_right - 180.0..cw_right).contains(&mx) {
+                if (134.0..166.0).contains(&rel_y) && (cw_right - 180.0..cw_right - 40.0).contains(&mx) {
                     let step = if dy > 0.0 { 0.05 } else { -0.05 };
                     let new_scale = ((self.temp_settings.scale + step) * 20.0).round() / 20.0;
                     let clamped = new_scale.clamp(0.5, 2.0);
@@ -321,6 +326,13 @@ impl SettingsUi {
                         self.temp_settings.scale = clamped;
                         return true;
                     }
+                }
+                // Smoothly scroll General tab content
+                let max_scroll = 56.0f32;
+                let new_scroll = (self.general_scroll - dy).clamp(0.0, max_scroll);
+                if (new_scroll - self.general_scroll).abs() > 0.01 {
+                    self.general_scroll = new_scroll;
+                    return true;
                 }
                 false
             }
@@ -335,7 +347,7 @@ impl SettingsUi {
                 false
             }
             SettingsTab::Menu => {
-                let max_scroll = ((9.0f32 * 44.0) - 280.0).max(0.0);
+                let max_scroll = 56.0f32;
                 let new_scroll = (self.scroll_y - dy).clamp(0.0, max_scroll);
                 if (new_scroll - self.scroll_y).abs() > 0.01 {
                     self.scroll_y = new_scroll;
@@ -398,32 +410,35 @@ impl SettingsUi {
 
         match self.active_tab {
             SettingsTab::General => {
-                // Fixed coordinates (General does not scroll)
-                if (74.0..120.0).contains(&my) && (cw_right - 96.0..cw_right).contains(&mx) {
+                if my < 70.0 || my > (SETTINGS_WIN_H as f32 - 48.0) {
+                    return None;
+                }
+                let rel_y = my + self.general_scroll;
+                if (74.0..120.0).contains(&rel_y) && (cw_right - 96.0..cw_right).contains(&mx) {
                     return Some("theme".to_string());
                 }
-                if (126.0..170.0).contains(&my) && (cw_right - 180.0..cw_right).contains(&mx) {
+                if (126.0..170.0).contains(&rel_y) && (cw_right - 180.0..cw_right).contains(&mx) {
                     return Some("scale".to_string());
                 }
-                if (170.0..214.0).contains(&my) && (cw_right - 160.0..cw_right).contains(&mx) {
+                if (170.0..214.0).contains(&rel_y) && (cw_right - 160.0..cw_right).contains(&mx) {
                     return Some("floor_mode".to_string());
                 }
-                if (214.0..258.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (214.0..258.0).contains(&rel_y) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("gravity".to_string());
                 }
-                if (258.0..302.0).contains(&my) && (cw_right - 88.0..cw_right).contains(&mx) {
+                if (258.0..302.0).contains(&rel_y) && (cw_right - 88.0..cw_right).contains(&mx) {
                     return Some("reset_pos".to_string());
                 }
-                if (310.0..348.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (310.0..348.0).contains(&rel_y) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("show_quota".to_string());
                 }
-                if (348.0..386.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (348.0..386.0).contains(&rel_y) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("ide_only".to_string());
                 }
-                if (386.0..424.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (386.0..424.0).contains(&rel_y) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("dnd".to_string());
                 }
-                if (424.0..462.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (424.0..462.0).contains(&rel_y) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("sound".to_string());
                 }
             }
@@ -455,9 +470,9 @@ impl SettingsUi {
                 if (126.0..154.0).contains(&my) && (cw_right - btn_w..cw_right).contains(&mx) {
                     return Some("add_dialogue".to_string());
                 }
-                // Dialogue items list (y: 164.0 .. SETTINGS_WIN_H - 54.0)
-                if my >= 164.0 && my <= (SETTINGS_WIN_H as f32 - 54.0) {
-                    let rel_y = my - 164.0 + self.dialogue_scroll;
+                // Dialogue items list (ONLY inside viewport y: 160.0 .. SETTINGS_WIN_H - 48.0)
+                if my >= 160.0 && my <= (SETTINGS_WIN_H as f32 - 48.0) {
+                    let rel_y = my - 160.0 + self.dialogue_scroll;
                     let row_idx = (rel_y / 42.0).floor() as i32;
                     if row_idx >= 0 {
                         let uidx = row_idx as usize;
@@ -473,11 +488,11 @@ impl SettingsUi {
                 }
             }
             SettingsTab::Menu => {
-                let content_y = my + self.scroll_y;
-                for i in 0..9 {
-                    let ry = 80.0 + (i as f32) * 44.0;
-                    if (ry..ry + 44.0).contains(&content_y) && (cw_right - 60.0..cw_right).contains(&mx) {
-                        return Some(format!("menu_{}", i));
+                if my >= 74.0 && my <= (SETTINGS_WIN_H as f32 - 48.0) {
+                    let content_y = my - 74.0 + self.scroll_y;
+                    let row_idx = (content_y / 44.0).floor() as i32;
+                    if (0..=8).contains(&row_idx) && (cw_right - 60.0..cw_right).contains(&mx) {
+                        return Some(format!("menu_{}", row_idx));
                     }
                 }
             }
@@ -492,7 +507,11 @@ impl SettingsUi {
 
         match self.active_tab {
             SettingsTab::General => {
-                if (74.0..120.0).contains(&my) && (cw_right - 96.0..cw_right).contains(&mx) {
+                if my < 70.0 || my > (SETTINGS_WIN_H as f32 - 48.0) {
+                    return SettingsAction::None;
+                }
+                let rel_y = my + self.general_scroll;
+                if (74.0..120.0).contains(&rel_y) && (cw_right - 96.0..cw_right).contains(&mx) {
                     self.temp_settings.theme = match self.temp_settings.theme.as_str() {
                         "system" => "light".to_string(),
                         "light" => "dark".to_string(),
@@ -500,12 +519,12 @@ impl SettingsUi {
                     };
                     return SettingsAction::Redraw;
                 }
-                if (126.0..170.0).contains(&my) && (cw_right - 180.0..cw_right).contains(&mx) {
+                if (126.0..170.0).contains(&rel_y) && (cw_right - 180.0..cw_right).contains(&mx) {
                     self.dragging_slider = Some("scale".to_string());
                     self.update_slider("scale", mx);
                     return SettingsAction::Redraw;
                 }
-                if (170.0..214.0).contains(&my) && (cw_right - 160.0..cw_right).contains(&mx) {
+                if (170.0..214.0).contains(&rel_y) && (cw_right - 160.0..cw_right).contains(&mx) {
                     self.temp_settings.floor_mode = match self.temp_settings.floor_mode.as_str() {
                         "taskbar" | "dock" => "bottom".to_string(),
                         "bottom" => "auto".to_string(),
@@ -513,26 +532,26 @@ impl SettingsUi {
                     };
                     return SettingsAction::Redraw;
                 }
-                if (214.0..258.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (214.0..258.0).contains(&rel_y) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.gravity_enabled = !self.temp_settings.gravity_enabled;
                     return SettingsAction::Redraw;
                 }
-                if (258.0..302.0).contains(&my) && (cw_right - 88.0..cw_right).contains(&mx) {
+                if (258.0..302.0).contains(&rel_y) && (cw_right - 88.0..cw_right).contains(&mx) {
                     return SettingsAction::ResetPosition;
                 }
-                if (310.0..348.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (310.0..348.0).contains(&rel_y) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.show_quota = !self.temp_settings.show_quota;
                     return SettingsAction::Redraw;
                 }
-                if (348.0..386.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (348.0..386.0).contains(&rel_y) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.menu_config.ide_only = !self.temp_settings.menu_config.ide_only;
                     return SettingsAction::Redraw;
                 }
-                if (386.0..424.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (386.0..424.0).contains(&rel_y) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.dnd_passthrough = !self.temp_settings.dnd_passthrough;
                     return SettingsAction::Redraw;
                 }
-                if (424.0..462.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (424.0..462.0).contains(&rel_y) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.sound_enabled = !self.temp_settings.sound_enabled;
                     return SettingsAction::Redraw;
                 }
@@ -581,9 +600,9 @@ impl SettingsUi {
                     self.dialogue_scroll = ((total as f32 * 42.0) - 280.0).max(0.0);
                     return SettingsAction::Redraw;
                 }
-                // Dialogue items (y: 164.0 .. SETTINGS_WIN_H - 54.0)
-                if my >= 164.0 && my <= (SETTINGS_WIN_H as f32 - 54.0) {
-                    let rel_y = my - 164.0 + self.dialogue_scroll;
+                // Dialogue items (ONLY inside viewport y: 160.0 .. SETTINGS_WIN_H - 48.0)
+                if my >= 160.0 && my <= (SETTINGS_WIN_H as f32 - 48.0) {
+                    let rel_y = my - 160.0 + self.dialogue_scroll;
                     let row_idx = (rel_y / 42.0).floor() as i32;
                     if row_idx >= 0 {
                         let uidx = row_idx as usize;
@@ -611,24 +630,25 @@ impl SettingsUi {
                 }
             }
             SettingsTab::Menu => {
-                let content_y = my + self.scroll_y;
-                let row_h = 44.0;
-                let base_y = 80.0;
-                let row_idx = ((content_y - base_y) / row_h).floor() as i32;
-                if (0..=8).contains(&row_idx) && (cw_right - 60.0..cw_right).contains(&mx) {
-                    match row_idx {
-                        0 => self.temp_settings.menu_config.open_antigravity = !self.temp_settings.menu_config.open_antigravity,
-                        1 => self.temp_settings.menu_config.settings = !self.temp_settings.menu_config.settings,
-                        2 => self.temp_settings.menu_config.random_dialogue = !self.temp_settings.menu_config.random_dialogue,
-                        3 => self.temp_settings.menu_config.pet_action = !self.temp_settings.menu_config.pet_action,
-                        4 => self.temp_settings.menu_config.quota = !self.temp_settings.menu_config.quota,
-                        5 => self.temp_settings.menu_config.dnd = !self.temp_settings.menu_config.dnd,
-                        6 => self.temp_settings.menu_config.sound = !self.temp_settings.menu_config.sound,
-                        7 => self.temp_settings.menu_config.zoom = !self.temp_settings.menu_config.zoom,
-                        8 => self.temp_settings.menu_config.gravity = !self.temp_settings.menu_config.gravity,
-                        _ => {}
+                if my >= 74.0 && my <= (SETTINGS_WIN_H as f32 - 48.0) {
+                    let content_y = my - 74.0 + self.scroll_y;
+                    let row_h = 44.0;
+                    let row_idx = (content_y / row_h).floor() as i32;
+                    if (0..=8).contains(&row_idx) && (cw_right - 60.0..cw_right).contains(&mx) {
+                        match row_idx {
+                            0 => self.temp_settings.menu_config.open_antigravity = !self.temp_settings.menu_config.open_antigravity,
+                            1 => self.temp_settings.menu_config.settings = !self.temp_settings.menu_config.settings,
+                            2 => self.temp_settings.menu_config.random_dialogue = !self.temp_settings.menu_config.random_dialogue,
+                            3 => self.temp_settings.menu_config.pet_action = !self.temp_settings.menu_config.pet_action,
+                            4 => self.temp_settings.menu_config.quota = !self.temp_settings.menu_config.quota,
+                            5 => self.temp_settings.menu_config.dnd = !self.temp_settings.menu_config.dnd,
+                            6 => self.temp_settings.menu_config.sound = !self.temp_settings.menu_config.sound,
+                            7 => self.temp_settings.menu_config.zoom = !self.temp_settings.menu_config.zoom,
+                            8 => self.temp_settings.menu_config.gravity = !self.temp_settings.menu_config.gravity,
+                            _ => {}
+                        }
+                        return SettingsAction::Redraw;
                     }
-                    return SettingsAction::Redraw;
                 }
             }
         }
@@ -941,12 +961,18 @@ impl SettingsUi {
     ) {
         let base_y = 28.0 * s;
 
-        // Header
+        // Header (Fixed)
         draw_text_into_pixmap(pixmap, "常规与显示", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
         draw_text_into_pixmap(pixmap, "调整大肥猫的桌面尺寸、物理重力下落与交互行为", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
 
+        // Viewport for scrolling content
+        let vp_y = 70.0 * s;
+        let vp_bottom = (SETTINGS_WIN_H as f32 - 52.0) * s;
+        let vp_h = vp_bottom - vp_y;
+        pixmap.set_clip_rect(cx - 2.0 * s, vp_y, cw + 4.0 * s, vp_h);
+
         // Card 1: 界面外观
-        let c1_y = 74.0 * s;
+        let c1_y = 74.0 * s - self.general_scroll * s;
         let c1_h = 44.0 * s;
         pixmap.fill_rounded_rect_sdf(cx, c1_y, cw, c1_h, card_radius, bg_card, 1.0 * s, border_card);
         draw_text_into_pixmap(pixmap, "界面外观", cx + 14.0 * s, c1_y + 4.0 * s, 200.0 * s, 18.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
@@ -1032,6 +1058,12 @@ impl SettingsUi {
         draw_text_into_pixmap(pixmap, "动作音效", cx + 14.0 * s, r34_y + 2.0 * s, 200.0 * s, 17.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
         draw_text_into_pixmap(pixmap, "播放挂件拖拽释放、抚摸互动与提示音效", cx + 14.0 * s, r34_y + 19.0 * s, 260.0 * s, 15.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
         self.render_toggle(pixmap, cx + cw - 52.0 * s, r34_y + 8.0 * s, s, self.temp_settings.sound_enabled, is_win, is_dark, accent, "sound");
+
+        // Clear clip rect
+        pixmap.clear_clip_rect();
+
+        // Native floating scrollbar
+        self.render_native_scrollbar(pixmap, cx + cw - 3.5 * s, vp_y, vp_h, 450.0 * s, self.general_scroll * s, s, is_dark);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1228,15 +1260,18 @@ impl SettingsUi {
         let add_btn_x = cx + cw - add_btn_w;
         self.render_button(pixmap, add_btn_x, bar_y, add_btn_w, add_btn_h, "+ 添加台词", s, is_win, is_dark, border_card, text_pri, "add_dialogue");
 
-        // 3. Scrollable List of Dialogue Lines (y = 164.0 * s, list_bottom = 466.0 * s)
-        let list_y = 164.0 * s;
-        let list_bottom = (SETTINGS_WIN_H as f32 - 54.0) * s;
+        // 3. Scrollable List of Dialogue Lines (strictly viewport-clipped)
+        let list_y = 160.0 * s;
+        let list_bottom = (SETTINGS_WIN_H as f32 - 52.0) * s;
+        let vp_h = list_bottom - list_y;
         let lines = self.active_dialogues();
+
+        pixmap.set_clip_rect(cx - 2.0 * s, list_y, cw + 4.0 * s, vp_h);
 
         for (i, line) in lines.iter().enumerate() {
             let row_y = list_y + (i as f32 * 42.0 * s) - self.dialogue_scroll * s;
             if row_y + 34.0 * s < list_y || row_y > list_bottom {
-                continue; // culled
+                continue; // completely off-screen
             }
 
             let is_editing = self.editing_dialogue_idx == Some(i);
@@ -1299,6 +1334,11 @@ impl SettingsUi {
             };
             draw_text_into_pixmap(pixmap, "删除", del_x, del_y, del_w, del_h, 10.5 * s, 0.0, del_txt_c, 0.9, TextAlignment::Center, VerticalAlignment::Middle);
         }
+
+        pixmap.clear_clip_rect();
+
+        let total_content_h = (lines.len() as f32 * 42.0 * s).max(vp_h);
+        self.render_native_scrollbar(pixmap, cx + cw - 3.5 * s, list_y, vp_h, total_content_h, self.dialogue_scroll * s, s, is_dark);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1319,6 +1359,7 @@ impl SettingsUi {
         is_dark: bool,
     ) {
         let base_y = 28.0 * s;
+        // Fixed Header
         draw_text_into_pixmap(pixmap, "右键菜单配置", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
         draw_text_into_pixmap(pixmap, "勾选或隐藏桌宠右键控制面板中的快捷功能项", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
 
@@ -1334,7 +1375,13 @@ impl SettingsUi {
             ("重力下落吸附", self.temp_settings.menu_config.gravity),
         ];
 
-        let c1_y = 80.0 * s - self.scroll_y * s;
+        let vp_y = 74.0 * s;
+        let vp_bottom = (SETTINGS_WIN_H as f32 - 52.0) * s;
+        let vp_h = vp_bottom - vp_y;
+
+        pixmap.set_clip_rect(cx - 2.0 * s, vp_y, cw + 4.0 * s, vp_h);
+
+        let c1_y = vp_y + 2.0 * s - self.scroll_y * s;
         let c1_h = 398.0 * s;
         pixmap.fill_rounded_rect_sdf(cx, c1_y, cw, c1_h, card_radius, bg_card, 1.0 * s, border_card);
 
@@ -1346,6 +1393,42 @@ impl SettingsUi {
                 pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, row_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
             }
         }
+
+        pixmap.clear_clip_rect();
+
+        let total_content_h = c1_h + 12.0 * s;
+        self.render_native_scrollbar(pixmap, cx + cw - 3.5 * s, vp_y, vp_h, total_content_h, self.scroll_y * s, s, is_dark);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_native_scrollbar(
+        &self,
+        pixmap: &mut Pixmap,
+        track_x: f32,
+        vp_y: f32,
+        vp_h: f32,
+        content_h: f32,
+        scroll_y: f32,
+        s: f32,
+        is_dark: bool,
+    ) {
+        if content_h <= vp_h || vp_h <= 0.0 {
+            return;
+        }
+        let max_scroll = (content_h - vp_h).max(1.0);
+        let pct = (scroll_y / max_scroll).clamp(0.0, 1.0);
+        let thumb_h = ((vp_h / content_h) * vp_h).clamp(28.0 * s, vp_h - 12.0 * s);
+        let available_track = vp_h - thumb_h;
+        let thumb_y = vp_y + pct * available_track;
+        let thumb_w = 3.5 * s;
+        let thumb_r = 1.75 * s;
+
+        let thumb_color = if is_dark {
+            [255, 255, 255, 75]
+        } else {
+            [0, 0, 0, 75]
+        };
+        pixmap.fill_rounded_rect_sdf(track_x, thumb_y, thumb_w, thumb_h, thumb_r, thumb_color, 0.0, [0, 0, 0, 0]);
     }
 
     #[allow(clippy::too_many_arguments)]

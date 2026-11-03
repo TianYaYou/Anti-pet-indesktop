@@ -14,6 +14,8 @@ pub struct Pixmap {
     pub height: u32,
     /// Stored as premultiplied `[R, G, B, A]` bytes (4 bytes per pixel).
     pub data: Vec<u8>,
+    /// Optional active viewport scissor clipping rectangle `[min_x, min_y, max_x, max_y]`.
+    pub clip_rect: Option<[i32; 4]>,
 }
 
 impl Pixmap {
@@ -25,6 +27,7 @@ impl Pixmap {
             width,
             height,
             data: vec![0u8; len],
+            clip_rect: None,
         }
     }
 
@@ -43,6 +46,27 @@ impl Pixmap {
     #[inline]
     pub fn clear(&mut self) {
         self.data.fill(0);
+        self.clip_rect = None;
+    }
+
+    /// Sets the active viewport scissor clipping rectangle.
+    #[inline]
+    pub fn set_clip_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
+        if w <= 0.0 || h <= 0.0 {
+            self.clip_rect = Some([0, 0, 0, 0]);
+            return;
+        }
+        let x0 = x.floor().max(0.0) as i32;
+        let y0 = y.floor().max(0.0) as i32;
+        let x1 = (x + w).ceil().min(self.width as f32) as i32;
+        let y1 = (y + h).ceil().min(self.height as f32) as i32;
+        self.clip_rect = Some([x0, y0, x1.max(x0), y1.max(y0)]);
+    }
+
+    /// Clears the active viewport scissor clipping rectangle.
+    #[inline]
+    pub fn clear_clip_rect(&mut self) {
+        self.clip_rect = None;
     }
 
     /// Returns the alpha value (0..=255) at physical pixel coordinates `(px, py)`.
@@ -60,6 +84,11 @@ impl Pixmap {
     pub fn blend_pixel(&mut self, x: i32, y: i32, r: u8, g: u8, b: u8, a: u8) {
         if a == 0 || x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
             return;
+        }
+        if let Some([cx0, cy0, cx1, cy1]) = self.clip_rect {
+            if x < cx0 || x >= cx1 || y < cy0 || y >= cy1 {
+                return;
+            }
         }
         let idx = ((y as usize) * (self.width as usize) + (x as usize)) * 4;
         let sa = a as u32;
@@ -92,6 +121,11 @@ impl Pixmap {
     pub fn blend_premultiplied(&mut self, x: i32, y: i32, pr: u8, pg: u8, pb: u8, pa: u8) {
         if pa == 0 || x < 0 || y < 0 || x >= self.width as i32 || y >= self.height as i32 {
             return;
+        }
+        if let Some([cx0, cy0, cx1, cy1]) = self.clip_rect {
+            if x < cx0 || x >= cx1 || y < cy0 || y >= cy1 {
+                return;
+            }
         }
         let idx = ((y as usize) * (self.width as usize) + (x as usize)) * 4;
         if pa == 255 {
@@ -134,14 +168,24 @@ impl Pixmap {
         let cx = x + half_w;
         let cy = y + half_h;
 
-        let min_x = (x - border_width - 2.0).floor().max(0.0) as i32;
-        let max_x = (x + w + border_width + 2.0)
+        let mut min_x = (x - border_width - 2.0).floor().max(0.0) as i32;
+        let mut max_x = (x + w + border_width + 2.0)
             .ceil()
             .min(self.width as f32 - 1.0) as i32;
-        let min_y = (y - border_width - 2.0).floor().max(0.0) as i32;
-        let max_y = (y + h + border_width + 2.0)
+        let mut min_y = (y - border_width - 2.0).floor().max(0.0) as i32;
+        let mut max_y = (y + h + border_width + 2.0)
             .ceil()
             .min(self.height as f32 - 1.0) as i32;
+
+        if let Some([cx0, cy0, cx1, cy1]) = self.clip_rect {
+            min_x = min_x.max(cx0);
+            max_x = max_x.min(cx1 - 1);
+            min_y = min_y.max(cy0);
+            max_y = max_y.min(cy1 - 1);
+            if min_x > max_x || min_y > max_y {
+                return;
+            }
+        }
 
         let bx = half_w - r;
         let by = half_h - r;
@@ -214,14 +258,24 @@ impl Pixmap {
         let cx = x + half_w;
         let cy = y + offset_y + half_h;
 
-        let min_x = (cx - half_w - blur - 2.0).floor().max(0.0) as i32;
-        let max_x = (cx + half_w + blur + 2.0)
+        let mut min_x = (cx - half_w - blur - 2.0).floor().max(0.0) as i32;
+        let mut max_x = (cx + half_w + blur + 2.0)
             .ceil()
             .min(self.width as f32 - 1.0) as i32;
-        let min_y = (cy - half_h - blur - 2.0).floor().max(0.0) as i32;
-        let max_y = (cy + half_h + blur + 2.0)
+        let mut min_y = (cy - half_h - blur - 2.0).floor().max(0.0) as i32;
+        let mut max_y = (cy + half_h + blur + 2.0)
             .ceil()
             .min(self.height as f32 - 1.0) as i32;
+
+        if let Some([cx0, cy0, cx1, cy1]) = self.clip_rect {
+            min_x = min_x.max(cx0);
+            max_x = max_x.min(cx1 - 1);
+            min_y = min_y.max(cy0);
+            max_y = max_y.min(cy1 - 1);
+            if min_x > max_x || min_y > max_y {
+                return;
+            }
+        }
 
         let bx = half_w - r;
         let by = half_h - r;
