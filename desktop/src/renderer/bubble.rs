@@ -1,4 +1,4 @@
-use super::text::{draw_text_into_pixmap, TextAlignment};
+use super::text::{draw_text_into_pixmap, TextAlignment, VerticalAlignment};
 use super::Pixmap;
 use crate::hit_test::LogicalRect;
 
@@ -356,6 +356,7 @@ fn draw_bubble_texts(
         text_pri,
         alpha_scale,
         TextAlignment::Center,
+        VerticalAlignment::Middle,
     );
 
     if show_quota {
@@ -376,6 +377,7 @@ fn draw_bubble_texts(
             text_sec,
             alpha_scale,
             TextAlignment::Left,
+            VerticalAlignment::Middle,
         );
 
         // 5h percentage: right-aligned, bold
@@ -392,6 +394,7 @@ fn draw_bubble_texts(
             text_pri,
             alpha_scale,
             TextAlignment::Right,
+            VerticalAlignment::Middle,
         );
 
         // Weekly label: left-aligned, 9.8px
@@ -407,6 +410,7 @@ fn draw_bubble_texts(
             text_sec,
             alpha_scale,
             TextAlignment::Left,
+            VerticalAlignment::Middle,
         );
 
         // Weekly percentage: right-aligned, bold
@@ -423,6 +427,7 @@ fn draw_bubble_texts(
             text_pri,
             alpha_scale,
             TextAlignment::Right,
+            VerticalAlignment::Middle,
         );
 
         // Quota meta: centered, 9.5px
@@ -439,6 +444,7 @@ fn draw_bubble_texts(
                 text_sec,
                 alpha_scale,
                 TextAlignment::Center,
+                VerticalAlignment::Middle,
             );
         }
     }

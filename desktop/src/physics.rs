@@ -42,6 +42,7 @@ pub struct PetPhysics {
 
     /// User preferences
     pub gravity_enabled: bool,
+    pub floor_mode: String, // "bottom", "taskbar", "dock", "auto"
     pub zoom_scale: f32,    // 0.60 ..= 1.80
 
     /// Elastic spring state for squish/stretch and tilt
@@ -93,6 +94,7 @@ impl PetPhysics {
             bounces: 0,
             target_floor_y: init_win_y,
             gravity_enabled: true,
+            floor_mode: "bottom".to_string(),
             zoom_scale: 1.0,
             scale_x: 1.0,
             scale_y: 1.0,
@@ -208,8 +210,12 @@ impl PetPhysics {
         let true_bottom_y = (mon_h - COMPACT_WIN_H).max(0.0);
         let dock_ledge_y = (mon_h - COMPACT_WIN_H - dock_bottom.max(0.0)).max(0.0);
 
-        let target_floor_y = if !self.gravity_enabled {
+        let target_floor_y = if !self.gravity_enabled || self.floor_mode == "free" {
             self.win_y
+        } else if self.floor_mode == "bottom" {
+            true_bottom_y
+        } else if (self.floor_mode == "taskbar" || self.floor_mode == "dock") && dock_bottom > 2.0 {
+            dock_ledge_y
         } else if dock_bottom > 2.0 {
             if self.win_y >= dock_ledge_y + 16.0 {
                 true_bottom_y
@@ -589,12 +595,20 @@ mod tests {
         let expected_bottom_y = mon_h - COMPACT_WIN_H; // 900 - 400 = 500.0
 
         // 1. Release in air with 72px dock -> default lands on top of taskbar / dock ledge
+        physics.floor_mode = "taskbar".to_string();
         physics.win_y = 200.0;
         physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
         assert_eq!(physics.target_floor_y, expected_dock_y);
         assert!(physics.target_floor_y + COMPACT_WIN_H <= mon_h - dock_bottom);
 
-        // 2. User drags cat below taskbar ledge -> lands on screen bottom edge
+        // 2. Explicit bottom mode lands strictly on screen bottom edge
+        physics.floor_mode = "bottom".to_string();
+        physics.win_y = 200.0;
+        physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
+        assert_eq!(physics.target_floor_y, expected_bottom_y);
+
+        // 3. User in auto mode drags cat below taskbar ledge -> lands on screen bottom edge
+        physics.floor_mode = "auto".to_string();
         physics.win_y = expected_dock_y + 20.0;
         physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
         assert_eq!(physics.target_floor_y, expected_bottom_y);

@@ -891,6 +891,7 @@ mod tests {
                 [0, 0, 0],
                 1.0,
                 text::TextAlignment::Left,
+                text::VerticalAlignment::Middle,
             );
         }
 

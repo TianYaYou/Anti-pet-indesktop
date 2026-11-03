@@ -10,6 +10,15 @@ pub enum TextAlignment {
     Right = 2,
 }
 
+/// Universal text vertical alignment.
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VerticalAlignment {
+    Top = 0,
+    Middle = 1,
+    Bottom = 2,
+}
+
 /// Renders CJK / English text into the `pixmap` software buffer using native OS typography.
 /// macOS: CoreText / NSString / AppKit font rendering directly into the Pixmap bitmap.
 /// Windows: Win32 GDI DrawTextW with system typography.
@@ -26,6 +35,7 @@ pub fn draw_text_into_pixmap(
     rgb: [u8; 3],
     alpha: f32,
     alignment: TextAlignment,
+    vertical_alignment: VerticalAlignment,
 ) {
     if text.is_empty() || w <= 1.0 || h <= 1.0 || alpha <= 0.01 {
         return;
@@ -45,6 +55,7 @@ pub fn draw_text_into_pixmap(
             rgb,
             alpha,
             alignment as isize,
+            vertical_alignment as isize,
         );
     }
 
@@ -62,12 +73,13 @@ pub fn draw_text_into_pixmap(
             rgb,
             alpha,
             alignment as isize,
+            vertical_alignment as isize,
         );
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
-        let _ = (pixmap, text, x, y, w, h, font_size_px, font_weight, rgb, alpha, alignment);
+        let _ = (pixmap, text, x, y, w, h, font_size_px, font_weight, rgb, alpha, alignment, vertical_alignment);
     }
 }
 
@@ -159,6 +171,7 @@ pub mod macos_text {
         rgb: [u8; 3],
         alpha: f32,
         alignment: isize,
+        vertical_alignment: isize,
     ) {
         if text.is_empty() || w <= 1.0 || h <= 1.0 || alpha <= 0.01 {
             return;
@@ -324,14 +337,30 @@ pub mod macos_text {
                 }
 
                 if !ns_text.is_null() {
+                    let msg_size: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) -> NSSize =
+                        std::mem::transmute(objc_msgSend as *const ());
+                    let text_size = msg_size(ns_text, sel(b"sizeWithAttributes:\0"), attrs);
+
+                    let draw_y = match vertical_alignment {
+                        0 => y as f64, // Top
+                        1 => { // Middle
+                            let diff = (h as f64) - text_size.height;
+                            y as f64 + (diff * 0.5).round().max(0.0)
+                        }
+                        _ => { // Bottom
+                            let diff = (h as f64) - text_size.height;
+                            y as f64 + diff.max(0.0)
+                        }
+                    };
+
                     let draw_rect = NSRect {
                         origin: NSPoint {
                             x: x as f64,
-                            y: y as f64,
+                            y: draw_y,
                         },
                         size: NSSize {
                             width: w as f64,
-                            height: h as f64,
+                            height: (text_size.height + 2.0).min(h as f64),
                         },
                     };
                     let msg_draw_rect: unsafe extern "C" fn(
@@ -367,8 +396,8 @@ pub mod windows_text {
     use windows::Win32::Graphics::Gdi::{
         CreateCompatibleDC, CreateDIBSection, CreateFontW, DeleteDC, DeleteObject, DrawTextW,
         SelectObject, SetBkMode, SetTextColor, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-        DIB_RGB_COLORS, DT_CENTER, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_WORDBREAK,
-        TRANSPARENT,
+        DIB_RGB_COLORS, DT_CALCRECT, DT_CENTER, DT_LEFT, DT_NOPREFIX, DT_RIGHT, DT_SINGLELINE,
+        DT_VCENTER, DT_WORDBREAK, TRANSPARENT,
     };
 
     #[allow(clippy::too_many_arguments)]
@@ -384,6 +413,7 @@ pub mod windows_text {
         rgb: [u8; 3],
         alpha: f32,
         alignment: isize, // 0 = Left, 1 = Center, 2 = Right
+        vertical_alignment: isize, // 0 = Top, 1 = Middle, 2 = Bottom
     ) {
         if text.is_empty() || w <= 1.0 || h <= 1.0 || alpha <= 0.01 {
             return;
@@ -453,18 +483,50 @@ pub mod windows_text {
                 SetTextColor(hdc, COLORREF(0x00FFFFFF)); // White text
 
                 let mut text_w: Vec<u16> = text.encode_utf16().collect();
-                let mut rect = RECT {
-                    left: 0,
-                    top: 0,
-                    right: bw,
-                    bottom: bh,
-                };
+                let is_single_line = !text.contains('\n') && !text.contains('\r');
                 let align_flag = match alignment {
                     1 => DT_CENTER,
                     2 => DT_RIGHT,
                     _ => DT_LEFT,
                 };
-                let flags = DT_NOPREFIX | DT_WORDBREAK | align_flag;
+
+                let (flags, mut rect) = if is_single_line && vertical_alignment == 1 {
+                    (
+                        DT_NOPREFIX | DT_SINGLELINE | DT_VCENTER | align_flag,
+                        RECT {
+                            left: 0,
+                            top: 0,
+                            right: bw,
+                            bottom: bh,
+                        },
+                    )
+                } else {
+                    let mut calc_rect = RECT {
+                        left: 0,
+                        top: 0,
+                        right: bw,
+                        bottom: bh,
+                    };
+                    let calc_flags = DT_NOPREFIX | DT_WORDBREAK | align_flag | DT_CALCRECT;
+                    DrawTextW(hdc, &mut text_w.clone(), &mut calc_rect, calc_flags);
+                    let text_h = (calc_rect.bottom - calc_rect.top).max(1);
+
+                    let offset_y = match vertical_alignment {
+                        1 => ((bh - text_h) / 2).max(0),
+                        2 => (bh - text_h).max(0),
+                        _ => 0,
+                    };
+
+                    (
+                        DT_NOPREFIX | DT_WORDBREAK | align_flag,
+                        RECT {
+                            left: 0,
+                            top: offset_y,
+                            right: bw,
+                            bottom: (offset_y + text_h).min(bh),
+                        },
+                    )
+                };
                 DrawTextW(hdc, &mut text_w, &mut rect, flags);
 
                 let dst = bits_ptr as *const u8;
@@ -534,6 +596,7 @@ mod tests {
             [255, 255, 255],
             1.0,
             TextAlignment::Left,
+            VerticalAlignment::Middle,
         );
     }
 }

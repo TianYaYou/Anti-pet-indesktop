@@ -774,6 +774,7 @@ mod cpu_2d_app {
         let mut physics = PetPhysics::new(default_x, default_y);
         physics.zoom_scale = settings.scale;
         physics.gravity_enabled = settings.gravity_enabled;
+        physics.floor_mode = settings.floor_mode.clone();
 
         let mut dialogue_bank = DialogueBank::load_from_root(state_watcher.root_dir(), "fat-cat");
         settings_ui.dialogue_bank = dialogue_bank.clone();
@@ -1106,6 +1107,22 @@ mod cpu_2d_app {
                                         state_watcher.save_settings(&settings);
                                         dirty_frame = true;
                                     }
+                                    PetMenuAction::SetFloorMode(mode) => {
+                                        settings.floor_mode = mode.to_string();
+                                        physics.floor_mode = mode.to_string();
+                                        menu_mgr.rebuild_menu(&settings);
+                                        if settings.gravity_enabled {
+                                            physics.on_drag_release(
+                                                mon_width,
+                                                mon_height,
+                                                last_dock.0,
+                                                last_dock.1,
+                                                last_dock.2,
+                                            );
+                                        }
+                                        state_watcher.save_settings(&settings);
+                                        dirty_frame = true;
+                                    }
                                     PetMenuAction::ToggleSound => {
                                         settings.sound_enabled = !settings.sound_enabled;
                                         audio.enabled = settings.sound_enabled;
@@ -1413,6 +1430,7 @@ mod cpu_2d_app {
                                                 dialogue_bank = settings_ui.dialogue_bank.clone();
                                                 physics.zoom_scale = settings.scale;
                                                 physics.gravity_enabled = settings.gravity_enabled;
+                                                physics.floor_mode = settings.floor_mode.clone();
                                                 audio.enabled = settings.sound_enabled;
                                                 bubble.show_quota = settings.show_quota;
                                                 bubble.text = dialogue_bank.pick_random("idle");
@@ -1469,6 +1487,7 @@ mod cpu_2d_app {
                                             settings_ui.original_settings = new_settings;
                                             physics.zoom_scale = settings.scale;
                                             physics.gravity_enabled = settings.gravity_enabled;
+                                            physics.floor_mode = settings.floor_mode.clone();
                                             audio.enabled = settings.sound_enabled;
                                             bubble.show_quota = settings.show_quota;
                                             menu_mgr.rebuild_menu(&settings);

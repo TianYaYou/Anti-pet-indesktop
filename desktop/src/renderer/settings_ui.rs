@@ -1,7 +1,7 @@
 use std::time::Instant;
 use crate::state_watcher::PetSettings;
 use super::Pixmap;
-use super::text::{draw_text_into_pixmap, TextAlignment};
+use super::text::{draw_text_into_pixmap, TextAlignment, VerticalAlignment};
 
 pub const SETTINGS_WIN_W: f64 = 780.0;
 pub const SETTINGS_WIN_H: f64 = 520.0;
@@ -309,19 +309,35 @@ impl SettingsUi {
 
     pub fn handle_mouse_wheel(&mut self, dy: f32) -> bool {
         match self.active_tab {
+            SettingsTab::General => {
+                let (mx, my) = self.mouse_pos;
+                let cw_right = SETTINGS_WIN_W as f32 - 28.0;
+                // Allow wheel over the scale slider row to smoothly adjust scale
+                if (130.0..170.0).contains(&my) && (cw_right - 180.0..cw_right).contains(&mx) {
+                    let step = if dy > 0.0 { 0.05 } else { -0.05 };
+                    let new_scale = ((self.temp_settings.scale + step) * 20.0).round() / 20.0;
+                    let clamped = new_scale.clamp(0.5, 2.0);
+                    if (clamped - self.temp_settings.scale).abs() > 0.001 {
+                        self.temp_settings.scale = clamped;
+                        return true;
+                    }
+                }
+                false
+            }
             SettingsTab::Dialogue => {
                 let count = self.active_dialogues().len();
                 let max_scroll = ((count as f32 * 42.0) - 280.0).max(0.0);
                 let new_scroll = (self.dialogue_scroll - dy).clamp(0.0, max_scroll);
-                if (new_scroll - self.dialogue_scroll).abs() > 0.5 {
+                if (new_scroll - self.dialogue_scroll).abs() > 0.01 {
                     self.dialogue_scroll = new_scroll;
                     return true;
                 }
                 false
             }
             SettingsTab::Menu => {
-                let new_scroll = (self.scroll_y - dy).clamp(0.0, 180.0);
-                if (new_scroll - self.scroll_y).abs() > 0.5 {
+                let max_scroll = ((9.0f32 * 44.0) - 280.0).max(0.0);
+                let new_scroll = (self.scroll_y - dy).clamp(0.0, max_scroll);
+                if (new_scroll - self.scroll_y).abs() > 0.01 {
                     self.scroll_y = new_scroll;
                     return true;
                 }
@@ -383,28 +399,31 @@ impl SettingsUi {
         match self.active_tab {
             SettingsTab::General => {
                 // Fixed coordinates (General does not scroll)
-                if (80.0..126.0).contains(&my) && (cw_right - 96.0..cw_right).contains(&mx) {
+                if (74.0..120.0).contains(&my) && (cw_right - 96.0..cw_right).contains(&mx) {
                     return Some("theme".to_string());
                 }
-                if (138.0..182.0).contains(&my) && (cw_right - 180.0..cw_right).contains(&mx) {
+                if (126.0..170.0).contains(&my) && (cw_right - 180.0..cw_right).contains(&mx) {
                     return Some("scale".to_string());
                 }
-                if (182.0..226.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (170.0..214.0).contains(&my) && (cw_right - 160.0..cw_right).contains(&mx) {
+                    return Some("floor_mode".to_string());
+                }
+                if (214.0..258.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("gravity".to_string());
                 }
-                if (226.0..270.0).contains(&my) && (cw_right - 88.0..cw_right).contains(&mx) {
+                if (258.0..302.0).contains(&my) && (cw_right - 88.0..cw_right).contains(&mx) {
                     return Some("reset_pos".to_string());
                 }
-                if (282.0..326.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (310.0..348.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("show_quota".to_string());
                 }
-                if (326.0..370.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (348.0..386.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("ide_only".to_string());
                 }
-                if (370.0..414.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (386.0..424.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("dnd".to_string());
                 }
-                if (414.0..458.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (424.0..462.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     return Some("sound".to_string());
                 }
             }
@@ -473,7 +492,7 @@ impl SettingsUi {
 
         match self.active_tab {
             SettingsTab::General => {
-                if (80.0..126.0).contains(&my) && (cw_right - 96.0..cw_right).contains(&mx) {
+                if (74.0..120.0).contains(&my) && (cw_right - 96.0..cw_right).contains(&mx) {
                     self.temp_settings.theme = match self.temp_settings.theme.as_str() {
                         "system" => "light".to_string(),
                         "light" => "dark".to_string(),
@@ -481,31 +500,39 @@ impl SettingsUi {
                     };
                     return SettingsAction::Redraw;
                 }
-                if (138.0..182.0).contains(&my) && (cw_right - 180.0..cw_right).contains(&mx) {
+                if (126.0..170.0).contains(&my) && (cw_right - 180.0..cw_right).contains(&mx) {
                     self.dragging_slider = Some("scale".to_string());
                     self.update_slider("scale", mx);
                     return SettingsAction::Redraw;
                 }
-                if (182.0..226.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (170.0..214.0).contains(&my) && (cw_right - 160.0..cw_right).contains(&mx) {
+                    self.temp_settings.floor_mode = match self.temp_settings.floor_mode.as_str() {
+                        "taskbar" | "dock" => "bottom".to_string(),
+                        "bottom" => "auto".to_string(),
+                        _ => "taskbar".to_string(),
+                    };
+                    return SettingsAction::Redraw;
+                }
+                if (214.0..258.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.gravity_enabled = !self.temp_settings.gravity_enabled;
                     return SettingsAction::Redraw;
                 }
-                if (226.0..270.0).contains(&my) && (cw_right - 88.0..cw_right).contains(&mx) {
+                if (258.0..302.0).contains(&my) && (cw_right - 88.0..cw_right).contains(&mx) {
                     return SettingsAction::ResetPosition;
                 }
-                if (282.0..326.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (310.0..348.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.show_quota = !self.temp_settings.show_quota;
                     return SettingsAction::Redraw;
                 }
-                if (326.0..370.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (348.0..386.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.menu_config.ide_only = !self.temp_settings.menu_config.ide_only;
                     return SettingsAction::Redraw;
                 }
-                if (370.0..414.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (386.0..424.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.dnd_passthrough = !self.temp_settings.dnd_passthrough;
                     return SettingsAction::Redraw;
                 }
-                if (414.0..458.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
+                if (424.0..462.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.sound_enabled = !self.temp_settings.sound_enabled;
                     return SettingsAction::Redraw;
                 }
@@ -697,8 +724,8 @@ impl SettingsUi {
             let _ = self.cat_sprite.draw(pixmap, &tf_avatar, s);
 
             let header_txt_x = icon_box_x + icon_box_size + 10.0 * s;
-            draw_text_into_pixmap(pixmap, "Anti-Pet", header_txt_x, icon_box_y + 3.0 * s, (SIDEBAR_W - 68.0) * s, 16.0 * s, 13.5 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
-            draw_text_into_pixmap(pixmap, "伴侣偏好设置", header_txt_x, icon_box_y + 19.0 * s, (SIDEBAR_W - 68.0) * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, "Anti-Pet", header_txt_x, icon_box_y + 3.0 * s, (SIDEBAR_W - 68.0) * s, 16.0 * s, 13.5 * s, 0.35, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+            draw_text_into_pixmap(pixmap, "伴侣偏好设置", header_txt_x, icon_box_y + 19.0 * s, (SIDEBAR_W - 68.0) * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Left, VerticalAlignment::Middle);
         }
 
         // 2. Fill content area with solid background
@@ -814,12 +841,12 @@ impl SettingsUi {
             // Clean text-only navigation (no extra icons, precisely vertically centered)
             let text_x = if is_win { 22.0 * s } else { 24.0 * s };
             let weight = if is_active { 0.3 } else { 0.0 };
-            draw_text_into_pixmap(pixmap, title, text_x, ty + 6.0 * s, (SIDEBAR_W - 36.0) * s, 16.0 * s, 12.5 * s, weight, txt_col, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, title, text_x, ty, (SIDEBAR_W - 36.0) * s, 32.0 * s, 12.5 * s, weight, txt_col, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
         }
 
         // Version badge at the bottom of the sidebar
         let version_y = (SETTINGS_WIN_H as f32 - 68.0) * s;
-        draw_text_into_pixmap(pixmap, "Anti-Pet v0.4.1", 22.0 * s, version_y, (SIDEBAR_W - 44.0) * s, 16.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "Anti-Pet v0.4.1", 22.0 * s, version_y, (SIDEBAR_W - 44.0) * s, 16.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Left, VerticalAlignment::Middle);
 
         // 5. Render Right Content Area
         let cx = (SIDEBAR_W + 28.0) * s;
@@ -854,7 +881,7 @@ impl SettingsUi {
         pixmap.fill_rounded_rect_sdf(0.0, footer_y, w_px as f32, footer_h, 0.0, bg_footer, 0.0, [0, 0, 0, 0]);
         pixmap.fill_rounded_rect_sdf(0.0, footer_y, w_px as f32, 1.0 * s, 0.0, div_col, 0.0, [0, 0, 0, 0]);
 
-        draw_text_into_pixmap(pixmap, "配置与台词变更将在点击确定后立即保存生效", 22.0 * s, footer_y + 15.5 * s, 360.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "配置与台词变更将在点击确定后立即保存生效", 22.0 * s, footer_y, 360.0 * s, footer_h, 11.0 * s, 0.0, text_sec, 0.85, TextAlignment::Left, VerticalAlignment::Middle);
 
         // Cancel Button
         let cancel_w = 76.0 * s;
@@ -890,7 +917,7 @@ impl SettingsUi {
                     [0, 0, 0, 0]
                 };
                 pixmap.fill_rounded_rect_sdf(toast_x, toast_y, toast_w, 28.0 * s, toast_r, toast_bg, 1.0 * s, toast_border);
-                draw_text_into_pixmap(pixmap, msg, toast_x, toast_y + 6.0 * s, toast_w, 16.0 * s, 11.5 * s, 0.0, toast_txt, alpha, TextAlignment::Center);
+                draw_text_into_pixmap(pixmap, msg, toast_x, toast_y, toast_w, 28.0 * s, 11.5 * s, 0.0, toast_txt, alpha, TextAlignment::Center, VerticalAlignment::Middle);
             }
         }
     }
@@ -915,15 +942,15 @@ impl SettingsUi {
         let base_y = 28.0 * s;
 
         // Header
-        draw_text_into_pixmap(pixmap, "常规与显示", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "调整大肥猫的桌面尺寸、物理重力下落与交互行为", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "常规与显示", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "调整大肥猫的桌面尺寸、物理重力下落与交互行为", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
 
         // Card 1: 界面外观
-        let c1_y = 80.0 * s;
-        let c1_h = 46.0 * s;
+        let c1_y = 74.0 * s;
+        let c1_h = 44.0 * s;
         pixmap.fill_rounded_rect_sdf(cx, c1_y, cw, c1_h, card_radius, bg_card, 1.0 * s, border_card);
-        draw_text_into_pixmap(pixmap, "界面外观", cx + 14.0 * s, c1_y + 9.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "设置窗口明暗主题风格，默认自动跟随系统", cx + 14.0 * s, c1_y + 25.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "界面外观", cx + 14.0 * s, c1_y + 4.0 * s, 200.0 * s, 18.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "设置窗口明暗主题风格，默认自动跟随系统", cx + 14.0 * s, c1_y + 22.0 * s, 260.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
 
         let theme_label = match self.temp_settings.theme.as_str() {
             "dark" => "深色模式",
@@ -931,67 +958,80 @@ impl SettingsUi {
             _ => "跟随系统",
         };
         let pill_x = cx + cw - 96.0 * s;
-        self.render_button(pixmap, pill_x, c1_y + 11.0 * s, 84.0 * s, 24.0 * s, theme_label, s, is_win, is_dark, border_card, text_pri, "theme");
+        self.render_button(pixmap, pill_x, c1_y + 10.0 * s, 84.0 * s, 24.0 * s, theme_label, s, is_win, is_dark, border_card, text_pri, "theme");
 
-        // Card 2: 体型与物理 (3 rows)
-        let c2_y = c1_y + c1_h + 12.0 * s;
-        let c2_h = 132.0 * s;
+        // Card 2: 体型与物理 (4 rows)
+        let c2_y = c1_y + c1_h + 8.0 * s;
+        let c2_h = 176.0 * s;
         pixmap.fill_rounded_rect_sdf(cx, c2_y, cw, c2_h, card_radius, bg_card, 1.0 * s, border_card);
 
         // Row 2.1: 缩放大小
-        let r1_y = c2_y + 4.0 * s;
-        draw_text_into_pixmap(pixmap, "缩放大小", cx + 14.0 * s, r1_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "挂件在屏幕上的呈现比例 (也可悬停直接滚轮平滑缩放)", cx + 14.0 * s, r1_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_slider(pixmap, cx + cw - 170.0 * s, r1_y + 15.0 * s, 110.0 * s, s, (self.temp_settings.scale - 0.5) / 1.5, accent, is_win, is_dark);
+        let r1_y = c2_y;
+        draw_text_into_pixmap(pixmap, "缩放大小", cx + 14.0 * s, r1_y + 4.0 * s, 200.0 * s, 18.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "挂件在屏幕上的呈现比例 (也可悬停直接滚轮平滑缩放)", cx + 14.0 * s, r1_y + 22.0 * s, 260.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        self.render_slider(pixmap, cx + cw - 170.0 * s, r1_y + 18.0 * s, 110.0 * s, s, (self.temp_settings.scale - 0.5) / 1.5, accent, is_win, is_dark);
         let scale_str = format!("{:.0}%", self.temp_settings.scale * 100.0);
-        draw_text_into_pixmap(pixmap, &scale_str, cx + cw - 52.0 * s, r1_y + 13.0 * s, 40.0 * s, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Right);
+        draw_text_into_pixmap(pixmap, &scale_str, cx + cw - 52.0 * s, r1_y + 13.0 * s, 40.0 * s, 18.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Right, VerticalAlignment::Middle);
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r1_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
-        // Row 2.2: 重力加速度模拟
+        // Row 2.2: 落地吸附模式 (Restored)
         let r2_y = r1_y + 44.0 * s;
-        draw_text_into_pixmap(pixmap, "重力加速度模拟", cx + 14.0 * s, r2_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "释放后遵循弹性重力吸附到任务栏或底边，拖到底部探头", cx + 14.0 * s, r2_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_toggle(pixmap, cx + cw - 52.0 * s, r2_y + 11.0 * s, s, self.temp_settings.gravity_enabled, is_win, is_dark, accent, "gravity");
+        draw_text_into_pixmap(pixmap, "落地吸附模式", cx + 14.0 * s, r2_y + 4.0 * s, 200.0 * s, 18.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "拖拽松手后猫猫下落吸附的目标基准线", cx + 14.0 * s, r2_y + 22.0 * s, 260.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        let floor_label = match self.temp_settings.floor_mode.as_str() {
+            "bottom" => "屏幕绝对落底 (0px)",
+            "dock" | "taskbar" => "任务栏/程序坞上方",
+            _ => "智能自适应",
+        };
+        let floor_btn_x = cx + cw - 148.0 * s;
+        self.render_button(pixmap, floor_btn_x, r2_y + 10.0 * s, 136.0 * s, 24.0 * s, floor_label, s, is_win, is_dark, border_card, text_pri, "floor_mode");
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r2_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
-        // Row 2.3: 屏幕位置校准
+        // Row 2.3: 重力加速度模拟
         let r3_y = r2_y + 44.0 * s;
-        draw_text_into_pixmap(pixmap, "屏幕位置校准", cx + 14.0 * s, r3_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "将桌宠一键拉回屏幕安全正中央，避免逃出屏幕或遮挡", cx + 14.0 * s, r3_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "重力加速度模拟", cx + 14.0 * s, r3_y + 4.0 * s, 200.0 * s, 18.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "释放后遵循弹性重力吸附到任务栏或底边，触底自然回弹", cx + 14.0 * s, r3_y + 22.0 * s, 260.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        self.render_toggle(pixmap, cx + cw - 52.0 * s, r3_y + 11.0 * s, s, self.temp_settings.gravity_enabled, is_win, is_dark, accent, "gravity");
+        pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r3_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
+
+        // Row 2.4: 屏幕位置校准
+        let r4_y = r3_y + 44.0 * s;
+        draw_text_into_pixmap(pixmap, "屏幕位置校准", cx + 14.0 * s, r4_y + 4.0 * s, 200.0 * s, 18.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "将桌宠一键拉回屏幕安全正中央，避免逃出屏幕或遮挡", cx + 14.0 * s, r4_y + 22.0 * s, 260.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
         let reset_btn_x = cx + cw - 88.0 * s;
-        self.render_button(pixmap, reset_btn_x, r3_y + 10.0 * s, 76.0 * s, 24.0 * s, "复位居中", s, is_win, is_dark, border_card, text_pri, "reset_pos");
+        self.render_button(pixmap, reset_btn_x, r4_y + 10.0 * s, 76.0 * s, 24.0 * s, "复位居中", s, is_win, is_dark, border_card, text_pri, "reset_pos");
 
         // Card 3: 状态与交互 (4 rows)
-        let c3_y = c2_y + c2_h + 12.0 * s;
-        let c3_h = 176.0 * s;
+        let c3_y = c2_y + c2_h + 8.0 * s;
+        let c3_h = 152.0 * s;
         pixmap.fill_rounded_rect_sdf(cx, c3_y, cw, c3_h, card_radius, bg_card, 1.0 * s, border_card);
 
         // Row 3.1: 实时额度卡片
-        let r31_y = c3_y + 4.0 * s;
-        draw_text_into_pixmap(pixmap, "实时额度卡片", cx + 14.0 * s, r31_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "在对话气泡中同步展示 Antigravity 5小时与周额度进度", cx + 14.0 * s, r31_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_toggle(pixmap, cx + cw - 52.0 * s, r31_y + 11.0 * s, s, self.temp_settings.show_quota, is_win, is_dark, accent, "show_quota");
-        pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r31_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
+        let r31_y = c3_y;
+        draw_text_into_pixmap(pixmap, "实时额度卡片", cx + 14.0 * s, r31_y + 2.0 * s, 200.0 * s, 17.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "在对话气泡中同步展示 Antigravity 5小时与周额度进度", cx + 14.0 * s, r31_y + 19.0 * s, 260.0 * s, 15.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        self.render_toggle(pixmap, cx + cw - 52.0 * s, r31_y + 8.0 * s, s, self.temp_settings.show_quota, is_win, is_dark, accent, "show_quota");
+        pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r31_y + 37.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 3.2: 仅在 IDE 活跃
-        let r32_y = r31_y + 44.0 * s;
-        draw_text_into_pixmap(pixmap, "仅在 IDE 活跃时显示", cx + 14.0 * s, r32_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "前台为 Antigravity / VS Code / Cursor 时呈现，切出时隐匿", cx + 14.0 * s, r32_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_toggle(pixmap, cx + cw - 52.0 * s, r32_y + 11.0 * s, s, self.temp_settings.menu_config.ide_only, is_win, is_dark, accent, "ide_only");
-        pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r32_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
+        let r32_y = r31_y + 38.0 * s;
+        draw_text_into_pixmap(pixmap, "仅在 IDE 活跃时显示", cx + 14.0 * s, r32_y + 2.0 * s, 200.0 * s, 17.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "前台为 Antigravity / VS Code / Cursor 时呈现，切出时隐匿", cx + 14.0 * s, r32_y + 19.0 * s, 260.0 * s, 15.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        self.render_toggle(pixmap, cx + cw - 52.0 * s, r32_y + 8.0 * s, s, self.temp_settings.menu_config.ide_only, is_win, is_dark, accent, "ide_only");
+        pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r32_y + 37.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 3.3: 完全穿透免打扰
-        let r33_y = r32_y + 44.0 * s;
-        draw_text_into_pixmap(pixmap, "完全穿透免打扰", cx + 14.0 * s, r33_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "猫猫处于只读透明状态，鼠标点击直接透传到底层应用", cx + 14.0 * s, r33_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_toggle(pixmap, cx + cw - 52.0 * s, r33_y + 11.0 * s, s, self.temp_settings.dnd_passthrough, is_win, is_dark, accent, "dnd");
-        pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r33_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
+        let r33_y = r32_y + 38.0 * s;
+        draw_text_into_pixmap(pixmap, "完全穿透免打扰", cx + 14.0 * s, r33_y + 2.0 * s, 200.0 * s, 17.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "猫猫处于只读透明状态，鼠标点击直接透传到底层应用", cx + 14.0 * s, r33_y + 19.0 * s, 260.0 * s, 15.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        self.render_toggle(pixmap, cx + cw - 52.0 * s, r33_y + 8.0 * s, s, self.temp_settings.dnd_passthrough, is_win, is_dark, accent, "dnd");
+        pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r33_y + 37.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 3.4: 动作音效
-        let r34_y = r33_y + 44.0 * s;
-        draw_text_into_pixmap(pixmap, "动作音效", cx + 14.0 * s, r34_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "播放挂件拖拽释放、抚摸互动与提示音效", cx + 14.0 * s, r34_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
-        self.render_toggle(pixmap, cx + cw - 52.0 * s, r34_y + 11.0 * s, s, self.temp_settings.sound_enabled, is_win, is_dark, accent, "sound");
+        let r34_y = r33_y + 38.0 * s;
+        draw_text_into_pixmap(pixmap, "动作音效", cx + 14.0 * s, r34_y + 2.0 * s, 200.0 * s, 17.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "播放挂件拖拽释放、抚摸互动与提示音效", cx + 14.0 * s, r34_y + 19.0 * s, 260.0 * s, 15.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        self.render_toggle(pixmap, cx + cw - 52.0 * s, r34_y + 8.0 * s, s, self.temp_settings.sound_enabled, is_win, is_dark, accent, "sound");
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1012,8 +1052,8 @@ impl SettingsUi {
         is_dark: bool,
     ) {
         let base_y = 28.0 * s;
-        draw_text_into_pixmap(pixmap, "自启动与更新", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "管理系统登录自启动服务与检查最新桌面伴侣版本", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "自启动与更新", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "管理系统登录自启动服务与检查最新桌面伴侣版本", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
 
         let c1_y = 80.0 * s;
         let c1_h = 92.0 * s;
@@ -1021,15 +1061,15 @@ impl SettingsUi {
 
         // Row 1: 开机自启动
         let r1_y = c1_y + 4.0 * s;
-        draw_text_into_pixmap(pixmap, "开机时自动启动", cx + 14.0 * s, r1_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "在系统开机登录后自动在托盘区唤起桌宠，陪伴编码", cx + 14.0 * s, r1_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "开机时自动启动", cx + 14.0 * s, r1_y + 4.0 * s, 200.0 * s, 18.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "在系统开机登录后自动在托盘区唤起桌宠，陪伴编码", cx + 14.0 * s, r1_y + 22.0 * s, 260.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
         self.render_toggle(pixmap, cx + cw - 52.0 * s, r1_y + 11.0 * s, s, self.autostart_enabled, is_win, is_dark, accent, "autostart");
         pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, r1_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
 
         // Row 2: 检查更新
         let r2_y = r1_y + 44.0 * s;
-        draw_text_into_pixmap(pixmap, "软件版本检查", cx + 14.0 * s, r2_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "当前版本：v0.4.1", cx + 14.0 * s, r2_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "软件版本检查", cx + 14.0 * s, r2_y + 4.0 * s, 200.0 * s, 18.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "当前版本：v0.4.1", cx + 14.0 * s, r2_y + 22.0 * s, 260.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
         let btn_x = cx + cw - 88.0 * s;
         self.render_button(pixmap, btn_x, r2_y + 10.0 * s, 76.0 * s, 24.0 * s, "检查更新", s, is_win, is_dark, border_card, text_pri, "check_update");
     }
@@ -1050,8 +1090,8 @@ impl SettingsUi {
         _is_win: bool,
     ) {
         let base_y = 28.0 * s;
-        draw_text_into_pixmap(pixmap, "皮肤管理", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "选择个性化猫咪伴侣皮肤与动作外观", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "皮肤管理", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "选择个性化猫咪伴侣皮肤与动作外观", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
 
         let card_w = 180.0 * s;
         let card_h = 160.0 * s;
@@ -1079,9 +1119,9 @@ impl SettingsUi {
         };
         let _ = self.cat_sprite.draw(pixmap, &tf, s);
 
-        draw_text_into_pixmap(pixmap, "经典紫毛猫", card_x + 8.0 * s, card_y + 92.0 * s, card_w - 16.0 * s, 18.0 * s, 13.0 * s, 0.2, text_pri, 1.0, TextAlignment::Center);
-        draw_text_into_pixmap(pixmap, "原装傲娇大肥猫", card_x + 8.0 * s, card_y + 114.0 * s, card_w - 16.0 * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Center);
-        draw_text_into_pixmap(pixmap, "当前使用中", card_x + 8.0 * s, card_y + 134.0 * s, card_w - 16.0 * s, 14.0 * s, 10.5 * s, 0.3, [accent[0], accent[1], accent[2]], 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, "经典紫毛猫", card_x + 8.0 * s, card_y + 92.0 * s, card_w - 16.0 * s, 18.0 * s, 13.0 * s, 0.2, text_pri, 1.0, TextAlignment::Center, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "原装傲娇大肥猫", card_x + 8.0 * s, card_y + 114.0 * s, card_w - 16.0 * s, 16.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Center, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "当前使用中", card_x + 8.0 * s, card_y + 134.0 * s, card_w - 16.0 * s, 16.0 * s, 10.5 * s, 0.3, [accent[0], accent[1], accent[2]], 1.0, TextAlignment::Center, VerticalAlignment::Middle);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1102,9 +1142,9 @@ impl SettingsUi {
     ) {
         let base_y = 24.0 * s;
         // Header Title
-        draw_text_into_pixmap(pixmap, "台词与问候", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "台词与问候", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
         // Header Subtitle (Ends at y = 64.0 * s)
-        draw_text_into_pixmap(pixmap, "绑定 Antigravity 模型状态与桌面交互台词库，支持直接增删修改", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "绑定 Antigravity 模型状态与桌面交互台词库，支持直接增删修改", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
 
         // 1. Five Category Pills Navigation (Segmented container at y = 82.0 * s, h = 32.0 * s)
         // Safe clear gap of 18px between subtitle (64.0) and pills (82.0) to eliminate any overlap
@@ -1168,7 +1208,7 @@ impl SettingsUi {
             } else {
                 text_sec
             };
-            draw_text_into_pixmap(pixmap, &label, px + 2.0 * s, pill_y + 7.0 * s, pill_w - 4.0 * s, 16.0 * s, 11.5 * s, if is_sel { 0.3 } else { 0.0 }, txt_c, 1.0, TextAlignment::Center);
+            draw_text_into_pixmap(pixmap, &label, px + 2.0 * s, pill_y, pill_w - 4.0 * s, pill_h, 11.5 * s, if is_sel { 0.3 } else { 0.0 }, txt_c, 1.0, TextAlignment::Center, VerticalAlignment::Middle);
         }
 
         // 2. Action Bar: Subtitle on left, "+ 添加台词" button on right (y = 126.0 * s, h = 28.0 * s)
@@ -1181,7 +1221,7 @@ impl SettingsUi {
             3 => "Antigravity 成功完成编译、测试或代码交付时",
             _ => "代码构建失败或运行异常时安慰用户的提示",
         };
-        draw_text_into_pixmap(pixmap, cat_desc, cx, bar_y + 6.0 * s, cw - 100.0 * s, 16.0 * s, 11.5 * s, 0.0, text_sec, 0.9, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, cat_desc, cx, bar_y, cw - 100.0 * s, bar_h, 11.5 * s, 0.0, text_sec, 0.9, TextAlignment::Left, VerticalAlignment::Middle);
 
         let add_btn_w = 92.0 * s;
         let add_btn_h = bar_h;
@@ -1232,7 +1272,7 @@ impl SettingsUi {
             } else {
                 text_pri
             };
-            draw_text_into_pixmap(pixmap, &text_val, cx + 12.0 * s, row_y + 8.5 * s, cw - 66.0 * s, 16.0 * s, 12.0 * s, 0.0, text_color, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, &text_val, cx + 12.0 * s, row_y, cw - 66.0 * s, 34.0 * s, 12.0 * s, 0.0, text_color, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
 
             // "删除" button - aligned on the exact same horizontal baseline
             let del_w = 46.0 * s;
@@ -1257,7 +1297,7 @@ impl SettingsUi {
             } else {
                 text_sec
             };
-            draw_text_into_pixmap(pixmap, "删除", del_x, del_y + 3.5 * s, del_w, 16.0 * s, 10.5 * s, 0.0, del_txt_c, 0.9, TextAlignment::Center);
+            draw_text_into_pixmap(pixmap, "删除", del_x, del_y, del_w, del_h, 10.5 * s, 0.0, del_txt_c, 0.9, TextAlignment::Center, VerticalAlignment::Middle);
         }
     }
 
@@ -1279,8 +1319,8 @@ impl SettingsUi {
         is_dark: bool,
     ) {
         let base_y = 28.0 * s;
-        draw_text_into_pixmap(pixmap, "右键菜单配置", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "勾选或隐藏桌宠右键控制面板中的快捷功能项", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "右键菜单配置", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "勾选或隐藏桌宠右键控制面板中的快捷功能项", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
 
         let menu_items = [
             ("打开 Antigravity", self.temp_settings.menu_config.open_antigravity),
@@ -1300,8 +1340,8 @@ impl SettingsUi {
 
         for (i, (title, checked)) in menu_items.into_iter().enumerate() {
             let row_y = c1_y + 4.0 * s + (i as f32) * 44.0 * s;
-            draw_text_into_pixmap(pixmap, title, cx + 14.0 * s, row_y + 11.0 * s, cw - 80.0 * s, 18.0 * s, 12.5 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-            self.render_checkbox(pixmap, cx + cw - 38.0 * s, row_y + 11.0 * s, s, checked, accent, is_win, is_dark);
+            draw_text_into_pixmap(pixmap, title, cx + 14.0 * s, row_y, cw - 80.0 * s, 44.0 * s, 12.5 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+            self.render_checkbox(pixmap, cx + cw - 38.0 * s, row_y + 13.0 * s, s, checked, accent, is_win, is_dark);
             if i < 8 {
                 pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, row_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
             }
@@ -1356,10 +1396,9 @@ impl SettingsUi {
             border_card
         };
 
-        let text_h = 16.0 * s;
-        let text_y_offset = ((h * 0.5 - 8.5 * s) + if is_pressed { 1.0 * s } else { 0.0 }).max(0.0);
+        let press_offset = if is_pressed { 1.0 * s } else { 0.0 };
         pixmap.fill_rounded_rect_sdf(x, y, w, h, r, bg, 1.0 * s, stroke);
-        draw_text_into_pixmap(pixmap, text, x, y + text_y_offset, w, text_h, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, text, x, y + press_offset, w, h, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center, VerticalAlignment::Middle);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1395,10 +1434,9 @@ impl SettingsUi {
             accent
         };
 
+        let press_offset = if is_pressed { 1.0 * s } else { 0.0 };
         pixmap.fill_rounded_rect_sdf(x, y, w, h, r, bg, 0.0, [0, 0, 0, 0]);
-        let text_h = 16.0 * s;
-        let text_y_offset = ((h * 0.5 - 8.5 * s) + if is_pressed { 1.0 * s } else { 0.0 }).max(0.0);
-        draw_text_into_pixmap(pixmap, text, x, y + text_y_offset, w, text_h, 12.0 * s, 0.25, [255, 255, 255], 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, text, x, y + press_offset, w, h, 12.0 * s, 0.25, [255, 255, 255], 1.0, TextAlignment::Center, VerticalAlignment::Middle);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1530,6 +1568,18 @@ mod tests {
 
         assert_eq!(ui.active_tab, SettingsTab::General);
         assert_eq!(ui.temp_settings.scale, 1.0);
+
+        // Test floor mode cycle in General tab
+        let cw_right = SETTINGS_WIN_W as f32 - 28.0;
+        ui.mouse_pos = (cw_right - 40.0, 190.0);
+        let floor_act = ui.handle_mouse_down(1.0);
+        assert_eq!(floor_act, Some(SettingsAction::Redraw));
+        assert_eq!(ui.temp_settings.floor_mode, "auto");
+
+        // Test smooth mouse wheel over scale slider
+        ui.mouse_pos = (cw_right - 80.0, 145.0);
+        assert!(ui.handle_mouse_wheel(1.0));
+        assert!((ui.temp_settings.scale - 1.05).abs() < 0.01);
 
         // Click sidebar tab 4 (Menu)
         ui.mouse_pos = (50.0, 210.0);
