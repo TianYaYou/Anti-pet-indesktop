@@ -138,7 +138,6 @@ pub enum PetMenuAction {
     ToggleShowQuota,
     ToggleDndMode,
     ToggleGravity,
-    SetFloorMode(&'static str),
     SetZoom(f32),
     ToggleSound,
     ToggleVisibility,
@@ -183,10 +182,6 @@ pub struct NativeMenuManager {
     pub item_show_quota: CheckMenuItem,
     pub item_dnd: CheckMenuItem,
     pub item_gravity: CheckMenuItem,
-    pub item_floor_bottom: CheckMenuItem,
-    pub item_floor_dock: CheckMenuItem,
-    pub item_floor_free: CheckMenuItem,
-    floor_sub: Submenu,
     zoom_sub: Submenu,
     id_zoom_80: MenuId,
     id_zoom_100: MenuId,
@@ -222,28 +217,6 @@ impl NativeMenuManager {
         let item_dnd = CheckMenuItem::new("免打扰模式 (右键猫咪可随时退出)", true, settings.dnd_passthrough, None);
         let item_gravity = CheckMenuItem::new("启用物理重力掉落", true, settings.gravity_enabled, None);
         let item_sound = CheckMenuItem::new("启用 Q 弹互动音效", true, settings.sound_enabled, None);
-
-        // Floor mode submenu
-        let floor_sub = Submenu::new("掉落落点位置", true);
-        let item_floor_bottom = CheckMenuItem::new(
-            "屏幕最底边 (贴底)",
-            true,
-            settings.floor_mode == "bottom",
-            None,
-        );
-        let item_floor_dock = CheckMenuItem::new(
-            "Mac 程序坞 / 任务栏上方",
-            true,
-            settings.floor_mode == "taskbar" || settings.floor_mode == "dock",
-            None,
-        );
-        let item_floor_free = CheckMenuItem::new(
-            "自由悬浮 (松手不掉落)",
-            true,
-            settings.floor_mode == "free",
-            None,
-        );
-        let _ = floor_sub.append_items(&[&item_floor_bottom, &item_floor_dock, &item_floor_free]);
 
         // Zoom submenu
         let zoom_sub = Submenu::new("猫咪体型缩放", true);
@@ -286,10 +259,6 @@ impl NativeMenuManager {
             item_show_quota,
             item_dnd,
             item_gravity,
-            item_floor_bottom,
-            item_floor_dock,
-            item_floor_free,
-            floor_sub,
             zoom_sub,
             id_zoom_80,
             id_zoom_100,
@@ -320,9 +289,6 @@ impl NativeMenuManager {
         self.item_show_quota.set_checked(settings.show_quota);
         self.item_dnd.set_checked(settings.dnd_passthrough);
         self.item_gravity.set_checked(settings.gravity_enabled);
-        self.item_floor_bottom.set_checked(settings.floor_mode == "bottom");
-        self.item_floor_dock.set_checked(settings.floor_mode == "taskbar" || settings.floor_mode == "dock");
-        self.item_floor_free.set_checked(settings.floor_mode == "free");
         self.item_sound.set_checked(settings.sound_enabled);
 
         let mut items: Vec<&dyn IsMenuItem> = Vec::new();
@@ -352,7 +318,6 @@ impl NativeMenuManager {
         }
         if settings.menu_config.gravity {
             items.push(&self.item_gravity);
-            items.push(&self.floor_sub);
         }
         if settings.menu_config.zoom {
             items.push(&self.zoom_sub);
@@ -417,21 +382,6 @@ impl NativeMenuManager {
             Some(PetMenuAction::ToggleDndMode)
         } else if *id == *self.item_gravity.id() {
             Some(PetMenuAction::ToggleGravity)
-        } else if *id == *self.item_floor_bottom.id() {
-            self.item_floor_bottom.set_checked(true);
-            self.item_floor_dock.set_checked(false);
-            self.item_floor_free.set_checked(false);
-            Some(PetMenuAction::SetFloorMode("bottom"))
-        } else if *id == *self.item_floor_dock.id() {
-            self.item_floor_bottom.set_checked(false);
-            self.item_floor_dock.set_checked(true);
-            self.item_floor_free.set_checked(false);
-            Some(PetMenuAction::SetFloorMode("taskbar"))
-        } else if *id == *self.item_floor_free.id() {
-            self.item_floor_bottom.set_checked(false);
-            self.item_floor_dock.set_checked(false);
-            self.item_floor_free.set_checked(true);
-            Some(PetMenuAction::SetFloorMode("free"))
         } else if *id == self.id_zoom_80 {
             Some(PetMenuAction::SetZoom(0.8))
         } else if *id == self.id_zoom_100 {

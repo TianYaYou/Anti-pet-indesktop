@@ -42,7 +42,6 @@ pub struct PetPhysics {
 
     /// User preferences
     pub gravity_enabled: bool,
-    pub floor_mode: String, // "bottom", "taskbar", "free", "auto"
     pub zoom_scale: f32,    // 0.60 ..= 1.80
 
     /// Elastic spring state for squish/stretch and tilt
@@ -94,7 +93,6 @@ impl PetPhysics {
             bounces: 0,
             target_floor_y: init_win_y,
             gravity_enabled: true,
-            floor_mode: "bottom".to_string(),
             zoom_scale: 1.0,
             scale_x: 1.0,
             scale_y: 1.0,
@@ -164,7 +162,7 @@ impl PetPhysics {
     }
 
     /// Moves the window during user drag and updates tilt/facing.
-    pub fn on_drag_move(&mut self, dx: f64, dy: f64, mon_w: f64, mon_h: f64, dock_bottom: f64) {
+    pub fn on_drag_move(&mut self, dx: f64, dy: f64, mon_w: f64, mon_h: f64, _dock_bottom: f64) {
         self.falling = false;
         self.edge_dock = None;
         self.motion = PetMotionState::Dragging;
@@ -175,15 +173,7 @@ impl PetPhysics {
         self.gaze_y = 0.0;
 
         let true_bottom_y = (mon_h - COMPACT_WIN_H).max(0.0);
-        let dock_ledge_y = (mon_h - COMPACT_WIN_H - dock_bottom.max(0.0)).max(0.0);
-
-        // When in taskbar/dock mode and a dock exists, clamp drag motion to the dock ledge
-        // so dragging downwards stops cleanly on top of the taskbar and never sinks into the bottom edge
-        let max_drag_y = if (self.floor_mode == "taskbar" || self.floor_mode == "dock") && dock_bottom > 2.0 {
-            dock_ledge_y
-        } else {
-            true_bottom_y
-        };
+        let max_drag_y = true_bottom_y;
 
         self.win_x = (self.win_x + dx).clamp(-80.0, mon_w - COMPACT_WIN_W + 80.0);
         self.win_y = (self.win_y + dy).clamp(0.0, max_drag_y);
@@ -218,14 +208,10 @@ impl PetPhysics {
         let true_bottom_y = (mon_h - COMPACT_WIN_H).max(0.0);
         let dock_ledge_y = (mon_h - COMPACT_WIN_H - dock_bottom.max(0.0)).max(0.0);
 
-        let target_floor_y = if !self.gravity_enabled || self.floor_mode == "free" {
+        let target_floor_y = if !self.gravity_enabled {
             self.win_y
-        } else if self.floor_mode == "bottom" {
-            true_bottom_y
-        } else if self.floor_mode == "taskbar" || self.floor_mode == "dock" {
-            dock_ledge_y
         } else if dock_bottom > 2.0 {
-            if self.win_y >= dock_ledge_y + 18.0 {
+            if self.win_y >= dock_ledge_y + 16.0 {
                 true_bottom_y
             } else {
                 dock_ledge_y
@@ -263,9 +249,9 @@ impl PetPhysics {
         self.edge_dock = None;
         self.win_x = self.win_x.clamp(min_win_x, max_win_x);
 
-        if !self.gravity_enabled || self.floor_mode == "free" || self.win_y >= target_floor_y - 2.0
+        if !self.gravity_enabled || self.win_y >= target_floor_y - 2.0
         {
-            self.win_y = if !self.gravity_enabled || self.floor_mode == "free" {
+            self.win_y = if !self.gravity_enabled {
                 self.win_y.clamp(0.0, true_bottom_y)
             } else {
                 target_floor_y
@@ -602,22 +588,13 @@ mod tests {
         let expected_dock_y = mon_h - COMPACT_WIN_H - dock_bottom; // 900 - 400 - 72 = 428.0
         let expected_bottom_y = mon_h - COMPACT_WIN_H; // 900 - 400 = 500.0
 
-        // 1. Release in taskbar mode with 72px dock -> lands on top of taskbar / dock ledge
-        physics.floor_mode = "taskbar".to_string();
+        // 1. Release in air with 72px dock -> default lands on top of taskbar / dock ledge
         physics.win_y = 200.0;
         physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
         assert_eq!(physics.target_floor_y, expected_dock_y);
         assert!(physics.target_floor_y + COMPACT_WIN_H <= mon_h - dock_bottom);
 
-        // 2. Release in explicit bottom mode with 72px dock -> lands strictly on screen bottom edge (0px)
-        physics.floor_mode = "bottom".to_string();
-        physics.win_y = 200.0;
-        physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
-        assert_eq!(physics.target_floor_y, expected_bottom_y);
-        assert_eq!(physics.target_floor_y + COMPACT_WIN_H, mon_h);
-
-        // 3. User in auto mode drags cat below taskbar ledge -> lands on screen bottom edge
-        physics.floor_mode = "auto".to_string();
+        // 2. User drags cat below taskbar ledge -> lands on screen bottom edge
         physics.win_y = expected_dock_y + 20.0;
         physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
         assert_eq!(physics.target_floor_y, expected_bottom_y);
@@ -629,13 +606,15 @@ mod tests {
         assert_eq!(physics.target_floor_y, expected_bottom_y);
         assert_eq!(physics.target_floor_y + COMPACT_WIN_H, mon_h);
 
-        // 4. Drag move in taskbar mode clamps to dock ledge; in bottom mode to screen bottom
-        physics.floor_mode = "taskbar".to_string();
-        physics.on_drag_move(0.0, 1000.0, mon_w, mon_h, dock_bottom);
-        assert_eq!(physics.win_y, expected_dock_y);
-
-        physics.floor_mode = "bottom".to_string();
+        // 4. Drag move allows moving freely down to screen bottom edge
         physics.on_drag_move(0.0, 1000.0, mon_w, mon_h, dock_bottom);
         assert_eq!(physics.win_y, expected_bottom_y);
+
+        // 5. When gravity is disabled, pet stays where released
+        physics.gravity_enabled = false;
+        physics.win_y = 300.0;
+        physics.on_drag_release(mon_w, mon_h, dock_bottom, 0.0, 0.0);
+        assert_eq!(physics.win_y, 300.0);
+        assert!(!physics.falling);
     }
 }

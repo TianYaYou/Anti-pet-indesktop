@@ -344,23 +344,120 @@ mod cpu_2d_app {
 
     #[cfg(target_os = "windows")]
     mod windows_window {
-        use windows::Win32::Foundation::{HWND, POINT};
+        use windows::Win32::Foundation::{HWND, POINT, WPARAM, LPARAM};
         use windows::Win32::Graphics::Gdi::{
-            GetMonitorInfoW, MonitorFromWindow, ScreenToClient, MONITORINFO,
-            MONITOR_DEFAULTTOPRIMARY,
+            CreateCompatibleBitmap, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject,
+            GetMonitorInfoW, MonitorFromWindow, ScreenToClient, BITMAPINFO, BITMAPINFOHEADER,
+            BI_RGB, DIB_RGB_COLORS, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
         };
         use windows::Win32::Graphics::Dwm::{
             DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWA_USE_IMMERSIVE_DARK_MODE,
         };
         use windows::Win32::UI::WindowsAndMessaging::{
-            GetCursorPos, SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+            CreateIconIndirect, GetCursorPos, LoadImageW, SendMessageW, SetClassLongPtrW,
+            SetWindowPos, GCLP_HICON, GCLP_HICONSM, HICON, HWND_TOPMOST, ICONINFO, IMAGE_ICON,
+            LR_DEFAULTSIZE, LR_LOADFROMFILE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WM_SETICON,
         };
+        use windows::core::PCWSTR;
 
         #[derive(Clone, Copy, Debug, Default)]
         pub struct TaskbarInsets {
             pub bottom: f64,
             pub left: f64,
             pub right: f64,
+        }
+
+        pub fn set_window_icon(hwnd_isize: isize, tray_rgba: &[u8]) {
+            unsafe {
+                let hwnd = HWND(hwnd_isize as *mut _);
+                let mut loaded_hicon: Option<HICON> = None;
+                let candidate_rel_paths = [
+                    "assets/icon.ico",
+                    "../assets/icon.ico",
+                    "../../assets/icon.ico",
+                ];
+                if let Ok(mut dir) = std::env::current_exe() {
+                    for _ in 0..4 {
+                        dir.pop();
+                        for rel in &candidate_rel_paths {
+                            let p = dir.join(rel);
+                            if p.exists() {
+                                let wpath: Vec<u16> = p.to_string_lossy().encode_utf16().chain(Some(0)).collect();
+                                if let Ok(handle) = LoadImageW(
+                                    None,
+                                    PCWSTR(wpath.as_ptr()),
+                                    IMAGE_ICON,
+                                    0,
+                                    0,
+                                    LR_LOADFROMFILE | LR_DEFAULTSIZE,
+                                ) {
+                                    if !handle.0.is_null() {
+                                        loaded_hicon = Some(HICON(handle.0));
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if loaded_hicon.is_some() {
+                            break;
+                        }
+                    }
+                }
+
+                let hicon = if let Some(h) = loaded_hicon {
+                    h
+                } else {
+                    let hdc = CreateCompatibleDC(None);
+                    let bmi = BITMAPINFO {
+                        bmiHeader: BITMAPINFOHEADER {
+                            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                            biWidth: 32,
+                            biHeight: -32,
+                            biPlanes: 1,
+                            biBitCount: 32,
+                            biCompression: BI_RGB.0,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    };
+                    let mut bits_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
+                    if let Ok(dib) = CreateDIBSection(Some(hdc), &bmi, DIB_RGB_COLORS, &mut bits_ptr, None, 0) {
+                        if !bits_ptr.is_null() && tray_rgba.len() >= 32 * 32 * 4 {
+                            let dst = std::slice::from_raw_parts_mut(bits_ptr as *mut u8, 32 * 32 * 4);
+                            for i in 0..1024 {
+                                let o = i * 4;
+                                dst[o] = tray_rgba[o + 2];
+                                dst[o + 1] = tray_rgba[o + 1];
+                                dst[o + 2] = tray_rgba[o];
+                                dst[o + 3] = tray_rgba[o + 3];
+                            }
+                        }
+                        let hmask = CreateCompatibleBitmap(hdc, 32, 32);
+                        let ii = ICONINFO {
+                            fIcon: true.into(),
+                            xHotspot: 0,
+                            yHotspot: 0,
+                            hbmMask: hmask,
+                            hbmColor: dib,
+                        };
+                        let icon = CreateIconIndirect(&ii).unwrap_or(HICON(std::ptr::null_mut()));
+                        let _ = DeleteObject(hmask.into());
+                        let _ = DeleteObject(dib.into());
+                        let _ = DeleteDC(hdc);
+                        icon
+                    } else {
+                        let _ = DeleteDC(hdc);
+                        HICON(std::ptr::null_mut())
+                    }
+                };
+
+                if !hicon.0.is_null() {
+                    let _ = SendMessageW(hwnd, WM_SETICON, Some(WPARAM(0)), Some(LPARAM(hicon.0 as isize)));
+                    let _ = SendMessageW(hwnd, WM_SETICON, Some(WPARAM(1)), Some(LPARAM(hicon.0 as isize)));
+                    let _ = SetClassLongPtrW(hwnd, GCLP_HICON, hicon.0 as isize);
+                    let _ = SetClassLongPtrW(hwnd, GCLP_HICONSM, hicon.0 as isize);
+                }
+            }
         }
 
         pub fn apply_settings_window_style(hwnd_isize: isize, is_dark: bool) {
@@ -518,7 +615,7 @@ mod cpu_2d_app {
         };
         let default_y = match settings.pos_y {
             Some(y) => {
-                if settings.floor_mode == "free" || !settings.gravity_enabled {
+                if !settings.gravity_enabled {
                     y.clamp(0.0, floor_baseline_y)
                 } else {
                     y.min(floor_baseline_y).max(0.0)
@@ -586,6 +683,13 @@ mod cpu_2d_app {
             settings_win_builder = settings_win_builder.with_window_icon(Some(icon.clone()));
         }
 
+        #[cfg(target_os = "windows")]
+        {
+            settings_win_builder = settings_win_builder
+                .with_decorations(false)
+                .with_transparent(true);
+        }
+
         #[cfg(target_os = "macos")]
         {
             settings_win_builder = settings_win_builder
@@ -598,6 +702,12 @@ mod cpu_2d_app {
         }
 
         let settings_window = settings_win_builder.build(&event_loop)?;
+
+        #[cfg(target_os = "windows")]
+        {
+            windows_window::set_window_icon(settings_window.hwnd(), tray_rgba);
+            windows_window::set_window_icon(window.hwnd(), tray_rgba);
+        }
 
         #[cfg(target_os = "macos")]
         let settings_surface = SoftwareSurface::new_macos_settings(
@@ -650,7 +760,6 @@ mod cpu_2d_app {
         let mut physics = PetPhysics::new(default_x, default_y);
         physics.zoom_scale = settings.scale;
         physics.gravity_enabled = settings.gravity_enabled;
-        physics.floor_mode = settings.floor_mode.clone();
 
         let initial_quota = crate::quota::read_state_file_quota()
             .or_else(crate::quota::read_fallback_ledger_quota);
@@ -820,7 +929,6 @@ mod cpu_2d_app {
                             physics.zoom_scale = fresh.scale;
                         }
                         physics.gravity_enabled = fresh.gravity_enabled;
-                        physics.floor_mode = fresh.floor_mode.clone();
                         audio.enabled = fresh.sound_enabled;
                         bubble.show_quota = fresh.show_quota;
                         menu_mgr.rebuild_menu(&fresh);
@@ -834,7 +942,6 @@ mod cpu_2d_app {
                             physics.zoom_scale = fresh.scale;
                         }
                         physics.gravity_enabled = fresh.gravity_enabled;
-                        physics.floor_mode = fresh.floor_mode.clone();
                         audio.enabled = fresh.sound_enabled;
                         bubble.show_quota = fresh.show_quota;
                         menu_mgr.rebuild_menu(&fresh);
@@ -971,19 +1078,6 @@ mod cpu_2d_app {
                                         state_watcher.save_settings(&settings);
                                         dirty_frame = true;
                                     }
-                                    PetMenuAction::SetFloorMode(mode) => {
-                                        settings.floor_mode = mode.to_string();
-                                        physics.floor_mode = settings.floor_mode.clone();
-                                        physics.on_drag_release(
-                                            mon_width,
-                                            mon_height,
-                                            last_dock.0,
-                                            last_dock.1,
-                                            last_dock.2,
-                                        );
-                                        state_watcher.save_settings(&settings);
-                                        dirty_frame = true;
-                                    }
                                     PetMenuAction::SetZoom(z) => {
                                         settings.scale = z;
                                         physics.zoom_scale = z;
@@ -1041,7 +1135,6 @@ mod cpu_2d_app {
                                 physics.zoom_scale = new_settings.scale;
                             }
                             physics.gravity_enabled = new_settings.gravity_enabled;
-                            physics.floor_mode = new_settings.floor_mode.clone();
                             audio.enabled = new_settings.sound_enabled;
                             bubble.show_quota = new_settings.show_quota;
 
@@ -1281,7 +1374,6 @@ mod cpu_2d_app {
                                                 settings = new_settings;
                                                 physics.zoom_scale = settings.scale;
                                                 physics.gravity_enabled = settings.gravity_enabled;
-                                                physics.floor_mode = settings.floor_mode.clone();
                                                 audio.enabled = settings.sound_enabled;
                                                 bubble.show_quota = settings.show_quota;
                                                 menu_mgr.rebuild_menu(&settings);
@@ -1292,6 +1384,9 @@ mod cpu_2d_app {
                                             SettingsAction::Cancel => {
                                                 settings_window.set_visible(false);
                                                 is_settings_open = false;
+                                            }
+                                            SettingsAction::MinimizeWindow => {
+                                                settings_window.set_minimized(true);
                                             }
                                             SettingsAction::ResetPosition => {
                                                 let _ = proxy.send_event(AppEvent::ResetPosition);
@@ -1321,7 +1416,6 @@ mod cpu_2d_app {
                                             settings = new_settings;
                                             physics.zoom_scale = settings.scale;
                                             physics.gravity_enabled = settings.gravity_enabled;
-                                            physics.floor_mode = settings.floor_mode.clone();
                                             audio.enabled = settings.sound_enabled;
                                             bubble.show_quota = settings.show_quota;
                                             menu_mgr.rebuild_menu(&settings);
