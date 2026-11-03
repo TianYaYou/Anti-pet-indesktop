@@ -25,6 +25,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(not(feature = "legacy-webkit"))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args().any(|arg| arg == "--settings" || arg == "--slint") {
+        use crate::core::store::SettingsStore;
+        use crate::state_watcher::{resolve_project_root, NativeStateWatcher};
+        use crate::ui::windows::SlintSettingsApp;
+        use slint::ComponentHandle;
+        use std::sync::{Arc, Mutex};
+
+        let watcher = NativeStateWatcher::new();
+        let settings = watcher.load_settings();
+        let root_dir = resolve_project_root();
+
+        let store = Arc::new(Mutex::new(SettingsStore::new(root_dir, settings)));
+        let app = SlintSettingsApp::new(store)?;
+        app.window.run()?;
+        return Ok(());
+    }
+
     cpu_2d_app::run_cpu_2d()
 }
 
@@ -252,6 +269,7 @@ mod cpu_2d_app {
             }
         }
 
+        #[allow(dead_code)]
         pub fn show_settings_window(ns_window: *mut c_void) {
             if ns_window.is_null() {
                 return;
@@ -1014,22 +1032,12 @@ mod cpu_2d_app {
                                         bubble.opacity = 1.0;
                                         bubble_hide_deadline =
                                             Some(Instant::now() + Duration::from_millis(3500));
-                                        settings_ui.open(&settings);
-                                        settings_ui.reload_dialogues();
-                                        dialogue_bank = settings_ui.dialogue_bank.clone();
-                                        is_settings_open = true;
-                                        settings_window.set_visible(true);
-                                        settings_window.set_focus();
-                                        #[cfg(target_os = "windows")]
-                                        {
-                                            windows_window::set_window_icon(settings_window.hwnd(), tray_rgba);
-                                            windows_window::apply_settings_window_style(settings_window.hwnd(), settings_ui.is_dark_mode());
+
+                                        if let Ok(exe) = std::env::current_exe() {
+                                            let _ = std::process::Command::new(exe)
+                                                .arg("--settings")
+                                                .spawn();
                                         }
-                                        #[cfg(target_os = "macos")]
-                                        macos_window::show_settings_window(settings_window.ns_window());
-                                        let s_scale = settings_window.scale_factor() as f32;
-                                        settings_ui.render(&mut settings_pixmap, s_scale);
-                                        settings_surface.present(&settings_pixmap, s_scale as f64);
                                         dirty_frame = true;
                                     }
 

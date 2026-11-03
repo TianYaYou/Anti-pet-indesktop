@@ -4,7 +4,7 @@ set -e
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." && pwd )"
 cd "$DIR"
 
-echo "Building macOS Anti-Pet.app bundle (v0.4.1 Pure CPU 2D)..."
+echo "Building macOS Anti-Pet.app bundle (v0.5.0 NextGen Core)..."
 
 APP_DIR="dist/Anti-Pet.app"
 rm -rf "$APP_DIR"
@@ -53,9 +53,9 @@ cat << 'EOF' > "$APP_DIR/Contents/Info.plist"
     <key>CFBundleIdentifier</key>
     <string>com.tianyayou.anti-pet</string>
     <key>CFBundleVersion</key>
-    <string>0.4.1</string>
+    <string>0.5.0</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.4.1</string>
+    <string>0.5.0</string>
     <key>CFBundleExecutable</key>
     <string>anti-pet-desktop</string>
     <key>CFBundleIconFile</key>
@@ -68,4 +68,4 @@ cat << 'EOF' > "$APP_DIR/Contents/Info.plist"
 </plist>
 EOF
 
-echo "Anti-Pet.app (v0.4.1 Pure CPU 2D) successfully assembled at $APP_DIR"
+echo "Anti-Pet.app (v0.5.0 NextGen Core) successfully assembled at $APP_DIR"

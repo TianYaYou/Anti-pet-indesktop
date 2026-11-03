@@ -86,6 +86,7 @@ impl SettingsUi {
         self.dialogue_bank = crate::menu_audio::DialogueBank::load_from_root(&root_dir, "fat-cat");
     }
 
+    #[allow(dead_code)]
     pub fn open(&mut self, current_settings: &PetSettings) {
         self.temp_settings = current_settings.clone();
         self.original_settings = current_settings.clone();
