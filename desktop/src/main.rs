@@ -1,4 +1,6 @@
 #[cfg(not(feature = "legacy-webkit"))]
+pub mod core;
+#[cfg(not(feature = "legacy-webkit"))]
 mod hit_test;
 #[cfg(not(feature = "legacy-webkit"))]
 mod menu_audio;
