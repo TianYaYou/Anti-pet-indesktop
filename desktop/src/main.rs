@@ -25,6 +25,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(not(feature = "legacy-webkit"))]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(target_os = "macos")]
+    if std::env::args().any(|arg| arg == "--appkit" || (arg == "--settings" && !std::env::args().any(|a| a == "--slint"))) {
+        return crate::ui::macos::run_macos_appkit_settings();
+    }
+
     if std::env::args().any(|arg| arg == "--settings" || arg == "--slint") {
         use crate::core::store::SettingsStore;
         use crate::state_watcher::{resolve_project_root, NativeStateWatcher};

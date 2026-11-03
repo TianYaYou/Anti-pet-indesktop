@@ -15,6 +15,9 @@ if [ "$1" == "--web" ]; then
     xdg-open "http://127.0.0.1:4199"
   fi
   wait $SERVER_PID
+elif [ "$1" == "--appkit" ]; then
+  echo "正在启动下一代 macOS AppKit 原生偏好设置 (0 KB 增量与原生毛玻璃)..."
+  cargo run --bin anti-pet-desktop --manifest-path desktop/Cargo.toml -- --appkit
 elif [ "$1" == "--slint" ]; then
   echo "正在启动下一代 Slint 现代偏好设置 (独立调试预览模式)..."
   cargo run --bin slint_settings --manifest-path desktop/Cargo.toml
