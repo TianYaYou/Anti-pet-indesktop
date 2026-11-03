@@ -448,6 +448,14 @@ impl SoftwareSurface {
         Self { ns_window }
     }
 
+    #[cfg(target_os = "macos")]
+    pub fn new_macos_settings(ns_window: *mut c_void, w: f64, h: f64) -> Self {
+        unsafe {
+            macos_surface::configure_settings_layer_backed_view(ns_window, w, h);
+        }
+        Self { ns_window }
+    }
+
     #[cfg(target_os = "windows")]
     pub fn new_windows(hwnd: isize) -> Self {
         Self { hwnd }
@@ -539,6 +547,87 @@ mod macos_surface {
         }
     }
 
+    pub unsafe fn configure_settings_layer_backed_view(ns_window: *mut c_void, w: f64, h: f64) {
+        if ns_window.is_null() {
+            return;
+        }
+        let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+            std::mem::transmute(objc_msgSend as *const ());
+        let msg_void_bool: unsafe extern "C" fn(*mut c_void, *mut c_void, i8) =
+            std::mem::transmute(objc_msgSend as *const ());
+        let msg_void_isize: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) =
+            std::mem::transmute(objc_msgSend as *const ());
+        let msg_void_usize: unsafe extern "C" fn(*mut c_void, *mut c_void, usize) =
+            std::mem::transmute(objc_msgSend as *const ());
+        let msg_void_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) =
+            std::mem::transmute(objc_msgSend as *const ());
+        let msg_subview: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void, isize, *mut c_void) =
+            std::mem::transmute(objc_msgSend as *const ());
+        let msg_ptr_isize: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) -> *mut c_void =
+            std::mem::transmute(objc_msgSend as *const ());
+        let msg_set_frame: unsafe extern "C" fn(*mut c_void, *mut c_void, [f64; 4]) =
+            std::mem::transmute(objc_msgSend as *const ());
+
+        msg_void_bool(ns_window, sel(b"setOpaque:\0"), 0);
+        let color_cls = objc_getClass(b"NSColor\0".as_ptr());
+        if !color_cls.is_null() {
+            let clear_color = msg_ptr(color_cls, sel(b"clearColor\0"));
+            if !clear_color.is_null() {
+                msg_void_ptr(ns_window, sel(b"setBackgroundColor:\0"), clear_color);
+            }
+        }
+
+        let content_view = msg_ptr(ns_window, sel(b"contentView\0"));
+        if content_view.is_null() {
+            return;
+        }
+
+        let existing = msg_ptr_isize(content_view, sel(b"viewWithTag:\0"), 999);
+        if !existing.is_null() {
+            return;
+        }
+
+        let effect_cls = objc_getClass(b"NSVisualEffectView\0".as_ptr());
+        let view_cls = objc_getClass(b"NSView\0".as_ptr());
+        if effect_cls.is_null() || view_cls.is_null() {
+            return;
+        }
+
+        let frame = [0.0f64, 0.0f64, w, h];
+
+        // 1. Create NSVisualEffectView for genuine frosted glass blur background
+        let effect_view = msg_ptr(effect_cls, sel(b"alloc\0"));
+        let effect_view = msg_ptr(effect_view, sel(b"init\0"));
+        if !effect_view.is_null() {
+            msg_void_isize(effect_view, sel(b"setTag:\0"), 998);
+            msg_set_frame(effect_view, sel(b"setFrame:\0"), frame);
+            // NSVisualEffectMaterialSidebar = 7
+            msg_void_isize(effect_view, sel(b"setMaterial:\0"), 7);
+            // NSVisualEffectBlendingModeBehindWindow = 0
+            msg_void_isize(effect_view, sel(b"setBlendingMode:\0"), 0);
+            // NSVisualEffectStateActive = 1
+            msg_void_isize(effect_view, sel(b"setState:\0"), 1);
+            // NSViewWidthSizable (2) | NSViewHeightSizable (16) = 18
+            msg_void_usize(effect_view, sel(b"setAutoresizingMask:\0"), 18);
+            msg_subview(content_view, sel(b"addSubview:positioned:relativeTo:\0"), effect_view, -1, std::ptr::null_mut());
+        }
+
+        // 2. Create overlay NSView (tagged 999) for presenting our crisp rendered UI
+        let render_view = msg_ptr(view_cls, sel(b"alloc\0"));
+        let render_view = msg_ptr(render_view, sel(b"init\0"));
+        if !render_view.is_null() {
+            msg_void_isize(render_view, sel(b"setTag:\0"), 999);
+            msg_set_frame(render_view, sel(b"setFrame:\0"), frame);
+            msg_void_bool(render_view, sel(b"setWantsLayer:\0"), 1);
+            msg_void_usize(render_view, sel(b"setAutoresizingMask:\0"), 18);
+            let layer = msg_ptr(render_view, sel(b"layer\0"));
+            if !layer.is_null() {
+                msg_void_bool(layer, sel(b"setOpaque:\0"), 0);
+            }
+            msg_subview(content_view, sel(b"addSubview:positioned:relativeTo:\0"), render_view, 1, std::ptr::null_mut());
+        }
+    }
+
     pub unsafe fn present_pixmap_to_nswindow(ns_window: *mut c_void, pixmap: &Pixmap) {
         if ns_window.is_null() {
             return;
@@ -549,13 +638,23 @@ mod macos_surface {
             std::mem::transmute(objc_msgSend as *const ());
         let msg_void_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) =
             std::mem::transmute(objc_msgSend as *const ());
+        let msg_ptr_isize: unsafe extern "C" fn(*mut c_void, *mut c_void, isize) -> *mut c_void =
+            std::mem::transmute(objc_msgSend as *const ());
 
         let content_view = msg_ptr(ns_window, sel(b"contentView\0"));
         if content_view.is_null() {
             return;
         }
-        msg_void_bool(content_view, sel(b"setWantsLayer:\0"), 1);
-        let layer = msg_ptr(content_view, sel(b"layer\0"));
+
+        let render_view = msg_ptr_isize(content_view, sel(b"viewWithTag:\0"), 999);
+        let target_view = if !render_view.is_null() {
+            render_view
+        } else {
+            content_view
+        };
+
+        msg_void_bool(target_view, sel(b"setWantsLayer:\0"), 1);
+        let layer = msg_ptr(target_view, sel(b"layer\0"));
         if layer.is_null() {
             return;
         }

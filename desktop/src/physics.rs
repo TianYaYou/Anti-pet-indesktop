@@ -164,7 +164,7 @@ impl PetPhysics {
     }
 
     /// Moves the window during user drag and updates tilt/facing.
-    pub fn on_drag_move(&mut self, dx: f64, dy: f64, mon_w: f64, mon_h: f64) {
+    pub fn on_drag_move(&mut self, dx: f64, dy: f64, mon_w: f64, mon_h: f64, dock_bottom: f64) {
         self.falling = false;
         self.edge_dock = None;
         self.motion = PetMotionState::Dragging;
@@ -174,7 +174,17 @@ impl PetPhysics {
         self.gaze_x = 0.0;
         self.gaze_y = 0.0;
 
-        let max_drag_y = (mon_h - COMPACT_WIN_H).max(0.0);
+        let true_bottom_y = (mon_h - COMPACT_WIN_H).max(0.0);
+        let dock_ledge_y = (mon_h - COMPACT_WIN_H - dock_bottom.max(0.0)).max(0.0);
+
+        // When in taskbar/dock mode and a dock exists, clamp drag motion to the dock ledge
+        // so dragging downwards stops cleanly on top of the taskbar and never sinks into the bottom edge
+        let max_drag_y = if (self.floor_mode == "taskbar" || self.floor_mode == "dock") && dock_bottom > 2.0 {
+            dock_ledge_y
+        } else {
+            true_bottom_y
+        };
+
         self.win_x = (self.win_x + dx).clamp(-80.0, mon_w - COMPACT_WIN_W + 80.0);
         self.win_y = (self.win_y + dy).clamp(0.0, max_drag_y);
 
@@ -619,8 +629,13 @@ mod tests {
         assert_eq!(physics.target_floor_y, expected_bottom_y);
         assert_eq!(physics.target_floor_y + COMPACT_WIN_H, mon_h);
 
-        // 4. Drag move never allows win_y past screen bottom
-        physics.on_drag_move(0.0, 1000.0, mon_w, mon_h);
-        assert!(physics.win_y <= mon_h - COMPACT_WIN_H);
+        // 4. Drag move in taskbar mode clamps to dock ledge; in bottom mode to screen bottom
+        physics.floor_mode = "taskbar".to_string();
+        physics.on_drag_move(0.0, 1000.0, mon_w, mon_h, dock_bottom);
+        assert_eq!(physics.win_y, expected_dock_y);
+
+        physics.floor_mode = "bottom".to_string();
+        physics.on_drag_move(0.0, 1000.0, mon_w, mon_h, dock_bottom);
+        assert_eq!(physics.win_y, expected_bottom_y);
     }
 }

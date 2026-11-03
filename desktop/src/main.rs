@@ -572,14 +572,18 @@ mod cpu_2d_app {
                 .with_titlebar_transparent(true)
                 .with_fullsize_content_view(true)
                 .with_title_hidden(true)
-                .with_traffic_light_inset(LogicalPosition::new(14.0, 16.0))
+                .with_traffic_light_inset(LogicalPosition::new(20.0, 20.0))
                 .with_movable_by_window_background(true);
         }
 
         let settings_window = settings_win_builder.build(&event_loop)?;
 
         #[cfg(target_os = "macos")]
-        let settings_surface = SoftwareSurface::new_macos(settings_window.ns_window());
+        let settings_surface = SoftwareSurface::new_macos_settings(
+            settings_window.ns_window(),
+            SETTINGS_WIN_W,
+            SETTINGS_WIN_H,
+        );
         #[cfg(target_os = "windows")]
         let settings_surface = SoftwareSurface::new_windows(settings_window.hwnd());
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -1104,7 +1108,7 @@ mod cpu_2d_app {
                                     }
                                     if step_dist > 0.5 {
                                         drag_last_screen = (screen_x, screen_y);
-                                        physics.on_drag_move(dx, dy, mon_width, mon_height);
+                                        physics.on_drag_move(dx, dy, mon_width, mon_height, last_dock.0);
                                         window.set_outer_position(LogicalPosition::new(
                                             physics.win_x,
                                             physics.win_y,
@@ -1230,6 +1234,10 @@ mod cpu_2d_app {
                                 let lx = position.x / (s_scale as f64);
                                 let ly = position.y / (s_scale as f64);
                                 if settings_ui.handle_cursor_move(lx, ly, s_scale) {
+                                    if settings_ui.dragging_slider.is_some() {
+                                        physics.zoom_scale = settings_ui.temp_settings.scale;
+                                        dirty_frame = true;
+                                    }
                                     settings_ui.render(&mut settings_pixmap, s_scale);
                                     settings_surface.present(&settings_pixmap, s_scale as f64);
                                 }
@@ -1253,8 +1261,8 @@ mod cpu_2d_app {
                                                 bubble.show_quota = settings.show_quota;
                                                 menu_mgr.rebuild_menu(&settings);
                                                 dirty_frame = true;
-                                                settings_window.set_visible(false);
-                                                is_settings_open = false;
+                                                settings_ui.render(&mut settings_pixmap, s_scale);
+                                                settings_surface.present(&settings_pixmap, s_scale as f64);
                                             }
                                             SettingsAction::Cancel => {
                                                 settings_window.set_visible(false);
@@ -1278,9 +1286,26 @@ mod cpu_2d_app {
                                             SettingsAction::None => {}
                                         }
                                     }
-                                } else if settings_ui.handle_mouse_up() {
-                                    settings_ui.render(&mut settings_pixmap, s_scale);
-                                    settings_surface.present(&settings_pixmap, s_scale as f64);
+                                } else if let Some(action) = settings_ui.handle_mouse_up() {
+                                    match action {
+                                        SettingsAction::Save(new_settings) => {
+                                            state_watcher.save_settings(&new_settings);
+                                            settings = new_settings;
+                                            physics.zoom_scale = settings.scale;
+                                            physics.gravity_enabled = settings.gravity_enabled;
+                                            physics.floor_mode = settings.floor_mode.clone();
+                                            audio.enabled = settings.sound_enabled;
+                                            bubble.show_quota = settings.show_quota;
+                                            menu_mgr.rebuild_menu(&settings);
+                                            dirty_frame = true;
+                                            settings_ui.render(&mut settings_pixmap, s_scale);
+                                            settings_surface.present(&settings_pixmap, s_scale as f64);
+                                        }
+                                        _ => {
+                                            settings_ui.render(&mut settings_pixmap, s_scale);
+                                            settings_surface.present(&settings_pixmap, s_scale as f64);
+                                        }
+                                    }
                                 }
                             }
                             WindowEvent::MouseWheel { delta, .. } => {
