@@ -1156,7 +1156,7 @@ impl SettingsUi {
             } else {
                 text_sec
             };
-            draw_text_into_pixmap(pixmap, &label, px + 2.0 * s, pill_y + 3.0 * s, pill_w - 4.0 * s, 16.0 * s, 11.5 * s, if is_sel { 0.3 } else { 0.0 }, txt_c, 1.0, TextAlignment::Center);
+            draw_text_into_pixmap(pixmap, &label, px + 2.0 * s, pill_y + 7.0 * s, pill_w - 4.0 * s, 16.0 * s, 11.5 * s, if is_sel { 0.3 } else { 0.0 }, txt_c, 1.0, TextAlignment::Center);
         }
 
         // 2. Action Bar: Subtitle on left, "+ 添加台词" button on right (y = 126.0 * s, h = 28.0 * s)
