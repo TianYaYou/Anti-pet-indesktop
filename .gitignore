@@ -17,6 +17,7 @@ yarn-error.log*
 .antigravity-pet-ledger.json
 .antigravity-pet-settings.json
 evidence/
+desktop/skins/
 
 # Cargo local overrides
 .cargo/

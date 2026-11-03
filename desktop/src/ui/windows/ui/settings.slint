@@ -1,0 +1,578 @@
+import { Button, CheckBox, Slider, Switch, ScrollView, LineEdit } from "std-widgets.slint";
+
+export struct DialogueItem {
+    id: int,
+    text: string,
+}
+
+export component SettingsWindow inherits Window {
+    title: "Anti-Pet 偏好设置";
+    preferred-width: 700px;
+    preferred-height: 520px;
+    min-width: 660px;
+    min-height: 480px;
+    background: #1e1e20;
+    default-font-family: "PingFang SC";
+
+    // Domain Properties (bound to SettingsStore)
+    in-out property <int> active-tab: 0;
+    in-out property <string> theme-mode: "system";
+    in-out property <float> pet-scale: 1.0;
+    in-out property <string> floor-mode: "bottom";
+    in-out property <bool> gravity-enabled: true;
+    in-out property <bool> show-quota: true;
+    in-out property <bool> ide-only: true;
+    in-out property <bool> dnd-mode: false;
+    in-out property <bool> sound-enabled: true;
+    in-out property <bool> autostart-enabled: false;
+
+    // Menu config items (9 toggles)
+    in-out property <bool> menu-open-antigravity: true;
+    in-out property <bool> menu-settings: true;
+    in-out property <bool> menu-random-dialogue: true;
+    in-out property <bool> menu-pet-action: true;
+    in-out property <bool> menu-quota: true;
+    in-out property <bool> menu-dnd: true;
+    in-out property <bool> menu-sound: true;
+    in-out property <bool> menu-zoom: true;
+    in-out property <bool> menu-gravity: true;
+
+    // Dialogue tab properties
+    in-out property <int> dialogue-cat: 0;
+    in-out property <[DialogueItem]> dialogue-list: [];
+    in-out property <string> new-dialogue-text: "";
+
+    // Status message / toast
+    in-out property <string> toast-message: "";
+
+    // Callbacks to Rust Domain Action Dispatches
+    callback select-tab(int);
+    callback cycle-theme();
+    callback scale-changed(float);
+    callback cycle-floor-mode();
+    callback toggle-gravity();
+    callback reset-position();
+    callback toggle-quota();
+    callback toggle-ide-only();
+    callback toggle-dnd();
+    callback toggle-sound();
+    callback toggle-autostart();
+    callback check-update();
+    callback toggle-menu-option(int);
+    callback select-dialogue-cat(int);
+    callback add-dialogue(string);
+    callback delete-dialogue(int);
+    callback save-settings();
+    callback cancel-settings();
+
+    HorizontalLayout {
+        padding: 0px;
+        spacing: 0px;
+
+        // Left Navigation Sidebar
+        Rectangle {
+            width: 180px;
+            background: #18181a;
+
+            VerticalLayout {
+                padding-top: 18px;
+                padding-bottom: 18px;
+                padding-left: 12px;
+                padding-right: 12px;
+                spacing: 6px;
+
+                Text {
+                    text: "偏好设置";
+                    font-size: 17px;
+                    font-weight: 700;
+                    color: #ffffff;
+                }
+                Text {
+                    text: "Anti-Pet v0.5.0";
+                    font-size: 11px;
+                    color: #888892;
+                }
+
+                Rectangle { height: 12px; }
+
+                // Tab 0: 常规与显示
+                Rectangle {
+                    height: 38px;
+                    border-radius: 8px;
+                    background: root.active-tab == 0 ? #0a84ff : (touch-tab0.has-hover ? #28282c : transparent);
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        alignment: start;
+                        Text {
+                            text: "常规与显示";
+                            font-size: 13px;
+                            font-weight: root.active-tab == 0 ? 600 : 400;
+                            color: #ffffff;
+                        }
+                    }
+                    touch-tab0 := TouchArea {
+                        clicked => {
+                            root.active-tab = 0;
+                            root.select-tab(0);
+                        }
+                    }
+                }
+
+                // Tab 1: 自启动与更新
+                Rectangle {
+                    height: 38px;
+                    border-radius: 8px;
+                    background: root.active-tab == 1 ? #0a84ff : (touch-tab1.has-hover ? #28282c : transparent);
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        alignment: start;
+                        Text {
+                            text: "自启动与更新";
+                            font-size: 13px;
+                            font-weight: root.active-tab == 1 ? 600 : 400;
+                            color: #ffffff;
+                        }
+                    }
+                    touch-tab1 := TouchArea {
+                        clicked => {
+                            root.active-tab = 1;
+                            root.select-tab(1);
+                        }
+                    }
+                }
+
+                // Tab 2: 皮肤管理
+                Rectangle {
+                    height: 38px;
+                    border-radius: 8px;
+                    background: root.active-tab == 2 ? #0a84ff : (touch-tab2.has-hover ? #28282c : transparent);
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        alignment: start;
+                        Text {
+                            text: "皮肤管理";
+                            font-size: 13px;
+                            font-weight: root.active-tab == 2 ? 600 : 400;
+                            color: #ffffff;
+                        }
+                    }
+                    touch-tab2 := TouchArea {
+                        clicked => {
+                            root.active-tab = 2;
+                            root.select-tab(2);
+                        }
+                    }
+                }
+
+                // Tab 3: 台词与问候
+                Rectangle {
+                    height: 38px;
+                    border-radius: 8px;
+                    background: root.active-tab == 3 ? #0a84ff : (touch-tab3.has-hover ? #28282c : transparent);
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        alignment: start;
+                        Text {
+                            text: "台词与问候";
+                            font-size: 13px;
+                            font-weight: root.active-tab == 3 ? 600 : 400;
+                            color: #ffffff;
+                        }
+                    }
+                    touch-tab3 := TouchArea {
+                        clicked => {
+                            root.active-tab = 3;
+                            root.select-tab(3);
+                        }
+                    }
+                }
+
+                // Tab 4: 右键菜单
+                Rectangle {
+                    height: 38px;
+                    border-radius: 8px;
+                    background: root.active-tab == 4 ? #0a84ff : (touch-tab4.has-hover ? #28282c : transparent);
+                    HorizontalLayout {
+                        padding-left: 12px;
+                        alignment: start;
+                        Text {
+                            text: "右键菜单配置";
+                            font-size: 13px;
+                            font-weight: root.active-tab == 4 ? 600 : 400;
+                            color: #ffffff;
+                        }
+                    }
+                    touch-tab4 := TouchArea {
+                        clicked => {
+                            root.active-tab = 4;
+                            root.select-tab(4);
+                        }
+                    }
+                }
+
+                // Spacer
+                Rectangle { }
+
+                // Toast status line
+                if root.toast-message != "": Text {
+                    text: root.toast-message;
+                    font-size: 11px;
+                    color: #34c759;
+                    wrap: word-wrap;
+                }
+            }
+        }
+
+        // Right Content View Area
+        VerticalLayout {
+            padding-top: 20px;
+            padding-bottom: 20px;
+            padding-left: 24px;
+            padding-right: 24px;
+            spacing: 12px;
+
+            // Header Title
+            HorizontalLayout {
+                alignment: space-between;
+                Text {
+                    text: root.active-tab == 0 ? "常规与显示" :
+                          root.active-tab == 1 ? "自启动与更新" :
+                          root.active-tab == 2 ? "皮肤管理" :
+                          root.active-tab == 3 ? "台词与问候" : "右键菜单配置";
+                    font-size: 18px;
+                    font-weight: 700;
+                    color: #ffffff;
+                }
+            }
+
+            // Scrollable Content
+            ScrollView {
+                vertical-stretch: 1;
+
+                // TAB 0: General
+                if root.active-tab == 0: VerticalLayout {
+                    spacing: 14px;
+                    padding-bottom: 20px;
+
+                    // Card 1: Appearance & Scale
+                    Rectangle {
+                        background: #242428;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: #323238;
+                        VerticalLayout {
+                            padding: 14px;
+                            spacing: 12px;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                VerticalLayout {
+                                    Text { text: "界面外观"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "窗口明暗主题风格，默认自动跟随系统"; font-size: 11px; color: #8e8e98; }
+                                }
+                                Button {
+                                    text: root.theme-mode == "dark" ? "深色" : (root.theme-mode == "light" ? "浅色" : "跟随系统");
+                                    clicked => { root.cycle-theme(); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #323238; }
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                VerticalLayout {
+                                    Text { text: "缩放大小: " + Math.round(root.pet-scale * 100) + "%"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "桌宠在屏幕上的呈现比例 (50% ~ 200%)"; font-size: 11px; color: #8e8e98; }
+                                }
+                                Slider {
+                                    width: 140px;
+                                    minimum: 0.5;
+                                    maximum: 2.0;
+                                    value: root.pet-scale;
+                                    changed(val) => { root.scale-changed(val); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #323238; }
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                VerticalLayout {
+                                    Text { text: "落地吸附基线"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "拖拽松手后猫猫下落吸附的目标基准线"; font-size: 11px; color: #8e8e98; }
+                                }
+                                Button {
+                                    text: root.floor-mode == "taskbar" ? "任务栏基线 (48px)" : "屏幕绝对落底 (0px)";
+                                    clicked => { root.cycle-floor-mode(); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #323238; }
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                VerticalLayout {
+                                    Text { text: "重力加速度模拟"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "释放后遵循弹性重力加速度下落，触底自然回弹"; font-size: 11px; color: #8e8e98; }
+                                }
+                                Switch {
+                                    checked: root.gravity-enabled;
+                                    toggled => { root.toggle-gravity(); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #323238; }
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                VerticalLayout {
+                                    Text { text: "屏幕位置校准"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "将桌宠一键拉回屏幕安全正中央，避免逃出屏幕"; font-size: 11px; color: #8e8e98; }
+                                }
+                                Button {
+                                    text: "复位居中";
+                                    clicked => { root.reset-position(); }
+                                }
+                            }
+                        }
+                    }
+
+                    // Card 2: Interactivity Toggles
+                    Rectangle {
+                        background: #242428;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: #323238;
+                        VerticalLayout {
+                            padding: 14px;
+                            spacing: 12px;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                VerticalLayout {
+                                    Text { text: "实时额度卡片"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "在对话气泡中同步展示 Antigravity 5小时与周额度进度"; font-size: 11px; color: #8e8e98; }
+                                }
+                                Switch {
+                                    checked: root.show-quota;
+                                    toggled => { root.toggle-quota(); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #323238; }
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                VerticalLayout {
+                                    Text { text: "仅在 IDE 活跃时显示"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "前台为 Antigravity / VS Code / Cursor 时呈现，切出时隐藏"; font-size: 11px; color: #8e8e98; }
+                                }
+                                Switch {
+                                    checked: root.ide-only;
+                                    toggled => { root.toggle-ide-only(); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #323238; }
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                VerticalLayout {
+                                    Text { text: "完全穿透免打扰"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "猫猫处于只读透明状态，鼠标点击直接透传到底层应用"; font-size: 11px; color: #8e8e98; }
+                                }
+                                Switch {
+                                    checked: root.dnd-mode;
+                                    toggled => { root.toggle-dnd(); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #323238; }
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                VerticalLayout {
+                                    Text { text: "动作音效"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "播放挂件拖拽释放、抚摸互动与提示音效"; font-size: 11px; color: #8e8e98; }
+                                }
+                                Switch {
+                                    checked: root.sound-enabled;
+                                    toggled => { root.toggle-sound(); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // TAB 1: Autostart & Update
+                if root.active-tab == 1: VerticalLayout {
+                    spacing: 14px;
+
+                    Rectangle {
+                        background: #242428;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: #323238;
+                        VerticalLayout {
+                            padding: 14px;
+                            spacing: 12px;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                VerticalLayout {
+                                    Text { text: "开机自动启动"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "系统登录后静默后台启动大肥猫桌宠伴侣"; font-size: 11px; color: #8e8e98; }
+                                }
+                                Switch {
+                                    checked: root.autostart-enabled;
+                                    toggled => { root.toggle-autostart(); }
+                                }
+                            }
+
+                            Rectangle { height: 1px; background: #323238; }
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                VerticalLayout {
+                                    Text { text: "检查软件更新"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "当前运行版本: Anti-Pet v0.5.0 (NextGen Core)"; font-size: 11px; color: #8e8e98; }
+                                }
+                                Button {
+                                    text: "检查更新";
+                                    clicked => { root.check-update(); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // TAB 2: Skins
+                if root.active-tab == 2: VerticalLayout {
+                    spacing: 14px;
+                    Rectangle {
+                        background: #242428;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: #0a84ff;
+                        VerticalLayout {
+                            padding: 18px;
+                            spacing: 8px;
+                            Text { text: "经典紫毛猫 (fat-cat)"; font-size: 15px; font-weight: 700; color: #ffffff; }
+                            Text { text: "默认常驻星语猫娘皮肤，纯 CPU 2D 软光栅化绘制，内存占用 <15MB。"; font-size: 12px; color: #8e8e98; }
+                            Text { text: "状态：当前已生效"; font-size: 12px; font-weight: 600; color: #34c759; }
+                        }
+                    }
+                }
+
+                // TAB 3: Dialogue
+                if root.active-tab == 3: VerticalLayout {
+                    spacing: 12px;
+
+                    // Category Pill Bar
+                    HorizontalLayout {
+                        spacing: 8px;
+                        Button { text: "待机日常"; clicked => { root.select-dialogue-cat(0); } }
+                        Button { text: "互动抚摸"; clicked => { root.select-dialogue-cat(1); } }
+                        Button { text: "深度思考"; clicked => { root.select-dialogue-cat(2); } }
+                        Button { text: "任务成功"; clicked => { root.select-dialogue-cat(3); } }
+                        Button { text: "任务遇阻"; clicked => { root.select-dialogue-cat(4); } }
+                    }
+
+                    // Input & Add Button
+                    HorizontalLayout {
+                        spacing: 8px;
+                        input-box := LineEdit {
+                            placeholder-text: "输入新的傲娇台词...";
+                            text: root.new-dialogue-text;
+                            edited(val) => { root.new-dialogue-text = val; }
+                        }
+                        Button {
+                            text: "+ 添加台词";
+                            clicked => {
+                                if root.new-dialogue-text != "" {
+                                    root.add-dialogue(root.new-dialogue-text);
+                                    root.new-dialogue-text = "";
+                                }
+                            }
+                        }
+                    }
+
+                    // Dialogue Items List
+                    for item in root.dialogue-list: Rectangle {
+                        background: #242428;
+                        border-radius: 8px;
+                        border-width: 1px;
+                        border-color: #323238;
+                        HorizontalLayout {
+                            padding: 8px;
+                            alignment: space-between;
+                            Text {
+                                text: item.text;
+                                font-size: 12.5px;
+                                color: #f0f0f4;
+                                wrap: word-wrap;
+                            }
+                            Button {
+                                text: "删除";
+                                clicked => { root.delete-dialogue(item.id); }
+                            }
+                        }
+                    }
+                }
+
+                // TAB 4: Context Menu Config
+                if root.active-tab == 4: VerticalLayout {
+                    spacing: 14px;
+                    Rectangle {
+                        background: #242428;
+                        border-radius: 10px;
+                        border-width: 1px;
+                        border-color: #323238;
+                        VerticalLayout {
+                            padding: 14px;
+                            spacing: 10px;
+
+                            Text { text: "勾选或隐藏桌宠右键控制面板中的快捷功能项："; font-size: 12px; color: #8e8e98; }
+
+                            CheckBox { text: "打开 Antigravity"; checked: root.menu-open-antigravity; toggled => { root.toggle-menu-option(0); } }
+                            CheckBox { text: "偏好设置..."; checked: root.menu-settings; toggled => { root.toggle-menu-option(1); } }
+                            CheckBox { text: "换一句傲娇台词"; checked: root.menu-random-dialogue; toggled => { root.toggle-menu-option(2); } }
+                            CheckBox { text: "互动抚摸"; checked: root.menu-pet-action; toggled => { root.toggle-menu-option(3); } }
+                            CheckBox { text: "切换额度卡片"; checked: root.menu-quota; toggled => { root.toggle-menu-option(4); } }
+                            CheckBox { text: "完全穿透 (免打扰)"; checked: root.menu-dnd; toggled => { root.toggle-menu-option(5); } }
+                            CheckBox { text: "动作音效"; checked: root.menu-sound; toggled => { root.toggle-menu-option(6); } }
+                            CheckBox { text: "缩放大小 (滚轮微调)"; checked: root.menu-zoom; toggled => { root.toggle-menu-option(7); } }
+                            CheckBox { text: "重力下落吸附"; checked: root.menu-gravity; toggled => { root.toggle-menu-option(8); } }
+                        }
+                    }
+                }
+            }
+
+            // Bottom Action Footer Bar
+            Rectangle {
+                height: 1px;
+                background: #323238;
+            }
+            HorizontalLayout {
+                alignment: space-between;
+                Text {
+                    text: "配置与台词变更将在点击确定后立即保存生效";
+                    font-size: 11px;
+                    color: #888892;
+                }
+                HorizontalLayout {
+                    spacing: 10px;
+                    Button {
+                        text: "取消";
+                        clicked => { root.cancel-settings(); }
+                    }
+                    Button {
+                        text: "确定";
+                        primary: true;
+                        clicked => { root.save-settings(); }
+                    }
+                }
+            }
+        }
+    }
+}
