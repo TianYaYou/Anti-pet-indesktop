@@ -301,7 +301,7 @@ impl SettingsUi {
         match self.active_tab {
             SettingsTab::Dialogue => {
                 let count = self.active_dialogues().len();
-                let max_scroll = ((count as f32 * 40.0) - 300.0).max(0.0);
+                let max_scroll = ((count as f32 * 42.0) - 280.0).max(0.0);
                 let new_scroll = (self.dialogue_scroll - dy).clamp(0.0, max_scroll);
                 if (new_scroll - self.dialogue_scroll).abs() > 0.5 {
                     self.dialogue_scroll = new_scroll;
@@ -413,30 +413,30 @@ impl SettingsUi {
                 }
             }
             SettingsTab::Dialogue => {
-                // Category Pills (y: 66.0 .. 94.0)
-                if (66.0..94.0).contains(&my) && (cw_left..cw_right).contains(&mx) {
+                // Category Pills (y: 82.0 .. 114.0)
+                if (82.0..114.0).contains(&my) && (cw_left..cw_right).contains(&mx) {
                     let pill_w = (cw_right - cw_left) / 5.0;
                     let idx = ((mx - cw_left) / pill_w).floor() as usize;
                     if idx < 5 {
                         return Some(format!("diag_cat_{}", idx));
                     }
                 }
-                // Add dialogue button (y: 98.0 .. 124.0, right-aligned)
+                // Add dialogue button (y: 126.0 .. 154.0, right-aligned)
                 let btn_w = 92.0;
-                if (98.0..124.0).contains(&my) && (cw_right - btn_w..cw_right).contains(&mx) {
+                if (126.0..154.0).contains(&my) && (cw_right - btn_w..cw_right).contains(&mx) {
                     return Some("add_dialogue".to_string());
                 }
-                // Dialogue items list (y: 128.0 .. SETTINGS_WIN_H - 54.0)
-                if my >= 128.0 && my <= (SETTINGS_WIN_H as f32 - 54.0) {
-                    let rel_y = my - 128.0 + self.dialogue_scroll;
-                    let row_idx = (rel_y / 40.0).floor() as i32;
+                // Dialogue items list (y: 164.0 .. SETTINGS_WIN_H - 54.0)
+                if my >= 164.0 && my <= (SETTINGS_WIN_H as f32 - 54.0) {
+                    let rel_y = my - 164.0 + self.dialogue_scroll;
+                    let row_idx = (rel_y / 42.0).floor() as i32;
                     if row_idx >= 0 {
                         let uidx = row_idx as usize;
                         let count = self.active_dialogues().len();
                         if uidx < count {
-                            if mx >= cw_right - 52.0 && mx <= cw_right - 6.0 {
+                            if mx >= cw_right - 56.0 && mx <= cw_right - 6.0 {
                                 return Some(format!("del_diag_{}", uidx));
-                            } else if mx >= cw_left && mx < cw_right - 56.0 {
+                            } else if mx >= cw_left && mx < cw_right - 60.0 {
                                 return Some(format!("edit_diag_{}", uidx));
                             }
                         }
@@ -519,8 +519,8 @@ impl SettingsUi {
                 }
             }
             SettingsTab::Dialogue => {
-                // Category Pills
-                if (66.0..94.0).contains(&my) && (cw_left..cw_right).contains(&mx) {
+                // Category Pills (y: 82.0 .. 114.0)
+                if (82.0..114.0).contains(&my) && (cw_left..cw_right).contains(&mx) {
                     let pill_w = (cw_right - cw_left) / 5.0;
                     let idx = ((mx - cw_left) / pill_w).floor() as usize;
                     if idx < 5 {
@@ -530,9 +530,9 @@ impl SettingsUi {
                         return SettingsAction::Redraw;
                     }
                 }
-                // Add button
+                // Add button (y: 126.0 .. 154.0)
                 let btn_w = 92.0;
-                if (98.0..124.0).contains(&my) && (cw_right - btn_w..cw_right).contains(&mx) {
+                if (126.0..154.0).contains(&my) && (cw_right - btn_w..cw_right).contains(&mx) {
                     let total = {
                         let list = self.active_dialogues_mut();
                         list.push("新台词条目".to_string());
@@ -541,18 +541,18 @@ impl SettingsUi {
                     let new_idx = total - 1;
                     self.editing_dialogue_idx = Some(new_idx);
                     self.editing_buffer = "新台词条目".to_string();
-                    self.dialogue_scroll = ((total as f32 * 40.0) - 300.0).max(0.0);
+                    self.dialogue_scroll = ((total as f32 * 42.0) - 280.0).max(0.0);
                     return SettingsAction::Redraw;
                 }
-                // Dialogue items
-                if my >= 128.0 && my <= (SETTINGS_WIN_H as f32 - 54.0) {
-                    let rel_y = my - 128.0 + self.dialogue_scroll;
-                    let row_idx = (rel_y / 40.0).floor() as i32;
+                // Dialogue items (y: 164.0 .. SETTINGS_WIN_H - 54.0)
+                if my >= 164.0 && my <= (SETTINGS_WIN_H as f32 - 54.0) {
+                    let rel_y = my - 164.0 + self.dialogue_scroll;
+                    let row_idx = (rel_y / 42.0).floor() as i32;
                     if row_idx >= 0 {
                         let uidx = row_idx as usize;
                         let count = self.active_dialogues().len();
                         if uidx < count {
-                            if mx >= cw_right - 52.0 && mx <= cw_right - 6.0 {
+                            if mx >= cw_right - 56.0 && mx <= cw_right - 6.0 {
                                 let list = self.active_dialogues_mut();
                                 list.remove(uidx);
                                 if self.editing_dialogue_idx == Some(uidx) {
@@ -563,7 +563,7 @@ impl SettingsUi {
                                     }
                                 }
                                 return SettingsAction::Redraw;
-                            } else if mx >= cw_left && mx < cw_right - 56.0 {
+                            } else if mx >= cw_left && mx < cw_right - 60.0 {
                                 let line_text = self.active_dialogues()[uidx].clone();
                                 self.editing_dialogue_idx = Some(uidx);
                                 self.editing_buffer = line_text;
@@ -657,9 +657,9 @@ impl SettingsUi {
         pixmap.fill_rounded_rect_sdf(0.0, 0.0, SIDEBAR_W * s, h_px as f32, 0.0, bg_sidebar, 0.0, [0, 0, 0, 0]);
 
         // Sidebar Header: App Icon Thumbnail + Titles
-        let icon_box_x = 14.0 * s;
-        let icon_box_y = 12.0 * s;
-        let icon_box_size = 34.0 * s;
+        let icon_box_x = 16.0 * s;
+        let icon_box_y = 14.0 * s;
+        let icon_box_size = 36.0 * s;
         pixmap.fill_rounded_rect_sdf(
             icon_box_x,
             icon_box_y,
@@ -671,9 +671,9 @@ impl SettingsUi {
             border_card,
         );
         let tf_avatar = super::sprite::SpriteTransform {
-            anchor_x: (icon_box_x + 17.0 * s) / s,
-            anchor_y: (icon_box_y + 29.0 * s) / s,
-            base_size: 26.0,
+            anchor_x: (icon_box_x + 18.0 * s) / s,
+            anchor_y: (icon_box_y + 32.0 * s) / s,
+            base_size: 28.0,
             scale_x: 1.0,
             scale_y: 1.0,
             flip_x: 1.0,
@@ -685,9 +685,9 @@ impl SettingsUi {
         };
         let _ = self.cat_sprite.draw(pixmap, &tf_avatar, s);
 
-        let header_txt_x = icon_box_x + icon_box_size + 8.0 * s;
-        draw_text_into_pixmap(pixmap, "Anti-Pet", header_txt_x, icon_box_y + 2.0 * s, (SIDEBAR_W - 64.0) * s, 16.0 * s, 13.5 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "伴侣偏好设置", header_txt_x, icon_box_y + 18.0 * s, (SIDEBAR_W - 64.0) * s, 14.0 * s, 10.0 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
+        let header_txt_x = icon_box_x + icon_box_size + 10.0 * s;
+        draw_text_into_pixmap(pixmap, "Anti-Pet", header_txt_x, icon_box_y + 3.0 * s, (SIDEBAR_W - 68.0) * s, 16.0 * s, 13.5 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "伴侣偏好设置", header_txt_x, icon_box_y + 19.0 * s, (SIDEBAR_W - 68.0) * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
 
         // 2. Fill content area with solid background
         let content_x = SIDEBAR_W * s;
@@ -763,7 +763,7 @@ impl SettingsUi {
             let is_hovered = self.hovered_id.as_deref() == Some(&tab_id);
             let is_pressed = self.pressed_id.as_deref() == Some(&tab_id);
 
-            let (bg_pill, txt_col) = if is_win {
+            let (bg_pill, icon_col, txt_col) = if is_win {
                 let bg = if is_pressed {
                     if is_dark { [255, 255, 255, 24] } else { [0, 0, 0, 18] }
                 } else if is_active {
@@ -773,15 +773,20 @@ impl SettingsUi {
                 } else {
                     [0, 0, 0, 0]
                 };
-                (bg, text_pri)
+                let icon_c = if is_active {
+                    accent_color
+                } else {
+                    [text_pri[0], text_pri[1], text_pri[2], 210]
+                };
+                (bg, icon_c, text_pri)
             } else if is_active {
-                (accent_color, [255, 255, 255])
+                (accent_color, [255, 255, 255, 255], [255, 255, 255])
             } else if is_pressed {
-                (if is_dark { [255, 255, 255, 26] } else { [0, 0, 0, 18] }, text_pri)
+                (if is_dark { [255, 255, 255, 26] } else { [0, 0, 0, 18] }, [text_pri[0], text_pri[1], text_pri[2], 240], text_pri)
             } else if is_hovered {
-                (if is_dark { [255, 255, 255, 18] } else { [0, 0, 0, 12] }, text_pri)
+                (if is_dark { [255, 255, 255, 18] } else { [0, 0, 0, 12] }, [text_pri[0], text_pri[1], text_pri[2], 240], text_pri)
             } else {
-                ([0, 0, 0, 0], text_pri)
+                ([0, 0, 0, 0], [text_pri[0], text_pri[1], text_pri[2], 180], text_pri)
             };
 
             let pill_x = if is_win { 10.0 * s } else { 12.0 * s };
@@ -799,9 +804,14 @@ impl SettingsUi {
                 pixmap.fill_rounded_rect_sdf(10.0 * s, ind_y, 3.0 * s, ind_h, 1.5 * s, accent_color, 0.0, [0, 0, 0, 0]);
             }
 
-            let text_x = if is_win { 22.0 * s } else { 24.0 * s };
+            // Vector navigation icon
+            let icon_x = if is_win { 20.0 * s } else { 22.0 * s };
+            let icon_y = ty + 8.0 * s;
+            Self::draw_nav_icon(pixmap, tab, icon_x, icon_y, s, icon_col);
+
+            let text_x = icon_x + 22.0 * s;
             let weight = if is_active { 0.3 } else { 0.0 };
-            draw_text_into_pixmap(pixmap, title, text_x, ty + 8.0 * s, (SIDEBAR_W - 32.0) * s, 16.0 * s, 12.5 * s, weight, txt_col, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, title, text_x, ty + 8.0 * s, (SIDEBAR_W - 50.0) * s, 16.0 * s, 12.5 * s, weight, txt_col, 1.0, TextAlignment::Left);
         }
 
         // Version badge at the bottom of the sidebar
@@ -841,7 +851,7 @@ impl SettingsUi {
         pixmap.fill_rounded_rect_sdf(0.0, footer_y, w_px as f32, footer_h, 0.0, bg_footer, 0.0, [0, 0, 0, 0]);
         pixmap.fill_rounded_rect_sdf(0.0, footer_y, w_px as f32, 1.0 * s, 0.0, div_col, 0.0, [0, 0, 0, 0]);
 
-        draw_text_into_pixmap(pixmap, "配置与台词变更将在点击确定后立即保存生效", 22.0 * s, footer_y + 16.0 * s, 360.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "配置与台词变更将在点击确定后立即保存生效", 22.0 * s, footer_y + 17.0 * s, 360.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
 
         // Cancel Button
         let cancel_w = 76.0 * s;
@@ -1087,22 +1097,33 @@ impl SettingsUi {
         is_win: bool,
         is_dark: bool,
     ) {
-        let base_y = 28.0 * s;
+        let base_y = 24.0 * s;
+        // Header Title
         draw_text_into_pixmap(pixmap, "台词与问候", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
+        // Header Subtitle (Ends at y = 64.0 * s)
         draw_text_into_pixmap(pixmap, "绑定 Antigravity 模型状态与桌面交互台词库，支持直接增删修改", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
-        // 1. Five Category Pills Navigation
-        let cats = [
-            ("待机日常 (idle)", self.dialogue_bank.idle.len()),
-            ("互动抚摸 (petting)", self.dialogue_bank.petting.len()),
-            ("深度思考 (thinking)", self.dialogue_bank.thinking.len()),
-            ("任务成功 (success)", self.dialogue_bank.success.len()),
-            ("任务遇阻 (error)", self.dialogue_bank.error.len()),
-        ];
-
-        let pill_y = 66.0 * s;
-        let pill_h = 28.0 * s;
+        // 1. Five Category Pills Navigation (Segmented container at y = 82.0 * s, h = 32.0 * s)
+        // Safe clear gap of 18px between subtitle (64.0) and pills (82.0) to eliminate any overlap
+        let pill_y = 82.0 * s;
+        let pill_h = 32.0 * s;
         let pill_w = cw / 5.0;
+
+        // Container track for segmented control
+        let seg_bg = if is_win {
+            if is_dark { [32, 32, 32, 255] } else { [240, 240, 240, 255] }
+        } else {
+            if is_dark { [36, 36, 38, 255] } else { [236, 236, 238, 255] }
+        };
+        pixmap.fill_rounded_rect_sdf(cx, pill_y, cw, pill_h, 6.0 * s, seg_bg, 1.0 * s, border_card);
+
+        let cats = [
+            ("待机日常", self.dialogue_bank.idle.len()),
+            ("互动抚摸", self.dialogue_bank.petting.len()),
+            ("深度思考", self.dialogue_bank.thinking.len()),
+            ("任务成功", self.dialogue_bank.success.len()),
+            ("任务遇阻", self.dialogue_bank.error.len()),
+        ];
 
         for (i, (_tag, count)) in cats.iter().enumerate() {
             let px = cx + (i as f32) * pill_w;
@@ -1112,12 +1133,12 @@ impl SettingsUi {
 
             let pill_bg = if is_sel {
                 if is_win {
-                    if is_dark { [255, 255, 255, 24] } else { [0, 0, 0, 16] }
+                    if is_dark { [52, 52, 52, 255] } else { [255, 255, 255, 255] }
                 } else {
                     accent
                 }
             } else if is_hover {
-                if is_dark { [255, 255, 255, 12] } else { [0, 0, 0, 8] }
+                if is_dark { [44, 44, 44, 255] } else { [248, 248, 248, 255] }
             } else {
                 [0, 0, 0, 0]
             };
@@ -1128,7 +1149,9 @@ impl SettingsUi {
                 [0, 0, 0, 0]
             };
 
-            pixmap.fill_rounded_rect_sdf(px + 2.0 * s, pill_y, pill_w - 4.0 * s, pill_h, 4.0 * s, pill_bg, 1.0 * s, stroke);
+            if pill_bg[3] > 0 || stroke[3] > 0 {
+                pixmap.fill_rounded_rect_sdf(px + 2.0 * s, pill_y + 2.0 * s, pill_w - 4.0 * s, pill_h - 4.0 * s, 4.0 * s, pill_bg, if is_sel && is_win { 1.2 * s } else { 0.0 }, stroke);
+            }
 
             let label = match i {
                 0 => format!("待机 ({})", count),
@@ -1142,11 +1165,12 @@ impl SettingsUi {
             } else {
                 text_sec
             };
-            draw_text_into_pixmap(pixmap, &label, px + 2.0 * s, pill_y + 6.0 * s, pill_w - 4.0 * s, 16.0 * s, 11.5 * s, if is_sel { 0.3 } else { 0.0 }, txt_c, 1.0, TextAlignment::Center);
+            draw_text_into_pixmap(pixmap, &label, px + 2.0 * s, pill_y + 8.0 * s, pill_w - 4.0 * s, 16.0 * s, 11.5 * s, if is_sel { 0.3 } else { 0.0 }, txt_c, 1.0, TextAlignment::Center);
         }
 
-        // 2. Action Bar: Subtitle on left, "+ 添加台词" button on right
-        let bar_y = 100.0 * s;
+        // 2. Action Bar: Subtitle on left, "+ 添加台词" button on right (y = 126.0 * s, h = 28.0 * s)
+        let bar_y = 126.0 * s;
+        let bar_h = 28.0 * s;
         let cat_desc = match self.dialogue_cat {
             0 => "空闲时随时间周期性随机说出的台词",
             1 => "鼠标双击或在猫头连续抚摸摩擦时触发",
@@ -1154,20 +1178,20 @@ impl SettingsUi {
             3 => "Antigravity 成功完成编译、测试或代码交付时",
             _ => "代码构建失败或运行异常时安慰用户的提示",
         };
-        draw_text_into_pixmap(pixmap, cat_desc, cx, bar_y + 4.0 * s, cw - 100.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 0.9, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, cat_desc, cx, bar_y + 6.0 * s, cw - 100.0 * s, 16.0 * s, 11.5 * s, 0.0, text_sec, 0.9, TextAlignment::Left);
 
         let add_btn_w = 92.0 * s;
-        let add_btn_h = 24.0 * s;
+        let add_btn_h = bar_h;
         let add_btn_x = cx + cw - add_btn_w;
         self.render_button(pixmap, add_btn_x, bar_y, add_btn_w, add_btn_h, "+ 添加台词", s, is_win, is_dark, border_card, text_pri, "add_dialogue");
 
-        // 3. Scrollable List of Dialogue Lines
-        let list_y = 128.0 * s;
-        let list_bottom = (SETTINGS_WIN_H as f32 - 56.0) * s;
+        // 3. Scrollable List of Dialogue Lines (y = 164.0 * s, list_bottom = 466.0 * s)
+        let list_y = 164.0 * s;
+        let list_bottom = (SETTINGS_WIN_H as f32 - 54.0) * s;
         let lines = self.active_dialogues();
 
         for (i, line) in lines.iter().enumerate() {
-            let row_y = list_y + (i as f32 * 40.0 * s) - self.dialogue_scroll * s;
+            let row_y = list_y + (i as f32 * 42.0 * s) - self.dialogue_scroll * s;
             if row_y + 34.0 * s < list_y || row_y > list_bottom {
                 continue; // culled
             }
@@ -1194,7 +1218,7 @@ impl SettingsUi {
             // Card row
             pixmap.fill_rounded_rect_sdf(cx, row_y, cw, 34.0 * s, card_radius, row_bg, if is_editing { 1.5 * s } else { 1.0 * s }, row_stroke);
 
-            // Display text
+            // Display text - exactly centered vertically with the row and delete button
             let text_val = if is_editing {
                 format!("{}|", self.editing_buffer)
             } else {
@@ -1205,13 +1229,13 @@ impl SettingsUi {
             } else {
                 text_pri
             };
-            draw_text_into_pixmap(pixmap, &text_val, cx + 12.0 * s, row_y + 8.0 * s, cw - 66.0 * s, 18.0 * s, 12.0 * s, 0.0, text_color, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, &text_val, cx + 12.0 * s, row_y + 9.0 * s, cw - 66.0 * s, 16.0 * s, 12.0 * s, 0.0, text_color, 1.0, TextAlignment::Left);
 
-            // "删除" button
-            let del_w = 42.0 * s;
-            let del_h = 22.0 * s;
-            let del_x = cx + cw - 48.0 * s;
-            let del_y = row_y + 6.0 * s;
+            // "删除" button - aligned on the exact same horizontal baseline
+            let del_w = 46.0 * s;
+            let del_h = 24.0 * s;
+            let del_x = cx + cw - 52.0 * s;
+            let del_y = row_y + 5.0 * s;
 
             let is_del_hover = self.hovered_id.as_deref() == Some(&del_id);
             let is_del_press = self.pressed_id.as_deref() == Some(&del_id);
@@ -1230,7 +1254,7 @@ impl SettingsUi {
             } else {
                 text_sec
             };
-            draw_text_into_pixmap(pixmap, "删除", del_x, del_y + 4.0 * s, del_w, 14.0 * s, 10.5 * s, 0.0, del_txt_c, 0.9, TextAlignment::Center);
+            draw_text_into_pixmap(pixmap, "删除", del_x, del_y + 5.0 * s, del_w, 14.0 * s, 10.5 * s, 0.0, del_txt_c, 0.9, TextAlignment::Center);
         }
     }
 
@@ -1329,9 +1353,10 @@ impl SettingsUi {
             border_card
         };
 
-        let text_y_offset = if is_pressed { 5.0 * s } else { 4.0 * s };
+        let text_h = 14.0 * s;
+        let text_y_offset = ((h - text_h) * 0.5 + if is_pressed { 1.0 * s } else { 0.0 }).max(0.0);
         pixmap.fill_rounded_rect_sdf(x, y, w, h, r, bg, 1.0 * s, stroke);
-        draw_text_into_pixmap(pixmap, text, x, y + text_y_offset, w, h - 8.0 * s, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, text, x, y + text_y_offset, w, text_h, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1368,8 +1393,57 @@ impl SettingsUi {
         };
 
         pixmap.fill_rounded_rect_sdf(x, y, w, h, r, bg, 0.0, [0, 0, 0, 0]);
-        let text_y_offset = if is_pressed { 7.0 * s } else { 6.0 * s };
-        draw_text_into_pixmap(pixmap, text, x, y + text_y_offset, w, h - 8.0 * s, 12.0 * s, 0.25, [255, 255, 255], 1.0, TextAlignment::Center);
+        let text_h = 14.0 * s;
+        let text_y_offset = ((h - text_h) * 0.5 + if is_pressed { 1.0 * s } else { 0.0 }).max(0.0);
+        draw_text_into_pixmap(pixmap, text, x, y + text_y_offset, w, text_h, 12.0 * s, 0.25, [255, 255, 255], 1.0, TextAlignment::Center);
+    }
+
+    fn draw_nav_icon(
+        pixmap: &mut Pixmap,
+        tab: SettingsTab,
+        x: f32,
+        y: f32,
+        s: f32,
+        color: [u8; 4],
+    ) {
+        match tab {
+            SettingsTab::General => {
+                // Sliders icon (precise 16x16 bounding box, vertical center at y + 8.0 * s)
+                let thick = 1.4 * s;
+                pixmap.draw_line_sdf(x + 1.0 * s, y + 4.5 * s, x + 15.0 * s, y + 4.5 * s, thick, color);
+                pixmap.fill_circle_sdf(x + 5.5 * s, y + 4.5 * s, 2.4 * s, color, 0.0, [0, 0, 0, 0]);
+
+                pixmap.draw_line_sdf(x + 1.0 * s, y + 11.5 * s, x + 15.0 * s, y + 11.5 * s, thick, color);
+                pixmap.fill_circle_sdf(x + 10.5 * s, y + 11.5 * s, 2.4 * s, color, 0.0, [0, 0, 0, 0]);
+            }
+            SettingsTab::Autostart => {
+                // Rocket / launch arrow (vertical center at y + 8.0 * s)
+                let thick = 1.4 * s;
+                pixmap.draw_line_sdf(x + 8.0 * s, y + 2.5 * s, x + 8.0 * s, y + 11.5 * s, thick * 1.2, color);
+                pixmap.draw_line_sdf(x + 8.0 * s, y + 2.5 * s, x + 4.0 * s, y + 6.5 * s, thick, color);
+                pixmap.draw_line_sdf(x + 8.0 * s, y + 2.5 * s, x + 12.0 * s, y + 6.5 * s, thick, color);
+                pixmap.draw_line_sdf(x + 4.0 * s, y + 13.5 * s, x + 12.0 * s, y + 13.5 * s, thick, color);
+            }
+            SettingsTab::Skins => {
+                // Cat head & cute pointed ears (vertical center at y + 8.0 * s)
+                pixmap.fill_rounded_rect_sdf(x + 2.5 * s, y + 5.5 * s, 11.0 * s, 8.0 * s, 3.0 * s, color, 0.0, [0, 0, 0, 0]);
+                pixmap.fill_circle_sdf(x + 4.5 * s, y + 3.5 * s, 2.2 * s, color, 0.0, [0, 0, 0, 0]);
+                pixmap.fill_circle_sdf(x + 11.5 * s, y + 3.5 * s, 2.2 * s, color, 0.0, [0, 0, 0, 0]);
+            }
+            SettingsTab::Dialogue => {
+                // Speech bubble (vertical center at y + 8.0 * s)
+                pixmap.fill_rounded_rect_sdf(x + 2.0 * s, y + 2.5 * s, 12.0 * s, 8.5 * s, 2.8 * s, color, 0.0, [0, 0, 0, 0]);
+                let thick = 1.4 * s;
+                pixmap.draw_line_sdf(x + 4.5 * s, y + 10.5 * s, x + 2.5 * s, y + 13.5 * s, thick, color);
+            }
+            SettingsTab::Menu => {
+                // 3 horizontal bars (hamburger / menu icon, vertical center at y + 8.0 * s)
+                let thick = 1.4 * s;
+                pixmap.draw_line_sdf(x + 2.5 * s, y + 3.5 * s, x + 13.5 * s, y + 3.5 * s, thick, color);
+                pixmap.draw_line_sdf(x + 2.5 * s, y + 8.0 * s, x + 13.5 * s, y + 8.0 * s, thick, color);
+                pixmap.draw_line_sdf(x + 2.5 * s, y + 12.5 * s, x + 13.5 * s, y + 12.5 * s, thick, color);
+            }
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1518,17 +1592,17 @@ mod tests {
         ui.active_tab = SettingsTab::Dialogue;
         ui.render(&mut pixmap, 1.0);
 
-        // Switch to category 1 (petting) via pill click
+        // Switch to category 1 (petting) via pill click (pills are at y = 82.0..114.0)
         let cw_left = SIDEBAR_W + 28.0;
         let cw_right = SETTINGS_WIN_W as f32 - 28.0;
         let pill_w = (cw_right - cw_left) / 5.0;
-        ui.mouse_pos = (cw_left + pill_w * 1.5, 78.0);
+        ui.mouse_pos = (cw_left + pill_w * 1.5, 95.0);
         let cat_action = ui.handle_mouse_down(1.0);
         assert_eq!(cat_action, Some(SettingsAction::Redraw));
         assert_eq!(ui.dialogue_cat, 1);
 
-        // Click "+ 添加台词"
-        ui.mouse_pos = (cw_right - 40.0, 110.0);
+        // Click "+ 添加台词" (action bar is at y = 126.0..154.0)
+        ui.mouse_pos = (cw_right - 40.0, 138.0);
         let add_action = ui.handle_mouse_down(1.0);
         assert_eq!(add_action, Some(SettingsAction::Redraw));
         assert!(ui.editing_dialogue_idx.is_some());
