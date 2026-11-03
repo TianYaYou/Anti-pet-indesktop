@@ -227,6 +227,12 @@ impl SettingsUi {
             return None;
         }
 
+        // macOS titlebar drag area (top 0..48 outside traffic lights)
+        #[cfg(target_os = "macos")]
+        if my <= 48.0 {
+            return Some(SettingsAction::BeginTitleDrag);
+        }
+
         // Windows Caption Controls
         #[cfg(target_os = "windows")]
         if my <= 32.0 {
@@ -273,6 +279,10 @@ impl SettingsUi {
                     self.cancel_editing();
                     return Some(SettingsAction::SelectTab(tab));
                 }
+            }
+            // Clicking empty sidebar area below tabs allows moving window
+            if my > 238.0 && my < (SETTINGS_WIN_H as f32 - 48.0) {
+                return Some(SettingsAction::BeginTitleDrag);
             }
             return None;
         }
@@ -656,38 +666,40 @@ impl SettingsUi {
         // 1. Fill sidebar with solid background
         pixmap.fill_rounded_rect_sdf(0.0, 0.0, SIDEBAR_W * s, h_px as f32, 0.0, bg_sidebar, 0.0, [0, 0, 0, 0]);
 
-        // Sidebar Header: App Icon Thumbnail + Titles
-        let icon_box_x = 16.0 * s;
-        let icon_box_y = 14.0 * s;
-        let icon_box_size = 36.0 * s;
-        pixmap.fill_rounded_rect_sdf(
-            icon_box_x,
-            icon_box_y,
-            icon_box_size,
-            icon_box_size,
-            6.0 * s,
-            bg_card,
-            1.0 * s,
-            border_card,
-        );
-        let tf_avatar = super::sprite::SpriteTransform {
-            anchor_x: (icon_box_x + 18.0 * s) / s,
-            anchor_y: (icon_box_y + 32.0 * s) / s,
-            base_size: 28.0,
-            scale_x: 1.0,
-            scale_y: 1.0,
-            flip_x: 1.0,
-            rotation_rad: 0.0,
-            gaze_offset_x: 0.0,
-            gaze_offset_y: 0.0,
-            opacity: 1.0,
-            draw_ground_shadow: false,
-        };
-        let _ = self.cat_sprite.draw(pixmap, &tf_avatar, s);
+        // Sidebar Header: App Icon Thumbnail + Titles (Only on Windows where there are no native traffic lights)
+        if is_win {
+            let icon_box_x = 16.0 * s;
+            let icon_box_y = 14.0 * s;
+            let icon_box_size = 36.0 * s;
+            pixmap.fill_rounded_rect_sdf(
+                icon_box_x,
+                icon_box_y,
+                icon_box_size,
+                icon_box_size,
+                6.0 * s,
+                bg_card,
+                1.0 * s,
+                border_card,
+            );
+            let tf_avatar = super::sprite::SpriteTransform {
+                anchor_x: (icon_box_x + 18.0 * s) / s,
+                anchor_y: (icon_box_y + 32.0 * s) / s,
+                base_size: 28.0,
+                scale_x: 1.0,
+                scale_y: 1.0,
+                flip_x: 1.0,
+                rotation_rad: 0.0,
+                gaze_offset_x: 0.0,
+                gaze_offset_y: 0.0,
+                opacity: 1.0,
+                draw_ground_shadow: false,
+            };
+            let _ = self.cat_sprite.draw(pixmap, &tf_avatar, s);
 
-        let header_txt_x = icon_box_x + icon_box_size + 10.0 * s;
-        draw_text_into_pixmap(pixmap, "Anti-Pet", header_txt_x, icon_box_y + 3.0 * s, (SIDEBAR_W - 68.0) * s, 16.0 * s, 13.5 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "伴侣偏好设置", header_txt_x, icon_box_y + 19.0 * s, (SIDEBAR_W - 68.0) * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
+            let header_txt_x = icon_box_x + icon_box_size + 10.0 * s;
+            draw_text_into_pixmap(pixmap, "Anti-Pet", header_txt_x, icon_box_y + 3.0 * s, (SIDEBAR_W - 68.0) * s, 16.0 * s, 13.5 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, "伴侣偏好设置", header_txt_x, icon_box_y + 19.0 * s, (SIDEBAR_W - 68.0) * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
+        }
 
         // 2. Fill content area with solid background
         let content_x = SIDEBAR_W * s;
@@ -1562,6 +1574,17 @@ mod tests {
         ui.mouse_pos = (SETTINGS_WIN_W as f32 - 50.0, SETTINGS_WIN_H as f32 - 20.0);
         let save_act = ui.handle_mouse_down(1.0);
         assert!(matches!(save_act, Some(SettingsAction::Save(_))));
+
+        #[cfg(target_os = "macos")]
+        {
+            // Test macOS traffic lights area (0..72 x 0..36) returns None to preserve native close/min/zoom
+            ui.mouse_pos = (30.0, 20.0);
+            assert_eq!(ui.handle_mouse_down(1.0), None);
+
+            // Test macOS title drag area (outside traffic lights)
+            ui.mouse_pos = (300.0, 20.0);
+            assert_eq!(ui.handle_mouse_down(1.0), Some(SettingsAction::BeginTitleDrag));
+        }
 
         #[cfg(target_os = "windows")]
         {

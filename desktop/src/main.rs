@@ -1364,6 +1364,21 @@ mod cpu_2d_app {
                     if window_id == settings_window.id() {
                         match event {
                             WindowEvent::CloseRequested => {
+                                #[cfg(target_os = "macos")]
+                                {
+                                    state_watcher.save_settings(&settings_ui.temp_settings);
+                                    settings = settings_ui.temp_settings.clone();
+                                    settings_ui.original_settings = settings.clone();
+                                    let root = state_watcher.root_dir();
+                                    let _ = settings_ui.dialogue_bank.save_to_root(&root, "fat-cat");
+                                    dialogue_bank = settings_ui.dialogue_bank.clone();
+                                    physics.zoom_scale = settings.scale;
+                                    physics.gravity_enabled = settings.gravity_enabled;
+                                    audio.enabled = settings.sound_enabled;
+                                    bubble.show_quota = settings.show_quota;
+                                    menu_mgr.rebuild_menu(&settings);
+                                    dirty_frame = true;
+                                }
                                 settings_window.set_visible(false);
                                 is_settings_open = false;
                             }
