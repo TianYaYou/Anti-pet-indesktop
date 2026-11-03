@@ -15,6 +15,9 @@ if [ "$1" == "--web" ]; then
     xdg-open "http://127.0.0.1:4199"
   fi
   wait $SERVER_PID
+elif [ "$1" == "--slint" ]; then
+  echo "正在启动下一代 Slint 现代偏好设置 (独立调试预览模式)..."
+  cargo run --bin slint_settings --manifest-path desktop/Cargo.toml
 elif [ "$1" == "--legacy" ]; then
   echo "正在启动 Anti-Pet 服务 (Legacy WebKit 模式)..."
   node server/index.js &
@@ -30,7 +33,7 @@ else
   SERVER_PID=$!
   trap 'echo ""; echo "正在关闭 Anti-Pet 服务..."; kill $SERVER_PID 2>/dev/null; exit 0' INT TERM
   sleep 1
-  echo "正在启动大肥猫桌宠 v0.4.1 (Pure CPU 2D 软渲染引擎)..."
+  echo "正在启动大肥猫桌宠 v0.5.0 (Pure CPU 2D + NextGen UI)..."
   cargo run --release --manifest-path desktop/Cargo.toml
   kill $SERVER_PID 2>/dev/null
 fi
