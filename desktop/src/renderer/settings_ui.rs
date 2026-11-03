@@ -271,12 +271,9 @@ impl SettingsUi {
             }
             SettingsTab::Skins => {
                 let cw_left = SIDEBAR_W + 28.0;
-                let card_w = (SETTINGS_WIN_W as f32 - SIDEBAR_W - 56.0 - 24.0) / 3.0;
-                for i in 0..3 {
-                    let card_x = cw_left + (i as f32) * (card_w + 12.0);
-                    if (80.0..240.0).contains(&content_y) && (card_x..card_x + card_w).contains(&mx) {
-                        return Some(format!("skin_{}", i));
-                    }
+                let card_w = 180.0;
+                if (80.0..240.0).contains(&content_y) && (cw_left..cw_left + card_w).contains(&mx) {
+                    return Some("skin_0".to_string());
                 }
             }
             SettingsTab::Dialogue => {
@@ -364,14 +361,11 @@ impl SettingsUi {
                 }
             }
             SettingsTab::Skins => {
-                let card_w = (SETTINGS_WIN_W as f32 - SIDEBAR_W - 56.0 - 24.0) / 3.0;
+                let card_w = 180.0;
                 let base_x = SIDEBAR_W + 28.0;
-                for i in 0..3 {
-                    let card_x = base_x + (i as f32) * (card_w + 12.0);
-                    if (80.0..240.0).contains(&content_y) && (card_x..card_x + card_w).contains(&mx) {
-                        self.show_toast("当前皮肤已生效");
-                        return SettingsAction::Redraw;
-                    }
+                if (80.0..240.0).contains(&content_y) && (base_x..base_x + card_w).contains(&mx) {
+                    self.show_toast("当前皮肤已生效");
+                    return SettingsAction::Redraw;
                 }
             }
             SettingsTab::Dialogue => {
@@ -769,7 +763,7 @@ impl SettingsUi {
         // Row 2: 检查更新
         let r2_y = r1_y + 44.0 * s;
         draw_text_into_pixmap(pixmap, "软件版本检查", cx + 14.0 * s, r2_y + 6.0 * s, 200.0 * s, 16.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
-        draw_text_into_pixmap(pixmap, "当前版本：v0.4.0 (Windows Native CPU 2D 极速渲染版)", cx + 14.0 * s, r2_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "当前版本：v0.4.0", cx + 14.0 * s, r2_y + 22.0 * s, 260.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
         let btn_x = cx + cw - 88.0 * s;
         self.render_button(pixmap, btn_x, r2_y + 10.0 * s, 76.0 * s, 24.0 * s, "检查更新", s, is_win, is_dark, border_card, text_pri, "check_update");
     }
@@ -782,7 +776,7 @@ impl SettingsUi {
         cw: f32,
         s: f32,
         bg_card: [u8; 4],
-        border_card: [u8; 4],
+        _border_card: [u8; 4],
         text_pri: [u8; 3],
         text_sec: [u8; 3],
         accent: [u8; 4],
@@ -793,65 +787,44 @@ impl SettingsUi {
         draw_text_into_pixmap(pixmap, "皮肤管理", cx, base_y, cw, 22.0 * s, 16.0 * s, 0.35, text_pri, 1.0, TextAlignment::Left);
         draw_text_into_pixmap(pixmap, "选择个性化猫咪伴侣皮肤与动作外观", cx, base_y + 24.0 * s, cw, 16.0 * s, 11.5 * s, 0.0, text_sec, 1.0, TextAlignment::Left);
 
-        let skins = [
-            ("经典紫毛猫", "原装傲娇大肥猫", true),
-            ("星际机甲猫", "赛博朋克科幻机甲", false),
-            ("软萌布偶猫", "温柔治愈系软萌长毛", false),
-        ];
-
-        let card_w = (cw - 24.0 * s) / 3.0;
+        let card_w = 180.0 * s;
         let card_h = 160.0 * s;
         let card_y = 80.0 * s;
 
-        for (i, (name, desc, is_curr)) in skins.into_iter().enumerate() {
-            let card_x = cx + (i as f32) * (card_w + 12.0 * s);
-            let skin_id = format!("skin_{}", i);
-            let is_hover = self.hovered_id.as_deref() == Some(&skin_id);
-            let is_press = self.pressed_id.as_deref() == Some(&skin_id);
+        let card_x = cx;
+        let skin_id = "skin_0";
+        let is_hover = self.hovered_id.as_deref() == Some(skin_id);
+        let is_press = self.pressed_id.as_deref() == Some(skin_id);
 
-            let border_c = if is_curr {
-                accent
-            } else if is_press {
-                accent
-            } else if is_hover {
-                if is_win { [255, 255, 255, 45] } else { [142, 142, 147, 100] }
-            } else {
-                border_card
-            };
+        let border_c = if is_press {
+            accent
+        } else if is_hover {
+            if is_win { [255, 255, 255, 45] } else { [142, 142, 147, 100] }
+        } else {
+            accent
+        };
 
-            let stroke_w = if is_curr || is_press { 2.0 * s } else { 1.0 * s };
-            pixmap.fill_rounded_rect_sdf(card_x, card_y, card_w, card_h, card_radius, bg_card, stroke_w, border_c);
+        pixmap.fill_rounded_rect_sdf(card_x, card_y, card_w, card_h, card_radius, bg_card, 2.0 * s, border_c);
 
-            // Sprite thumbnail preview for the 1st card
-            if i == 0 {
-                let tf = super::sprite::SpriteTransform {
-                    anchor_x: (card_x + (card_w * 0.5)) / s,
-                    anchor_y: (card_y + 86.0 * s) / s,
-                    base_size: 68.0,
-                    scale_x: 1.0,
-                    scale_y: 1.0,
-                    flip_x: 1.0,
-                    rotation_rad: 0.0,
-                    gaze_offset_x: 0.0,
-                    gaze_offset_y: 0.0,
-                    opacity: 1.0,
-                    draw_ground_shadow: true,
-                };
-                let _ = self.cat_sprite.draw(pixmap, &tf, s);
-            } else {
-                let icon_cx = card_x + card_w * 0.5;
-                let icon_cy = card_y + 46.0 * s;
-                pixmap.fill_circle_sdf(icon_cx, icon_cy, 24.0 * s, border_card, 0.0, [0, 0, 0, 0]);
-                draw_text_into_pixmap(pixmap, "即将上线", icon_cx - 30.0 * s, icon_cy - 8.0 * s, 60.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 0.8, TextAlignment::Center);
-            }
+        // Sprite thumbnail preview for 经典紫毛猫
+        let tf = super::sprite::SpriteTransform {
+            anchor_x: (card_x + (card_w * 0.5)) / s,
+            anchor_y: (card_y + 86.0 * s) / s,
+            base_size: 68.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            flip_x: 1.0,
+            rotation_rad: 0.0,
+            gaze_offset_x: 0.0,
+            gaze_offset_y: 0.0,
+            opacity: 1.0,
+            draw_ground_shadow: true,
+        };
+        let _ = self.cat_sprite.draw(pixmap, &tf, s);
 
-            draw_text_into_pixmap(pixmap, name, card_x + 8.0 * s, card_y + 92.0 * s, card_w - 16.0 * s, 18.0 * s, 13.0 * s, 0.2, text_pri, 1.0, TextAlignment::Center);
-            draw_text_into_pixmap(pixmap, desc, card_x + 8.0 * s, card_y + 114.0 * s, card_w - 16.0 * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Center);
-
-            if is_curr {
-                draw_text_into_pixmap(pixmap, "✓ 当前使用中", card_x + 8.0 * s, card_y + 134.0 * s, card_w - 16.0 * s, 14.0 * s, 10.5 * s, 0.3, [accent[0], accent[1], accent[2]], 1.0, TextAlignment::Center);
-            }
-        }
+        draw_text_into_pixmap(pixmap, "经典紫毛猫", card_x + 8.0 * s, card_y + 92.0 * s, card_w - 16.0 * s, 18.0 * s, 13.0 * s, 0.2, text_pri, 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, "原装傲娇大肥猫", card_x + 8.0 * s, card_y + 114.0 * s, card_w - 16.0 * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, "✓ 当前使用中", card_x + 8.0 * s, card_y + 134.0 * s, card_w - 16.0 * s, 14.0 * s, 10.5 * s, 0.3, [accent[0], accent[1], accent[2]], 1.0, TextAlignment::Center);
     }
 
     #[allow(clippy::too_many_arguments)]
