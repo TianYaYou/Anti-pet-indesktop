@@ -289,7 +289,7 @@ impl SettingsUi {
         let had_press = self.pressed_id.take().is_some();
         if self.dragging_slider.is_some() {
             self.dragging_slider = None;
-            return Some(SettingsAction::Save(self.temp_settings.clone()));
+            return Some(SettingsAction::Redraw);
         }
         if had_press {
             return Some(SettingsAction::Redraw);
@@ -469,35 +469,35 @@ impl SettingsUi {
                         "light" => "dark".to_string(),
                         _ => "system".to_string(),
                     };
-                    return SettingsAction::Save(self.temp_settings.clone());
+                    return SettingsAction::Redraw;
                 }
                 if (138.0..182.0).contains(&my) && (cw_right - 180.0..cw_right).contains(&mx) {
                     self.dragging_slider = Some("scale".to_string());
                     self.update_slider("scale", mx);
-                    return SettingsAction::Save(self.temp_settings.clone());
+                    return SettingsAction::Redraw;
                 }
                 if (182.0..226.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.gravity_enabled = !self.temp_settings.gravity_enabled;
-                    return SettingsAction::Save(self.temp_settings.clone());
+                    return SettingsAction::Redraw;
                 }
                 if (226.0..270.0).contains(&my) && (cw_right - 88.0..cw_right).contains(&mx) {
                     return SettingsAction::ResetPosition;
                 }
                 if (282.0..326.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.show_quota = !self.temp_settings.show_quota;
-                    return SettingsAction::Save(self.temp_settings.clone());
+                    return SettingsAction::Redraw;
                 }
                 if (326.0..370.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.menu_config.ide_only = !self.temp_settings.menu_config.ide_only;
-                    return SettingsAction::Save(self.temp_settings.clone());
+                    return SettingsAction::Redraw;
                 }
                 if (370.0..414.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.dnd_passthrough = !self.temp_settings.dnd_passthrough;
-                    return SettingsAction::Save(self.temp_settings.clone());
+                    return SettingsAction::Redraw;
                 }
                 if (414.0..458.0).contains(&my) && (cw_right - 60.0..cw_right).contains(&mx) {
                     self.temp_settings.sound_enabled = !self.temp_settings.sound_enabled;
-                    return SettingsAction::Save(self.temp_settings.clone());
+                    return SettingsAction::Redraw;
                 }
             }
             SettingsTab::Autostart => {
@@ -591,7 +591,7 @@ impl SettingsUi {
                         8 => self.temp_settings.menu_config.gravity = !self.temp_settings.menu_config.gravity,
                         _ => {}
                     }
-                    return SettingsAction::Save(self.temp_settings.clone());
+                    return SettingsAction::Redraw;
                 }
             }
         }
@@ -720,7 +720,7 @@ impl SettingsUi {
             } else {
                 [text_pri[0], text_pri[1], text_pri[2], 220]
             };
-            // Draw '✕'
+            // Draw close cross
             let cx_c = close_x + 23.0 * s;
             let cy_c = 16.0 * s;
             let d = 4.5 * s;
@@ -763,7 +763,7 @@ impl SettingsUi {
             let is_hovered = self.hovered_id.as_deref() == Some(&tab_id);
             let is_pressed = self.pressed_id.as_deref() == Some(&tab_id);
 
-            let (bg_pill, icon_col, txt_col) = if is_win {
+            let (bg_pill, txt_col) = if is_win {
                 let bg = if is_pressed {
                     if is_dark { [255, 255, 255, 24] } else { [0, 0, 0, 18] }
                 } else if is_active {
@@ -773,20 +773,15 @@ impl SettingsUi {
                 } else {
                     [0, 0, 0, 0]
                 };
-                let icon_c = if is_active {
-                    accent_color
-                } else {
-                    [text_pri[0], text_pri[1], text_pri[2], 210]
-                };
-                (bg, icon_c, text_pri)
+                (bg, text_pri)
             } else if is_active {
-                (accent_color, [255, 255, 255, 255], [255, 255, 255])
+                (accent_color, [255, 255, 255])
             } else if is_pressed {
-                (if is_dark { [255, 255, 255, 26] } else { [0, 0, 0, 18] }, [text_pri[0], text_pri[1], text_pri[2], 240], text_pri)
+                (if is_dark { [255, 255, 255, 26] } else { [0, 0, 0, 18] }, text_pri)
             } else if is_hovered {
-                (if is_dark { [255, 255, 255, 18] } else { [0, 0, 0, 12] }, [text_pri[0], text_pri[1], text_pri[2], 240], text_pri)
+                (if is_dark { [255, 255, 255, 18] } else { [0, 0, 0, 12] }, text_pri)
             } else {
-                ([0, 0, 0, 0], [text_pri[0], text_pri[1], text_pri[2], 180], text_pri)
+                ([0, 0, 0, 0], text_pri)
             };
 
             let pill_x = if is_win { 10.0 * s } else { 12.0 * s };
@@ -804,14 +799,10 @@ impl SettingsUi {
                 pixmap.fill_rounded_rect_sdf(10.0 * s, ind_y, 3.0 * s, ind_h, 1.5 * s, accent_color, 0.0, [0, 0, 0, 0]);
             }
 
-            // Vector navigation icon
-            let icon_x = if is_win { 20.0 * s } else { 22.0 * s };
-            let icon_y = ty + 8.0 * s;
-            Self::draw_nav_icon(pixmap, tab, icon_x, icon_y, s, icon_col);
-
-            let text_x = icon_x + 22.0 * s;
+            // Clean text-only navigation (no extra icons, precisely vertically centered)
+            let text_x = if is_win { 22.0 * s } else { 24.0 * s };
             let weight = if is_active { 0.3 } else { 0.0 };
-            draw_text_into_pixmap(pixmap, title, text_x, ty + 8.0 * s, (SIDEBAR_W - 50.0) * s, 16.0 * s, 12.5 * s, weight, txt_col, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, title, text_x, ty + 6.0 * s, (SIDEBAR_W - 36.0) * s, 16.0 * s, 12.5 * s, weight, txt_col, 1.0, TextAlignment::Left);
         }
 
         // Version badge at the bottom of the sidebar
@@ -851,7 +842,7 @@ impl SettingsUi {
         pixmap.fill_rounded_rect_sdf(0.0, footer_y, w_px as f32, footer_h, 0.0, bg_footer, 0.0, [0, 0, 0, 0]);
         pixmap.fill_rounded_rect_sdf(0.0, footer_y, w_px as f32, 1.0 * s, 0.0, div_col, 0.0, [0, 0, 0, 0]);
 
-        draw_text_into_pixmap(pixmap, "配置与台词变更将在点击确定后立即保存生效", 22.0 * s, footer_y + 17.0 * s, 360.0 * s, 14.0 * s, 11.0 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
+        draw_text_into_pixmap(pixmap, "配置与台词变更将在点击确定后立即保存生效", 22.0 * s, footer_y + 15.5 * s, 360.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 0.85, TextAlignment::Left);
 
         // Cancel Button
         let cancel_w = 76.0 * s;
@@ -1078,7 +1069,7 @@ impl SettingsUi {
 
         draw_text_into_pixmap(pixmap, "经典紫毛猫", card_x + 8.0 * s, card_y + 92.0 * s, card_w - 16.0 * s, 18.0 * s, 13.0 * s, 0.2, text_pri, 1.0, TextAlignment::Center);
         draw_text_into_pixmap(pixmap, "原装傲娇大肥猫", card_x + 8.0 * s, card_y + 114.0 * s, card_w - 16.0 * s, 14.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Center);
-        draw_text_into_pixmap(pixmap, "✓ 当前使用中", card_x + 8.0 * s, card_y + 134.0 * s, card_w - 16.0 * s, 14.0 * s, 10.5 * s, 0.3, [accent[0], accent[1], accent[2]], 1.0, TextAlignment::Center);
+        draw_text_into_pixmap(pixmap, "当前使用中", card_x + 8.0 * s, card_y + 134.0 * s, card_w - 16.0 * s, 14.0 * s, 10.5 * s, 0.3, [accent[0], accent[1], accent[2]], 1.0, TextAlignment::Center);
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1165,7 +1156,7 @@ impl SettingsUi {
             } else {
                 text_sec
             };
-            draw_text_into_pixmap(pixmap, &label, px + 2.0 * s, pill_y + 8.0 * s, pill_w - 4.0 * s, 16.0 * s, 11.5 * s, if is_sel { 0.3 } else { 0.0 }, txt_c, 1.0, TextAlignment::Center);
+            draw_text_into_pixmap(pixmap, &label, px + 2.0 * s, pill_y + 3.0 * s, pill_w - 4.0 * s, 16.0 * s, 11.5 * s, if is_sel { 0.3 } else { 0.0 }, txt_c, 1.0, TextAlignment::Center);
         }
 
         // 2. Action Bar: Subtitle on left, "+ 添加台词" button on right (y = 126.0 * s, h = 28.0 * s)
@@ -1229,7 +1220,7 @@ impl SettingsUi {
             } else {
                 text_pri
             };
-            draw_text_into_pixmap(pixmap, &text_val, cx + 12.0 * s, row_y + 9.0 * s, cw - 66.0 * s, 16.0 * s, 12.0 * s, 0.0, text_color, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, &text_val, cx + 12.0 * s, row_y + 8.5 * s, cw - 66.0 * s, 16.0 * s, 12.0 * s, 0.0, text_color, 1.0, TextAlignment::Left);
 
             // "删除" button - aligned on the exact same horizontal baseline
             let del_w = 46.0 * s;
@@ -1254,7 +1245,7 @@ impl SettingsUi {
             } else {
                 text_sec
             };
-            draw_text_into_pixmap(pixmap, "删除", del_x, del_y + 5.0 * s, del_w, 14.0 * s, 10.5 * s, 0.0, del_txt_c, 0.9, TextAlignment::Center);
+            draw_text_into_pixmap(pixmap, "删除", del_x, del_y + 3.5 * s, del_w, 16.0 * s, 10.5 * s, 0.0, del_txt_c, 0.9, TextAlignment::Center);
         }
     }
 
@@ -1297,7 +1288,7 @@ impl SettingsUi {
 
         for (i, (title, checked)) in menu_items.into_iter().enumerate() {
             let row_y = c1_y + 4.0 * s + (i as f32) * 44.0 * s;
-            draw_text_into_pixmap(pixmap, title, cx + 14.0 * s, row_y + 12.0 * s, cw - 80.0 * s, 18.0 * s, 12.5 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
+            draw_text_into_pixmap(pixmap, title, cx + 14.0 * s, row_y + 11.0 * s, cw - 80.0 * s, 18.0 * s, 12.5 * s, 0.0, text_pri, 1.0, TextAlignment::Left);
             self.render_checkbox(pixmap, cx + cw - 38.0 * s, row_y + 11.0 * s, s, checked, accent, is_win, is_dark);
             if i < 8 {
                 pixmap.fill_rounded_rect_sdf(cx + 14.0 * s, row_y + 43.0 * s, cw - 28.0 * s, 1.0 * s, 0.0, row_div, 0.0, [0, 0, 0, 0]);
@@ -1353,8 +1344,8 @@ impl SettingsUi {
             border_card
         };
 
-        let text_h = 14.0 * s;
-        let text_y_offset = ((h - text_h) * 0.5 + if is_pressed { 1.0 * s } else { 0.0 }).max(0.0);
+        let text_h = 16.0 * s;
+        let text_y_offset = ((h * 0.5 - 8.5 * s) + if is_pressed { 1.0 * s } else { 0.0 }).max(0.0);
         pixmap.fill_rounded_rect_sdf(x, y, w, h, r, bg, 1.0 * s, stroke);
         draw_text_into_pixmap(pixmap, text, x, y + text_y_offset, w, text_h, 11.5 * s, 0.0, text_pri, 1.0, TextAlignment::Center);
     }
@@ -1393,57 +1384,9 @@ impl SettingsUi {
         };
 
         pixmap.fill_rounded_rect_sdf(x, y, w, h, r, bg, 0.0, [0, 0, 0, 0]);
-        let text_h = 14.0 * s;
-        let text_y_offset = ((h - text_h) * 0.5 + if is_pressed { 1.0 * s } else { 0.0 }).max(0.0);
+        let text_h = 16.0 * s;
+        let text_y_offset = ((h * 0.5 - 8.5 * s) + if is_pressed { 1.0 * s } else { 0.0 }).max(0.0);
         draw_text_into_pixmap(pixmap, text, x, y + text_y_offset, w, text_h, 12.0 * s, 0.25, [255, 255, 255], 1.0, TextAlignment::Center);
-    }
-
-    fn draw_nav_icon(
-        pixmap: &mut Pixmap,
-        tab: SettingsTab,
-        x: f32,
-        y: f32,
-        s: f32,
-        color: [u8; 4],
-    ) {
-        match tab {
-            SettingsTab::General => {
-                // Sliders icon (precise 16x16 bounding box, vertical center at y + 8.0 * s)
-                let thick = 1.4 * s;
-                pixmap.draw_line_sdf(x + 1.0 * s, y + 4.5 * s, x + 15.0 * s, y + 4.5 * s, thick, color);
-                pixmap.fill_circle_sdf(x + 5.5 * s, y + 4.5 * s, 2.4 * s, color, 0.0, [0, 0, 0, 0]);
-
-                pixmap.draw_line_sdf(x + 1.0 * s, y + 11.5 * s, x + 15.0 * s, y + 11.5 * s, thick, color);
-                pixmap.fill_circle_sdf(x + 10.5 * s, y + 11.5 * s, 2.4 * s, color, 0.0, [0, 0, 0, 0]);
-            }
-            SettingsTab::Autostart => {
-                // Rocket / launch arrow (vertical center at y + 8.0 * s)
-                let thick = 1.4 * s;
-                pixmap.draw_line_sdf(x + 8.0 * s, y + 2.5 * s, x + 8.0 * s, y + 11.5 * s, thick * 1.2, color);
-                pixmap.draw_line_sdf(x + 8.0 * s, y + 2.5 * s, x + 4.0 * s, y + 6.5 * s, thick, color);
-                pixmap.draw_line_sdf(x + 8.0 * s, y + 2.5 * s, x + 12.0 * s, y + 6.5 * s, thick, color);
-                pixmap.draw_line_sdf(x + 4.0 * s, y + 13.5 * s, x + 12.0 * s, y + 13.5 * s, thick, color);
-            }
-            SettingsTab::Skins => {
-                // Cat head & cute pointed ears (vertical center at y + 8.0 * s)
-                pixmap.fill_rounded_rect_sdf(x + 2.5 * s, y + 5.5 * s, 11.0 * s, 8.0 * s, 3.0 * s, color, 0.0, [0, 0, 0, 0]);
-                pixmap.fill_circle_sdf(x + 4.5 * s, y + 3.5 * s, 2.2 * s, color, 0.0, [0, 0, 0, 0]);
-                pixmap.fill_circle_sdf(x + 11.5 * s, y + 3.5 * s, 2.2 * s, color, 0.0, [0, 0, 0, 0]);
-            }
-            SettingsTab::Dialogue => {
-                // Speech bubble (vertical center at y + 8.0 * s)
-                pixmap.fill_rounded_rect_sdf(x + 2.0 * s, y + 2.5 * s, 12.0 * s, 8.5 * s, 2.8 * s, color, 0.0, [0, 0, 0, 0]);
-                let thick = 1.4 * s;
-                pixmap.draw_line_sdf(x + 4.5 * s, y + 10.5 * s, x + 2.5 * s, y + 13.5 * s, thick, color);
-            }
-            SettingsTab::Menu => {
-                // 3 horizontal bars (hamburger / menu icon, vertical center at y + 8.0 * s)
-                let thick = 1.4 * s;
-                pixmap.draw_line_sdf(x + 2.5 * s, y + 3.5 * s, x + 13.5 * s, y + 3.5 * s, thick, color);
-                pixmap.draw_line_sdf(x + 2.5 * s, y + 8.0 * s, x + 13.5 * s, y + 8.0 * s, thick, color);
-                pixmap.draw_line_sdf(x + 2.5 * s, y + 12.5 * s, x + 13.5 * s, y + 12.5 * s, thick, color);
-            }
-        }
     }
 
     #[allow(clippy::too_many_arguments)]

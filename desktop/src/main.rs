@@ -355,9 +355,11 @@ mod cpu_2d_app {
         use windows::Win32::UI::WindowsAndMessaging::{
             CreateIconIndirect, GetCursorPos, GetWindowLongPtrW, LoadImageW, SendMessageW,
             SetClassLongPtrW, SetWindowLongPtrW, SetWindowPos, GCLP_HICON, GCLP_HICONSM,
-            GWL_EXSTYLE, HICON, HWND_TOPMOST, ICONINFO, IMAGE_ICON, LR_DEFAULTSIZE,
-            LR_LOADFROMFILE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WM_SETICON, WS_EX_APPWINDOW,
+            GWL_EXSTYLE, HICON, HTCAPTION, HWND_TOPMOST, ICONINFO, IMAGE_ICON, LR_DEFAULTSIZE,
+            LR_LOADFROMFILE, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, WM_NCLBUTTONDOWN, WM_SETICON,
+            WS_EX_APPWINDOW,
         };
+        use windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
         use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
         use windows::core::{w, PCWSTR};
 
@@ -366,6 +368,19 @@ mod cpu_2d_app {
             pub bottom: f64,
             pub left: f64,
             pub right: f64,
+        }
+
+        pub fn start_window_drag(hwnd_isize: isize) {
+            unsafe {
+                let hwnd = HWND(hwnd_isize as *mut _);
+                let _ = ReleaseCapture();
+                let _ = SendMessageW(
+                    hwnd,
+                    WM_NCLBUTTONDOWN,
+                    Some(WPARAM(HTCAPTION as usize)),
+                    Some(LPARAM(0)),
+                );
+            }
         }
 
         pub fn init_app_user_model_id() {
@@ -864,11 +879,6 @@ mod cpu_2d_app {
         let mut cursor_left_since: Option<Instant> = None;
         let mut dirty_frame = true;
 
-        let mut is_dragging_settings = false;
-        let mut current_settings_cursor = (0.0_f64, 0.0_f64);
-        let mut settings_drag_start_cursor = (0.0_f64, 0.0_f64);
-        let mut settings_drag_win_pos = (0, 0);
-
         println!("Anti-Pet v0.4.0 Pure CPU 2D 软渲染引擎已启动 (Zero WebKit / Zero Node.js)");
 
         event_loop.run(move |event, _, control_flow| {
@@ -1358,16 +1368,6 @@ mod cpu_2d_app {
                                 is_settings_open = false;
                             }
                             WindowEvent::CursorMoved { position, .. } => {
-                                current_settings_cursor = (position.x, position.y);
-                                if is_dragging_settings {
-                                    let dx = (position.x - settings_drag_start_cursor.0) as i32;
-                                    let dy = (position.y - settings_drag_start_cursor.1) as i32;
-                                    let new_pos = tao::dpi::PhysicalPosition::new(
-                                        settings_drag_win_pos.0 + dx,
-                                        settings_drag_win_pos.1 + dy,
-                                    );
-                                    settings_window.set_outer_position(new_pos);
-                                }
                                 let s_scale = settings_window.scale_factor() as f32;
                                 let lx = position.x / (s_scale as f64);
                                 let ly = position.y / (s_scale as f64);
@@ -1433,11 +1433,10 @@ mod cpu_2d_app {
                                                 settings_surface.present(&settings_pixmap, s_scale as f64);
                                             }
                                             SettingsAction::BeginTitleDrag => {
-                                                is_dragging_settings = true;
-                                                settings_drag_start_cursor = current_settings_cursor;
-                                                if let Ok(pos) = settings_window.outer_position() {
-                                                    settings_drag_win_pos = (pos.x, pos.y);
-                                                }
+                                                #[cfg(target_os = "windows")]
+                                                windows_window::start_window_drag(settings_window.hwnd());
+                                                #[cfg(not(target_os = "windows"))]
+                                                let _ = settings_window.drag_window();
                                             }
                                             SettingsAction::OpenDialogueConfig => {
                                                 settings_ui.active_tab = crate::renderer::settings_ui::SettingsTab::Dialogue;
@@ -1448,7 +1447,6 @@ mod cpu_2d_app {
                                         }
                                     }
                                 } else if let Some(action) = settings_ui.handle_mouse_up() {
-                                    is_dragging_settings = false;
                                     match action {
                                         SettingsAction::Save(new_settings) => {
                                             state_watcher.save_settings(&new_settings);
@@ -1468,8 +1466,6 @@ mod cpu_2d_app {
                                             settings_surface.present(&settings_pixmap, s_scale as f64);
                                         }
                                     }
-                                } else {
-                                    is_dragging_settings = false;
                                 }
                             }
                             WindowEvent::ReceivedImeText(text) => {
