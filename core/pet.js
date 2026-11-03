@@ -951,8 +951,6 @@
     let vy = 0;
     let vx = silent ? 0 : state.vx * 0.35;
     const gravity = 1.05;
-    const bounceFactor = -0.34;
-    let bounceCount = 0;
 
     function stepGravity() {
       vy += gravity;
@@ -966,28 +964,22 @@
 
       if (curY >= targetFloor) {
         curY = targetFloor;
-        if (!silent && Math.abs(vy) > 2.6 && bounceCount < 2) {
-          vy *= bounceFactor;
-          bounceCount += 1;
-          playSoftBumpSound();
-          if (bounceCount === 1) {
-            setState('rebound', getRandomDialogue('release'), 500);
-          }
-        } else {
-          container.style.left = `${curX}px`;
-          container.style.top = `${targetFloor}px`;
-          container.style.bottom = 'auto';
-          container.style.right = 'auto';
-          state.gravityRaf = null;
-          if (!silent) playSound('release');
-          adjustBubblePosition();
-          syncHitRectsToDesktop();
-          debouncedSaveSettings({
-            posX: Math.round(curX),
-            posY: Math.round(targetFloor)
-          });
-          return;
+        container.style.left = `${curX}px`;
+        container.style.top = `${targetFloor}px`;
+        container.style.bottom = 'auto';
+        container.style.right = 'auto';
+        state.gravityRaf = null;
+        if (!silent) {
+          playSound('release');
+          setState('rebound', getRandomDialogue('release'), 500);
         }
+        adjustBubblePosition();
+        syncHitRectsToDesktop();
+        debouncedSaveSettings({
+          posX: Math.round(curX),
+          posY: Math.round(targetFloor)
+        });
+        return;
       }
 
       container.style.left = `${curX}px`;
@@ -1710,6 +1702,21 @@
       }
       if (ctrl.action === 'switch-skin' && ctrl.skinId) {
         loadSkin(ctrl.skinId);
+      }
+      if (ctrl.action === 'reset_position') {
+        const petW = container.offsetWidth || 136;
+        const petH = container.offsetHeight || 136;
+        const cx = Math.max(0, Math.round((window.innerWidth - petW) * 0.5));
+        const cy = Math.max(0, Math.round((window.innerHeight - petH) * 0.5));
+        container.style.left = `${cx}px`;
+        container.style.top = `${cy}px`;
+        container.style.bottom = 'auto';
+        container.style.right = 'auto';
+        state.hasMoved = true;
+        adjustBubblePosition();
+        syncHitRectsToDesktop();
+        playSound('release');
+        setState('rebound', '已将本喵复位至屏幕中央啦~', 2500);
       }
     }
   });

@@ -34,6 +34,7 @@ const MIME_TYPES = {
 };
 
 const DEFAULT_SETTINGS = {
+  theme: 'system', // 'system', 'light', 'dark'
   scale: 1.0,
   skinId: 'fat-cat',
   soundEnabled: true,
@@ -46,6 +47,7 @@ const DEFAULT_SETTINGS = {
   showQuota: true,
   posX: null,
   posY: null,
+  resetSeq: 0,
   facing: 'left',
   menuConfig: {
     openAntigravity: true,
@@ -361,6 +363,14 @@ const server = http.createServer(async (req, res) => {
       req.on('end', () => {
         try {
           const updates = JSON.parse(body);
+          if (updates.resetPosition) {
+            const seq = Date.now();
+            updates.resetSeq = seq;
+            updates.posX = null;
+            updates.posY = null;
+            delete updates.resetPosition;
+            broadcastSSE('control', { action: 'reset_position', seq });
+          }
           const saved = saveSettings(updates);
           broadcastSSE('settings', saved);
           res.writeHead(200, { 'Content-Type': 'application/json' });

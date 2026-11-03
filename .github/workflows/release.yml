@@ -56,11 +56,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Linux dependencies
+      - name: Install Linux dependencies (Pure CPU 2D — no WebKit2GTK required)
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -72,9 +72,9 @@ jobs:
         with:
           workspaces: desktop
 
-      - name: Build release binary
+      - name: Build Pure CPU 2D release binary
         run: |
-          cargo build --release --manifest-path desktop/Cargo.toml --target ${{ matrix.target }}
+          cargo build --release --manifest-path desktop/Cargo.toml --features cpu-2d --target ${{ matrix.target }}
 
       - name: Assemble portable package (Unix)
         if: matrix.archive_type == 'tar.gz'
@@ -82,13 +82,12 @@ jobs:
           PKG="Anti-Pet-${{ github.ref_name }}-${{ matrix.arch_name }}"
           mkdir -p "bundle/$PKG"
           cp "desktop/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "bundle/$PKG/"
-          cp -r core "bundle/$PKG/"
           cp -r skins "bundle/$PKG/"
-          cp -r server "bundle/$PKG/"
-          cp -r assets "bundle/$PKG/"
-          cp -r scripts "bundle/$PKG/"
+          [ -d hooks ] && cp -r hooks "bundle/$PKG/" || true
+          [ -f hooks.json ] && cp hooks.json "bundle/$PKG/" || true
+          [ -f plugin.json ] && cp plugin.json "bundle/$PKG/" || true
           cp README.md LICENSE "bundle/$PKG/"
-          
+
           # Assemble native macOS Anti-Pet.app bundle
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
             chmod +x scripts/build_macos_app.sh
@@ -96,8 +95,6 @@ jobs:
             cp -r dist/Anti-Pet.app "bundle/$PKG/"
           fi
 
-          # Clean up any candidates or temporary test images in assets
-          rm -rf "bundle/$PKG/assets/candidates" "bundle/$PKG/assets/test_designs"
           tar -czf "$PKG.tar.gz" -C bundle "$PKG"
 
       - name: Assemble portable package (Windows)
@@ -107,14 +104,11 @@ jobs:
           $Pkg = "Anti-Pet-${{ github.ref_name }}-${{ matrix.arch_name }}"
           New-Item -ItemType Directory -Force -Path "bundle/$Pkg"
           Copy-Item "desktop/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" -Destination "bundle/$Pkg/"
-          Copy-Item -Recurse "core" -Destination "bundle/$Pkg/"
           Copy-Item -Recurse "skins" -Destination "bundle/$Pkg/"
-          Copy-Item -Recurse "server" -Destination "bundle/$Pkg/"
-          Copy-Item -Recurse "assets" -Destination "bundle/$Pkg/"
-          Copy-Item -Recurse "scripts" -Destination "bundle/$Pkg/"
+          if (Test-Path "hooks") { Copy-Item -Recurse "hooks" -Destination "bundle/$Pkg/" }
+          if (Test-Path "hooks.json") { Copy-Item "hooks.json" -Destination "bundle/$Pkg/" }
+          if (Test-Path "plugin.json") { Copy-Item "plugin.json" -Destination "bundle/$Pkg/" }
           Copy-Item "README.md", "LICENSE" -Destination "bundle/$Pkg/"
-          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "bundle/$Pkg/assets/candidates"
-          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "bundle/$Pkg/assets/test_designs"
           Compress-Archive -Path "bundle/$Pkg" -DestinationPath "$Pkg.zip"
 
       - name: Upload Release Asset
