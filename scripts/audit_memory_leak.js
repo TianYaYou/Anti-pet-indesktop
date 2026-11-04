@@ -16,13 +16,14 @@ const startTime = Date.now();
 // Run continuous rendering memory stability test
 const res = spawnSync('cargo', [
   'test',
+  '--lib',
   'test_continuous_rendering_zero_memory_leak',
   '--',
   '--nocapture'
 ], {
   cwd: desktopDir,
   stdio: 'inherit',
-  shell: true,
+  shell: process.platform === 'win32',
 });
 
 if (res.status !== 0) {
@@ -37,4 +38,14 @@ const heapUsedMB = (memUsage.heapUsed / (1024 * 1024)).toFixed(2);
 
 console.log(`[MEMORY AUDIT] Continuous 500-cycle render test passed in ${elapsedMs}ms`);
 console.log(`[MEMORY AUDIT] Process Host RSS: ${rssMB} MB, Heap: ${heapUsedMB} MB`);
+
+if (memUsage.heapUsed > 100 * 1024 * 1024) {
+  console.error(`[MEMORY AUDIT FAILED] Process heap exceeded 100MB threshold: ${heapUsedMB} MB`);
+  process.exit(1);
+}
+if (memUsage.rss > 300 * 1024 * 1024) {
+  console.error(`[MEMORY AUDIT FAILED] Process RSS exceeded 300MB threshold: ${rssMB} MB`);
+  process.exit(1);
+}
+
 console.log('[MEMORY AUDIT PASSED] Pure CPU 2D software rendering confirmed leak-free.');

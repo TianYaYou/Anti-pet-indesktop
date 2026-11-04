@@ -31,14 +31,7 @@ jobs:
             archive_type: zip
             binary_name: anti-pet-desktop.exe
 
-          # 3. Win-x86 (32 位 Windows)
-          - os: windows-latest
-            target: i686-pc-windows-msvc
-            arch_name: windows-x86
-            archive_type: zip
-            binary_name: anti-pet-desktop.exe
-
-          # 4. Win-Arm (Windows on ARM)
+          # 3. Win-Arm (Windows on ARM)
           - os: windows-latest
             target: aarch64-pc-windows-msvc
             arch_name: windows-arm64
