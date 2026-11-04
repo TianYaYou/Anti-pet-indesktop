@@ -65,7 +65,7 @@ pub struct SettingsSnapshot {
 
 /// Headless domain state machine and persistence store for Anti-Pet settings.
 pub struct SettingsStore {
-    root_dir: PathBuf,
+    pub root_dir: PathBuf,
     pub temp_settings: PetSettings,
     pub original_settings: PetSettings,
     pub autostart_enabled: bool,
