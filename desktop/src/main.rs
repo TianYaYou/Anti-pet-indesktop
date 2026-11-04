@@ -70,7 +70,7 @@ mod cpu_2d_app {
         window::WindowBuilder,
     };
     #[cfg(target_os = "macos")]
-    use tao::platform::macos::{WindowBuilderExtMacOS, WindowExtMacOS};
+    use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS, WindowBuilderExtMacOS, WindowExtMacOS};
     #[cfg(target_os = "windows")]
     use tao::platform::windows::{WindowBuilderExtWindows, WindowExtWindows};
     use tray_icon::{
@@ -609,7 +609,12 @@ mod cpu_2d_app {
         let mut state_watcher = NativeStateWatcher::new();
         let mut settings = state_watcher.load_settings();
 
-        let event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
+        let mut event_loop = EventLoopBuilder::<AppEvent>::with_user_event().build();
+        #[cfg(target_os = "macos")]
+        {
+            event_loop.set_activation_policy(ActivationPolicy::Accessory);
+            event_loop.set_dock_visibility(false);
+        }
         let proxy = event_loop.create_proxy();
 
         let (mon_width, mon_height, _mon_scale) =
