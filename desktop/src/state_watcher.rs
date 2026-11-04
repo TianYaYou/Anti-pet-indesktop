@@ -71,6 +71,51 @@ impl Default for PetSettings {
     }
 }
 
+impl PetSettings {
+    pub fn to_json_value(&self) -> serde_json::Value {
+        let pos_x_val = match self.pos_x {
+            Some(v) => serde_json::Value::from(v),
+            None => serde_json::Value::Null,
+        };
+        let pos_y_val = match self.pos_y {
+            Some(v) => serde_json::Value::from(v),
+            None => serde_json::Value::Null,
+        };
+
+        let mut mc_map = serde_json::Map::new();
+        mc_map.insert("openAntigravity".to_string(), serde_json::json!(self.menu_config.open_antigravity));
+        mc_map.insert("settings".to_string(), serde_json::json!(self.menu_config.settings));
+        mc_map.insert("quota".to_string(), serde_json::json!(self.menu_config.quota));
+        mc_map.insert("randomDialogue".to_string(), serde_json::json!(self.menu_config.random_dialogue));
+        mc_map.insert("petAction".to_string(), serde_json::json!(self.menu_config.pet_action));
+        mc_map.insert("zoom".to_string(), serde_json::json!(self.menu_config.zoom));
+        mc_map.insert("dnd".to_string(), serde_json::json!(self.menu_config.dnd));
+        mc_map.insert("ideOnly".to_string(), serde_json::json!(self.menu_config.ide_only));
+        mc_map.insert("gravity".to_string(), serde_json::json!(self.menu_config.gravity));
+        mc_map.insert("switchSkin".to_string(), serde_json::json!(self.menu_config.switch_skin));
+        mc_map.insert("sound".to_string(), serde_json::json!(self.menu_config.sound));
+
+        let mut map = serde_json::Map::new();
+        let scale_f64 = (self.scale as f64 * 100.0).round() / 100.0;
+        map.insert("theme".to_string(), serde_json::json!(self.theme));
+        map.insert("scale".to_string(), serde_json::json!(scale_f64));
+        map.insert("skinId".to_string(), serde_json::json!("fat-cat"));
+        map.insert("soundEnabled".to_string(), serde_json::json!(self.sound_enabled));
+        map.insert("gravityEnabled".to_string(), serde_json::json!(self.gravity_enabled));
+        map.insert("floorMode".to_string(), serde_json::json!(self.floor_mode));
+        map.insert("dndPassthrough".to_string(), serde_json::json!(self.dnd_passthrough));
+        map.insert("showQuota".to_string(), serde_json::json!(self.show_quota));
+        map.insert("posX".to_string(), pos_x_val);
+        map.insert("posY".to_string(), pos_y_val);
+        map.insert("menuConfig".to_string(), serde_json::Value::Object(mc_map));
+        if let Some(seq) = self.reset_seq {
+            map.insert("resetSeq".to_string(), serde_json::json!(seq));
+        }
+
+        serde_json::Value::Object(map)
+    }
+}
+
 /// Event update parsed from `.antigravity-pet-state.json` (written by Antigravity IDE hooks).
 #[derive(Clone, Debug)]
 pub struct HookStateUpdate {
@@ -189,50 +234,19 @@ impl NativeStateWatcher {
     }
 
     pub fn save_settings(&self, s: &PetSettings) {
-        let pos_x_val = match s.pos_x {
-            Some(v) => serde_json::Value::from(v),
-            None => serde_json::Value::Null,
-        };
-        let pos_y_val = match s.pos_y {
-            Some(v) => serde_json::Value::from(v),
-            None => serde_json::Value::Null,
-        };
-
-        let mut mc_map = serde_json::Map::new();
-        mc_map.insert("openAntigravity".to_string(), serde_json::json!(s.menu_config.open_antigravity));
-        mc_map.insert("settings".to_string(), serde_json::json!(s.menu_config.settings));
-        mc_map.insert("quota".to_string(), serde_json::json!(s.menu_config.quota));
-        mc_map.insert("randomDialogue".to_string(), serde_json::json!(s.menu_config.random_dialogue));
-        mc_map.insert("petAction".to_string(), serde_json::json!(s.menu_config.pet_action));
-        mc_map.insert("zoom".to_string(), serde_json::json!(s.menu_config.zoom));
-        mc_map.insert("dnd".to_string(), serde_json::json!(s.menu_config.dnd));
-        mc_map.insert("ideOnly".to_string(), serde_json::json!(s.menu_config.ide_only));
-        mc_map.insert("gravity".to_string(), serde_json::json!(s.menu_config.gravity));
-        mc_map.insert("switchSkin".to_string(), serde_json::json!(s.menu_config.switch_skin));
-        mc_map.insert("sound".to_string(), serde_json::json!(s.menu_config.sound));
-
-        let mut map = serde_json::Map::new();
-        map.insert("theme".to_string(), serde_json::json!(s.theme));
-        map.insert("scale".to_string(), serde_json::json!((s.scale * 100.0).round() / 100.0));
-        map.insert("skinId".to_string(), serde_json::json!("fat-cat"));
-        map.insert("soundEnabled".to_string(), serde_json::json!(s.sound_enabled));
-        map.insert("gravityEnabled".to_string(), serde_json::json!(s.gravity_enabled));
-        map.insert("floorMode".to_string(), serde_json::json!(s.floor_mode));
-        map.insert("dndPassthrough".to_string(), serde_json::json!(s.dnd_passthrough));
-        map.insert("showQuota".to_string(), serde_json::json!(s.show_quota));
-        map.insert("posX".to_string(), pos_x_val);
-        map.insert("posY".to_string(), pos_y_val);
-        map.insert("menuConfig".to_string(), serde_json::Value::Object(mc_map));
-        if let Some(seq) = s.reset_seq {
-            map.insert("resetSeq".to_string(), serde_json::json!(seq));
-        }
-
-        if let Ok(json_str) = serde_json::to_string_pretty(&map) {
-            let _ = std::fs::write(&self.settings_file, &json_str);
+        let val = s.to_json_value();
+        if let Ok(json_str) = serde_json::to_string_pretty(&val) {
+            let tmp_path = format!("{}.tmp", self.settings_file.display());
+            if std::fs::write(&tmp_path, &json_str).is_ok() {
+                let _ = std::fs::rename(&tmp_path, &self.settings_file);
+            }
             if let Some(home) = dirs::home_dir() {
                 let home_settings = home.join(".antigravity-pet-settings.json");
                 if home_settings != self.settings_file {
-                    let _ = std::fs::write(home_settings, &json_str);
+                    let home_tmp = home.join(".antigravity-pet-settings.json.tmp");
+                    if std::fs::write(&home_tmp, &json_str).is_ok() {
+                        let _ = std::fs::rename(&home_tmp, &home_settings);
+                    }
                 }
             }
         }

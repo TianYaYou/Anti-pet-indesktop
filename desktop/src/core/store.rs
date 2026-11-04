@@ -98,6 +98,14 @@ impl SettingsStore {
     }
 
     pub fn commit_to_disk(&mut self) {
+        let settings_file = self.root_dir.join(".antigravity-pet-settings.json");
+        let tmp_file = self.root_dir.join(".antigravity-pet-settings.json.tmp");
+        if let Ok(json_str) = serde_json::to_string_pretty(&self.temp_settings.to_json_value()) {
+            if std::fs::write(&tmp_file, &json_str).is_ok() {
+                let _ = std::fs::rename(&tmp_file, &settings_file);
+            }
+        }
+
         let watcher = crate::state_watcher::NativeStateWatcher::new();
         watcher.save_settings(&self.temp_settings);
         let _ = self.dialogue_bank.save_to_root(&self.root_dir, "fat-cat");
@@ -367,5 +375,22 @@ mod tests {
 
         store.dispatch(SettingsAction::DeleteDialogue(initial_count));
         assert_eq!(store.active_dialogues().len(), initial_count);
+    }
+
+    #[test]
+    fn test_store_commit_to_disk_atomic_write() {
+        let temp_dir = std::env::temp_dir().join(format!("pet_store_test_{}", fastrand::u64(..)));
+        let _ = std::fs::create_dir_all(&temp_dir);
+
+        let mut store = SettingsStore::new(temp_dir.clone(), PetSettings::default());
+        store.dispatch(SettingsAction::SetScale(1.8));
+        store.commit_to_disk();
+
+        let settings_file = temp_dir.join(".antigravity-pet-settings.json");
+        assert!(settings_file.exists());
+        let content = std::fs::read_to_string(&settings_file).expect("should read committed settings");
+        assert!(content.contains("\"scale\": 1.8"));
+
+        let _ = std::fs::remove_dir_all(&temp_dir);
     }
 }
