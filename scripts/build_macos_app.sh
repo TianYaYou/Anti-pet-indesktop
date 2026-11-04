@@ -32,11 +32,9 @@ fi
 echo "Using binary: $BIN_PATH"
 cp "$BIN_PATH" "$APP_DIR/Contents/MacOS/anti-pet-desktop"
 
-# 2. Copy Resources (icon, skins, and settings web assets)
+# 2. Copy Resources (icon and skins)
 cp assets/icon.icns "$APP_DIR/Contents/Resources/"
 cp -r skins "$APP_DIR/Contents/Resources/"
-cp -r core "$APP_DIR/Contents/Resources/" 2>/dev/null || true
-cp -r server "$APP_DIR/Contents/Resources/" 2>/dev/null || true
 
 # 3. Create Info.plist
 cat << 'EOF' > "$APP_DIR/Contents/Info.plist"

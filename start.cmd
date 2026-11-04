@@ -5,7 +5,7 @@ if exist "C:\Program Files\Rust stable MSVC 1.91\bin" (
   set "PATH=C:\Program Files\Rust stable MSVC 1.91\bin;%PATH%"
 )
 
-echo 🐾 正在启动 Anti-Pet 伴侣桌宠 (Windows)...
+echo 正在启动 Anti-Pet 伴侣桌宠 (Windows)...
 
 :: 1. 尝试结束 4199 端口上的旧实例，确保加载最新实时额度探针代码
 for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr "127.0.0.1:4199" ^| findstr "LISTENING"') do (
