@@ -78,9 +78,20 @@ let currentSettings = loadSettings();
 
 function saveSettings(newSettings) {
   currentSettings = { ...currentSettings, ...newSettings };
+  const tmpFile = `${SETTINGS_FILE}.${process.pid}.${Date.now()}.tmp`;
   try {
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(currentSettings, null, 2), 'utf-8');
-  } catch (e) {}
+    fs.writeFileSync(tmpFile, JSON.stringify(currentSettings, null, 2), 'utf-8');
+    fs.renameSync(tmpFile, SETTINGS_FILE);
+  } catch (e) {
+    try {
+      if (fs.existsSync(tmpFile)) {
+        try { fs.copyFileSync(tmpFile, SETTINGS_FILE); } catch (_) {}
+        fs.unlinkSync(tmpFile);
+      } else {
+        fs.writeFileSync(SETTINGS_FILE, JSON.stringify(currentSettings, null, 2), 'utf-8');
+      }
+    } catch (_) {}
+  }
   return currentSettings;
 }
 
@@ -311,7 +322,7 @@ function setAutostartStatus(enable) {
 
 function checkGitHubUpdates() {
   return new Promise((resolve) => {
-    let currentVersion = 'v0.2.1';
+    let currentVersion = 'v0.5.0';
     try {
       const pkg = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf-8'));
       if (pkg.version) currentVersion = 'v' + pkg.version.replace(/^v/, '');

@@ -831,7 +831,7 @@ mod cpu_2d_app {
 
         let tray_icon = TrayIcon::from_rgba(tray_rgba.to_vec(), 32, 32).ok();
         let mut tray_builder = TrayIconBuilder::new()
-            .with_tooltip("大肥猫桌宠 v0.4.1 (Pure CPU 2D)")
+            .with_tooltip("大肥猫桌宠 v0.5.0 (Pure CPU 2D)")
             .with_menu(Box::new(menu_mgr.menu.clone()));
         if let Some(icon) = tray_icon {
             tray_builder = tray_builder.with_icon(icon);
@@ -907,7 +907,7 @@ mod cpu_2d_app {
         let mut cursor_left_since: Option<Instant> = None;
         let mut dirty_frame = true;
 
-        println!("Anti-Pet v0.4.1 Pure CPU 2D 软渲染引擎已启动 (Zero WebKit / Zero Node.js)");
+        println!("Anti-Pet v0.5.0 Pure CPU 2D 软渲染引擎已启动 (Zero WebKit / Zero Node.js)");
 
         event_loop.run(move |event, _, control_flow| {
             *control_flow = ControlFlow::Wait;
@@ -1474,7 +1474,7 @@ mod cpu_2d_app {
                                                 settings_surface.present(&settings_pixmap, s_scale as f64);
                                             }
                                             SettingsAction::CheckUpdate => {
-                                                settings_ui.show_toast("当前已是最新版本 (v0.4.1)");
+                                                settings_ui.show_toast("当前已是最新版本 (v0.5.0)");
                                                 settings_ui.render(&mut settings_pixmap, s_scale);
                                                 settings_surface.present(&settings_pixmap, s_scale as f64);
                                             }

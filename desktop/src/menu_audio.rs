@@ -367,7 +367,7 @@ impl NativeMenuManager {
 
         let item_toggle_vis = MenuItem::new("显示 / 隐藏 大肥猫", true, None);
         let item_open_agy = MenuItem::new("唤起 Antigravity IDE", true, None);
-        let item_about = MenuItem::new("大肥猫桌宠 v0.4.1 (Pure CPU 2D)", false, None);
+        let item_about = MenuItem::new("大肥猫桌宠 v0.5.0 (Pure CPU 2D)", false, None);
         let item_quit = MenuItem::new("退出", true, None);
 
         let id_settings = item_settings.id().clone();
