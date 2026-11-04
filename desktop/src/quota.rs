@@ -719,31 +719,37 @@ pub fn parse_quota_json(json: &str) -> Option<QuotaSnapshot> {
     None
 }
 
-/// Reads local activity ledger (`.antigravity-pet-ledger.json`) to calculate estimated usage,
-/// mirroring the fallback algorithm in `server/index.js`.
-pub fn read_fallback_ledger_quota() -> Option<QuotaSnapshot> {
-    let ledger_path = find_file_in_project_or_home(".antigravity-pet-ledger.json")?;
-    let content = std::fs::read_to_string(ledger_path).ok()?;
-    let parsed: serde_json::Value = serde_json::from_str(&content).ok()?;
-
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()?
-        .as_millis() as u64;
+/// Parses activity ledger content to calculate estimated quota usage.
+pub fn parse_ledger_quota_json(content: &str, now_ms: u64) -> Option<QuotaSnapshot> {
+    let parsed: serde_json::Value = serde_json::from_str(content).ok()?;
 
     const FIVE_HOURS_MS: u64 = 5 * 3600 * 1000;
     const ONE_WEEK_MS: u64 = 7 * 86400 * 1000;
     const FIVE_HOUR_BUDGET: f64 = 160.0;
     const WEEKLY_BUDGET: f64 = 1200.0;
 
-    let entries = parsed.get("entries").and_then(|v| v.as_array())?;
+    let empty_vec = Vec::new();
+    let entries = if let Some(arr) = parsed.get("entries").and_then(|v| v.as_array()) {
+        arr
+    } else if let Some(arr) = parsed.as_array() {
+        arr
+    } else {
+        &empty_vec
+    };
+
     let mut used_5h = 0.0_f64;
     let mut used_week = 0.0_f64;
     let mut count_5h = 0usize;
 
     for item in entries {
-        let ts = item.get("ts").and_then(|v| v.as_u64()).unwrap_or(0);
-        let weight = item.get("weight").and_then(|v| v.as_f64()).unwrap_or(0.5);
+        let ts = item
+            .get("ts")
+            .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|i| i as u64)))
+            .unwrap_or(0);
+        let weight = item
+            .get("weight")
+            .and_then(|v| v.as_f64().or_else(|| v.as_u64().map(|u| u as f64)))
+            .unwrap_or(0.5);
         if now_ms >= ts && (now_ms - ts) < ONE_WEEK_MS {
             used_week += weight;
             if (now_ms - ts) <= FIVE_HOURS_MS {
@@ -765,6 +771,20 @@ pub fn read_fallback_ledger_quota() -> Option<QuotaSnapshot> {
         meta: format!("本地估算 (近5h {} 次)", count_5h),
         source: "local-ledger".to_string(),
     })
+}
+
+/// Reads local activity ledger (`.antigravity-pet-ledger.json`) to calculate estimated usage,
+/// mirroring the fallback algorithm in `server/index.js`.
+pub fn read_fallback_ledger_quota() -> Option<QuotaSnapshot> {
+    let ledger_path = find_file_in_project_or_home(".antigravity-pet-ledger.json")?;
+    let content = std::fs::read_to_string(ledger_path).ok()?;
+
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_millis() as u64;
+
+    parse_ledger_quota_json(&content, now_ms)
 }
 
 /// Reads quota directly embedded in `.antigravity-pet-state.json` (written by Antigravity IDE hooks).
@@ -860,5 +880,26 @@ mod tests {
         assert_eq!(snap.weekly, 72.1);
         assert!(snap.meta.contains("5h重置"));
         assert!(snap.meta.contains("周重置"));
+    }
+
+    #[test]
+    fn test_parse_bounded_ledger_quota() {
+        let now_ms = 1_000_000_000_000u64;
+        let json = format!(
+            r#"{{"entries": [{{"ts": {}, "event": "PreInvocation", "weight": 1.2}}, {{"ts": {}, "event": "PreToolUse", "weight": 0.6}}]}}"#,
+            now_ms - 1000,
+            now_ms - 60000
+        );
+        let snap = parse_ledger_quota_json(&json, now_ms).expect("should parse bounded ledger");
+        assert!(snap.five_hour < 100.0);
+        assert_eq!(snap.source, "local-ledger");
+        assert!(snap.meta.contains("近5h 2 次"));
+    }
+
+    #[test]
+    fn test_parse_empty_ledger_quota() {
+        let snap = parse_ledger_quota_json("{}", 1_000_000_000_000).expect("empty json should produce 100%");
+        assert_eq!(snap.five_hour, 100.0);
+        assert_eq!(snap.weekly, 100.0);
     }
 }

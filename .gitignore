@@ -13,6 +13,8 @@ yarn-error.log*
 /tmp/
 
 # Local state
+.antigravity-pet-*.json
+.antigravity-pet-*.tmp
 .antigravity-pet-state.json
 .antigravity-pet-ledger.json
 .antigravity-pet-settings.json

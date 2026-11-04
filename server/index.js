@@ -86,10 +86,44 @@ function saveSettings(newSettings) {
 
 const sseClients = new Set();
 
+const MAX_LEDGER_ENTRIES = 500;
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+function recordLocalLedger(evt) {
+  const now = Date.now();
+  let ledger = { entries: [] };
+  if (fs.existsSync(LEDGER_FILE)) {
+    try {
+      ledger = JSON.parse(fs.readFileSync(LEDGER_FILE, 'utf-8'));
+      if (!Array.isArray(ledger.entries)) ledger.entries = [];
+    } catch (e) {
+      ledger = { entries: [] };
+    }
+  }
+  ledger.entries = ledger.entries.filter((item) => now - item.ts < ONE_WEEK_MS);
+  const weight =
+    evt === 'PreInvocation' ? 1.2 : evt === 'PreToolUse' ? 0.6 : evt === 'PostToolUse' ? 0.4 : 0.1;
+  if (weight > 0) {
+    ledger.entries.push({ ts: now, event: evt, weight });
+  }
+  if (ledger.entries.length > MAX_LEDGER_ENTRIES) {
+    ledger.entries = ledger.entries.slice(-MAX_LEDGER_ENTRIES);
+  }
+
+  const tmpFile = `${LEDGER_FILE}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    fs.writeFileSync(tmpFile, JSON.stringify(ledger, null, 2), 'utf-8');
+    fs.renameSync(tmpFile, LEDGER_FILE);
+  } catch (e) {
+    try {
+      if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+    } catch (_) {}
+  }
+}
+
 function readFallbackLedgerQuota() {
   const now = Date.now();
   const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
-  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
   const FIVE_HOUR_BUDGET = 160;
   const WEEKLY_BUDGET = 1200;
 
@@ -403,6 +437,9 @@ const server = http.createServer(async (req, res) => {
     req.on('end', async () => {
       try {
         const payload = JSON.parse(body);
+        if (payload.event) {
+          recordLocalLedger(payload.event);
+        }
         const liveQ = await refreshLiveQuota(true);
         payload.quota = liveQ;
         currentState = payload;

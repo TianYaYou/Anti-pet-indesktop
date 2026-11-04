@@ -25,9 +25,11 @@ for (let i = 2; i < process.argv.length; i++) {
   if (process.argv[i] === '--state' && process.argv[i + 1]) customState = process.argv[i + 1];
 }
 
+const MAX_LEDGER_ENTRIES = 500;
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
 function recordLocalLedger(evt) {
   const now = Date.now();
-  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
   let ledger = { entries: [] };
   if (fs.existsSync(LEDGER_FILE)) {
     try {
@@ -43,9 +45,19 @@ function recordLocalLedger(evt) {
   if (weight > 0) {
     ledger.entries.push({ ts: now, event: evt, weight });
   }
+  if (ledger.entries.length > MAX_LEDGER_ENTRIES) {
+    ledger.entries = ledger.entries.slice(-MAX_LEDGER_ENTRIES);
+  }
+
+  const tmpFile = `${LEDGER_FILE}.${process.pid}.${Date.now()}.tmp`;
   try {
-    fs.writeFileSync(LEDGER_FILE, JSON.stringify(ledger, null, 2), 'utf-8');
-  } catch (e) {}
+    fs.writeFileSync(tmpFile, JSON.stringify(ledger, null, 2), 'utf-8');
+    fs.renameSync(tmpFile, LEDGER_FILE);
+  } catch (e) {
+    try {
+      if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+    } catch (_) {}
+  }
 }
 
 function resolveState(event) {
