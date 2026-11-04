@@ -66,4 +66,9 @@ cat << 'EOF' > "$APP_DIR/Contents/Info.plist"
 </plist>
 EOF
 
+# 4. Ad-hoc sign for local macOS execution
+if command -v codesign >/dev/null 2>&1; then
+    codesign --force --deep --sign - "$APP_DIR" >/dev/null 2>&1 || true
+fi
+
 echo "Anti-Pet.app (v0.5.1 NextGen Core) successfully assembled at $APP_DIR"
