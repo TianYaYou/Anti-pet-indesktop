@@ -112,6 +112,23 @@ impl SlintSettingsApp {
             });
         }
 
+        // 2b. Set Theme Explicit (Auto-save)
+        {
+            let store = store.clone();
+            let win = win.clone();
+            self.window.on_set_theme(move |theme_val| {
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::SetTheme(theme_val.to_string()));
+                st.commit_to_disk();
+                let theme = st.temp_settings.theme.clone();
+                drop(st);
+                if let Some(w) = win.upgrade() {
+                    w.set_theme_mode(SharedString::from(theme));
+                    w.set_toast_message(SharedString::from("外观主题已保存"));
+                }
+            });
+        }
+
         // 3. Scale Changed (Auto-save)
         {
             let store = store.clone();
@@ -135,6 +152,23 @@ impl SlintSettingsApp {
             self.window.on_cycle_floor_mode(move || {
                 let mut st = store.lock().unwrap();
                 st.dispatch(SettingsAction::CycleFloorMode);
+                st.commit_to_disk();
+                let mode = st.temp_settings.floor_mode.clone();
+                drop(st);
+                if let Some(w) = win.upgrade() {
+                    w.set_floor_mode(SharedString::from(mode));
+                    w.set_toast_message(SharedString::from("吸附基线已保存"));
+                }
+            });
+        }
+
+        // 4b. Set Floor Mode Explicit (Auto-save)
+        {
+            let store = store.clone();
+            let win = win.clone();
+            self.window.on_set_floor_mode(move |floor_val| {
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::SetFloorMode(floor_val.to_string()));
                 st.commit_to_disk();
                 let mode = st.temp_settings.floor_mode.clone();
                 drop(st);

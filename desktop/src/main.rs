@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 #[cfg(not(feature = "legacy-webkit"))]
 pub mod core;
 #[cfg(not(feature = "legacy-webkit"))]
@@ -1196,6 +1198,7 @@ mod cpu_2d_app {
                                 physics.zoom_scale = new_settings.scale;
                             }
                             physics.gravity_enabled = new_settings.gravity_enabled;
+                            physics.floor_mode = new_settings.floor_mode.clone();
                             audio.enabled = new_settings.sound_enabled;
                             bubble.show_quota = new_settings.show_quota;
 

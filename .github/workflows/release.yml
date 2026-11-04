@@ -76,6 +76,7 @@ jobs:
           mkdir -p "bundle/$PKG"
           cp "desktop/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" "bundle/$PKG/"
           cp -r skins "bundle/$PKG/"
+          cp -r assets "bundle/$PKG/"
           [ -d hooks ] && cp -r hooks "bundle/$PKG/" || true
           [ -f hooks.json ] && cp hooks.json "bundle/$PKG/" || true
           [ -f plugin.json ] && cp plugin.json "bundle/$PKG/" || true
@@ -99,6 +100,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path "bundle/$Pkg"
           Copy-Item "desktop/target/${{ matrix.target }}/release/${{ matrix.binary_name }}" -Destination "bundle/$Pkg/"
           Copy-Item -Recurse "skins" -Destination "bundle/$Pkg/"
+          Copy-Item -Recurse "assets" -Destination "bundle/$Pkg/"
           if (Test-Path "hooks") { Copy-Item -Recurse "hooks" -Destination "bundle/$Pkg/" }
           if (Test-Path "hooks.json") { Copy-Item "hooks.json" -Destination "bundle/$Pkg/" }
           if (Test-Path "plugin.json") { Copy-Item "plugin.json" -Destination "bundle/$Pkg/" }

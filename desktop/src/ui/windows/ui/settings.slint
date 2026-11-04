@@ -1,4 +1,4 @@
-import { Button, CheckBox, Slider, Switch, ScrollView, LineEdit } from "std-widgets.slint";
+import { Button, CheckBox, Slider, Switch, ScrollView, LineEdit, ComboBox } from "std-widgets.slint";
 
 export struct DialogueItem {
     id: int,
@@ -18,10 +18,9 @@ component CardDivider inherits Rectangle {
 
 export component SettingsWindow inherits Window {
     title: "Anti-Pet 偏好设置";
-    preferred-width: 720px;
-    preferred-height: 540px;
-    min-width: 680px;
-    min-height: 480px;
+    icon: @image-url("icons/icon.png");
+    width: 720px;
+    height: 540px;
     background: #1c1c1f;
     default-font-family: "Segoe UI, Microsoft YaHei, PingFang SC, sans-serif";
 
@@ -60,8 +59,10 @@ export component SettingsWindow inherits Window {
     // Callbacks to Rust Domain Action Dispatches
     callback select-tab(int);
     callback cycle-theme();
+    callback set-theme(string);
     callback scale-changed(float);
     callback cycle-floor-mode();
+    callback set-floor-mode(string);
     callback toggle-gravity();
     callback reset-position();
     callback toggle-quota();
@@ -344,61 +345,48 @@ export component SettingsWindow inherits Window {
             ScrollView {
                 vertical-stretch: 1;
 
-                // ================= TAB 0: 常规与显示 =================
-                if root.active-tab == 0: VerticalLayout {
-                    spacing: 16px;
-                    padding-bottom: 24px;
+                VerticalLayout {
+                    alignment: start;
+                    padding-right: 12px;
 
-                    // Section 1: 外观与主题
-                    VerticalLayout {
-                        spacing: 6px;
-                        SectionTitle { text: "外观与主题"; }
-                        Rectangle {
-                            background: #ffffff0a;
-                            border-radius: 8px;
-                            border-width: 1px;
-                            border-color: #ffffff14;
-                            HorizontalLayout {
-                                padding-top: 10px;
-                                padding-bottom: 10px;
-                                padding-left: 14px;
-                                padding-right: 14px;
-                                alignment: space-between;
-                                VerticalLayout {
-                                    alignment: center;
-                                    spacing: 2px;
-                                    Text { text: "界面外观"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
-                                    Text { text: "设置窗口明暗主题风格，默认跟随系统"; font-size: 11px; color: #8e8e98; }
-                                }
-                                // WinUI Dropdown button
-                                Rectangle {
-                                    width: 120px;
-                                    height: 28px;
-                                    border-radius: 5px;
-                                    background: theme-touch.has-hover ? #ffffff1c : #ffffff10;
-                                    border-width: 1px;
-                                    border-color: #ffffff18;
-                                    y: (parent.height - self.height) / 2;
-                                    HorizontalLayout {
-                                        padding-left: 10px;
-                                        padding-right: 8px;
-                                        alignment: space-between;
-                                        Text {
-                                            text: root.theme-mode == "dark" ? "深色模式" : (root.theme-mode == "light" ? "浅色模式" : "跟随系统");
-                                            font-size: 12px;
-                                            color: #f0f0f4;
-                                            vertical-alignment: center;
-                                        }
-                                        Image {
-                                            source: @image-url("icons/chevron-down.svg");
-                                            width: 10px;
-                                            height: 10px;
-                                            colorize: #8e8e98;
-                                            y: (parent.height - self.height) / 2;
-                                        }
+                    // ================= TAB 0: 常规与显示 =================
+                    if root.active-tab == 0: VerticalLayout {
+                        spacing: 16px;
+                        padding-bottom: 24px;
+
+                        // Section 1: 外观与主题
+                        VerticalLayout {
+                            spacing: 6px;
+                            SectionTitle { text: "外观与主题"; }
+                            Rectangle {
+                                background: #ffffff0a;
+                                border-radius: 8px;
+                                border-width: 1px;
+                                border-color: #ffffff14;
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    padding-left: 14px;
+                                    padding-right: 14px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "界面外观"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "设置窗口明暗主题风格，默认跟随系统"; font-size: 11px; color: #8e8e98; }
                                     }
-                                    theme-touch := TouchArea {
-                                        clicked => { root.cycle-theme(); }
+                                    // WinUI Dropdown ComboBox
+                                    ComboBox {
+                                        width: 140px;
+                                        height: 30px;
+                                        y: (parent.height - self.height) / 2;
+                                        model: ["跟随系统", "深色模式", "浅色模式"];
+                                        current-value: root.theme-mode == "dark" ? "深色模式" : (root.theme-mode == "light" ? "浅色模式" : "跟随系统");
+                                        selected(val) => {
+                                            if (val == "深色模式") { root.set-theme("dark"); }
+                                            else if (val == "浅色模式") { root.set-theme("light"); }
+                                            else { root.set-theme("system"); }
+                                        }
                                     }
                                 }
                             }
@@ -464,34 +452,17 @@ export component SettingsWindow inherits Window {
                                         Text { text: "落地吸附基线"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
                                         Text { text: "松手后猫猫下落吸附的目标基准线"; font-size: 11px; color: #8e8e98; }
                                     }
-                                    Rectangle {
-                                        width: 160px;
-                                        height: 28px;
-                                        border-radius: 5px;
-                                        background: floor-touch.has-hover ? #ffffff1c : #ffffff10;
-                                        border-width: 1px;
-                                        border-color: #ffffff18;
+                                    // WinUI Dropdown ComboBox
+                                    ComboBox {
+                                        width: 180px;
+                                        height: 30px;
                                         y: (parent.height - self.height) / 2;
-                                        HorizontalLayout {
-                                            padding-left: 10px;
-                                            padding-right: 8px;
-                                            alignment: space-between;
-                                            Text {
-                                                text: root.floor-mode == "bottom" ? "屏幕绝对落底 (0px)" : (root.floor-mode == "free" ? "自由悬浮 (不吸附)" : "贴合任务栏与 Dock 上沿");
-                                                font-size: 11.5px;
-                                                color: #f0f0f4;
-                                                vertical-alignment: center;
-                                            }
-                                            Image {
-                                                source: @image-url("icons/chevron-down.svg");
-                                                width: 10px;
-                                                height: 10px;
-                                                colorize: #8e8e98;
-                                                y: (parent.height - self.height) / 2;
-                                            }
-                                        }
-                                        floor-touch := TouchArea {
-                                            clicked => { root.cycle-floor-mode(); }
+                                        model: ["屏幕绝对落底 (0px)", "贴合任务栏与 Dock 上沿", "自由悬浮 (不吸附)"];
+                                        current-value: root.floor-mode == "bottom" ? "屏幕绝对落底 (0px)" : (root.floor-mode == "free" ? "自由悬浮 (不吸附)" : "贴合任务栏与 Dock 上沿");
+                                        selected(val) => {
+                                            if (val == "屏幕绝对落底 (0px)") { root.set-floor-mode("bottom"); }
+                                            else if (val == "自由悬浮 (不吸附)") { root.set-floor-mode("free"); }
+                                            else { root.set-floor-mode("taskbar"); }
                                         }
                                     }
                                 }
