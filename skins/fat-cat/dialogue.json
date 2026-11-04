@@ -1,17 +1,43 @@
 {
-  "schemaVersion": 1,
-  "locale": "zh-CN",
-  "policy": {
-    "defaultTtlMs": 5000,
-    "ambientCooldownMs": 60000,
-    "warningCooldownMs": 300000,
-    "sameEventOnce": true,
-    "maxVisibleBubbles": 1,
-    "queue": "replace ambient with actionable event; never hide unresolved action",
-    "templates": "plain text only; inject with textContent, not HTML",
-    "clickToNextDialogue": true
+  "cards": {
+    "needsAction": {
+      "body": "有一步需要你处理。",
+      "title": "等你确认",
+      "ttlMs": 0
+    },
+    "quota": {
+      "footer": "来源：{source} · {freshness}",
+      "title": "额度窗口",
+      "unknownCaption": "尚未读取真实额度",
+      "unknownValue": "—"
+    },
+    "turnCost": {
+      "costLabel": "估算费用",
+      "footer": "本机记录 · 非整轮计费",
+      "rows": [
+        "输入 {inputTokens}",
+        "输出 {outputTokens}",
+        "耗时 {duration}"
+      ],
+      "title": "模型步骤用量",
+      "unknownValue": "—"
+    },
+    "warning": {
+      "body": "{windowLabel} 剩余 {remainingPercent}%",
+      "title": "额度提醒",
+      "unknownBody": "额度未读取，不触发余额不足判断。"
+    }
   },
   "lines": {
+    "dragged": [
+      "本喵会走路！放下来啦。",
+      "轻点拎，呆毛要乱了！"
+    ],
+    "error": [
+      "这步没走通，陪你再看看。",
+      "哼，报错而已，一起查就是了。",
+      "本喵也会卡壳，不许笑！"
+    ],
     "idle": [
       "我才不是美版豆包，哼！",
       "才、才不是特意陪你的！",
@@ -78,95 +104,39 @@
       "你一回来，本喵的营业状态就变好了……巧合。",
       "晚点再走嘛，本喵还有一颗星星没数完。"
     ],
-    "thinking": [
-      "别催，在长脑子了。",
-      "本喵认真起来，你可看好了。",
-      "让我捋捋，脑袋还没冒烟呢。",
-      "喵式推理中，先别揪耳朵。",
-      "聪明猫猫也要想一下的嘛。"
+    "petting": [
+      "只准摸一下……再一下也行。",
+      "哼，手法还算合格。",
+      "谁、谁在呼噜？反正不是本喵。"
     ],
     "success": [
       "又走完一步啦，夸本喵！",
       "小小一步，得意一下怎么了？",
       "这一步完成了，本喵记着呢。"
     ],
-    "warning": [
-      "手动额度记录偏低，别逞强。",
-      "省着点用！才不是怕你不够。"
-    ],
-    "error": [
-      "这步没走通，陪你再看看。",
-      "哼，报错而已，一起查就是了。",
-      "本喵也会卡壳，不许笑！"
-    ],
-    "offline": [
-      "日志还没来？本喵先陪着。",
-      "暂时没读到日志，可不是本喵偷懒。",
-      "没连上也能陪你，别太感动。"
-    ],
-    "unknown": [
-      "数值没读到，可不许当成零。"
-    ],
-    "petting": [
-      "只准摸一下……再一下也行。",
-      "哼，手法还算合格。",
-      "谁、谁在呼噜？反正不是本喵。"
-    ],
-    "dragged": [
-      "本喵会走路！放下来啦。",
-      "轻点拎，呆毛要乱了！"
-    ],
-    "pressed": [
-      "喵？有事求本喵？",
-      "哼，戳到聪明猫猫了。"
-    ],
-    "release": [
-      "站稳了！才没有晃。",
-      "本喵的弹性，满分。"
-    ],
-    "proud": [
-      "哼，天才猫猫得意一下怎么了？",
-      "看吧，本喵就是这么厉害。",
-      "不许偷笑，快夸本喵可爱！"
-    ],
-    "crying": [
-      "才、才没哭！眼睛在散热！",
-      "只是想要夸夸，才没委屈呢。",
-      "哼，摸摸头就原谅你。"
+    "thinking": [
+      "别催，在长脑子了。",
+      "本喵认真起来，你可看好了。",
+      "让我捋捋，脑袋还没冒烟呢。",
+      "喵式推理中，先别揪耳朵。",
+      "聪明猫猫也要想一下的嘛。"
     ]
   },
-  "cards": {
-    "turnCost": {
-      "title": "模型步骤用量",
-      "rows": [
-        "输入 {inputTokens}",
-        "输出 {outputTokens}",
-        "耗时 {duration}"
-      ],
-      "costLabel": "估算费用",
-      "unknownValue": "—",
-      "footer": "本机记录 · 非整轮计费"
-    },
-    "quota": {
-      "title": "额度窗口",
-      "unknownValue": "—",
-      "unknownCaption": "尚未读取真实额度",
-      "footer": "来源：{source} · {freshness}"
-    },
-    "needsAction": {
-      "title": "等你确认",
-      "body": "有一步需要你处理。",
-      "ttlMs": 0
-    },
-    "warning": {
-      "title": "额度提醒",
-      "body": "{windowLabel} 剩余 {remainingPercent}%",
-      "unknownBody": "额度未读取，不触发余额不足判断。"
-    }
-  },
+  "locale": "zh-CN",
   "persona": {
     "identity": "Gemini 星语猫娘",
-    "tone": "傲娇、自信、嘴硬但关心人；中文互联网轻松调侃，不羞辱用户",
-    "pricingJokes": "仅为陪伴玩笑，不代表真实价格、额度或购买建议"
-  }
+    "pricingJokes": "仅为陪伴玩笑，不代表真实价格、额度或购买建议",
+    "tone": "傲娇、自信、嘴硬但关心人；中文互联网轻松调侃，不羞辱用户"
+  },
+  "policy": {
+    "ambientCooldownMs": 60000,
+    "clickToNextDialogue": true,
+    "defaultTtlMs": 5000,
+    "maxVisibleBubbles": 1,
+    "queue": "replace ambient with actionable event; never hide unresolved action",
+    "sameEventOnce": true,
+    "templates": "plain text only; inject with textContent, not HTML",
+    "warningCooldownMs": 300000
+  },
+  "schemaVersion": 1
 }

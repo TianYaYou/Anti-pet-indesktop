@@ -191,7 +191,9 @@ impl MacosSettingsApp {
         let win_alloc = msg_ptr(window_cls, sel(b"alloc\0"));
         let win = msg_init_window(win_alloc, sel(b"initWithContentRect:styleMask:backing:defer:\0"), [100.0, 100.0, win_w, win_h], style_mask, 2, 0);
 
-        msg_void_ptr(win, sel(b"setTitle:\0"), nsstring("Anti-Pet 偏好设置"));
+        // Clean title bar: remove window title next to traffic lights per Apple HIG
+        msg_void_ptr(win, sel(b"setTitle:\0"), nsstring(""));
+        msg_void_isize(win, sel(b"setTitleVisibility:\0"), 1); // NSWindowTitleHidden = 1
         msg_void_bool(win, sel(b"setOpaque:\0"), 0);
         msg_void_bool(win, sel(b"setTitlebarAppearsTransparent:\0"), 1);
         msg_void_bool(win, sel(b"setMovableByWindowBackground:\0"), 1);
@@ -289,7 +291,7 @@ impl MacosSettingsApp {
             msg_void_ptr(iv, sel(b"setImage:\0"), sym_img);
             msg_subview(item_host, sel(b"addSubview:\0"), iv);
 
-            // Title label
+            // Title label (optically centered at y = 8.0)
             let item_lbl = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring(tab_title));
             msg_void_ptr(item_lbl, sel(b"setFont:\0"), regular_font);
             if i == 0 {
@@ -297,7 +299,7 @@ impl MacosSettingsApp {
             } else {
                 msg_void_ptr(item_lbl, sel(b"setTextColor:\0"), label_color);
             }
-            set_frame(item_lbl, sel(b"setFrame:\0"), [34.0, 7.0, 140.0, 20.0]);
+            set_frame(item_lbl, sel(b"setFrame:\0"), [34.0, 8.0, 140.0, 18.0]);
             msg_subview(item_host, sel(b"addSubview:\0"), item_lbl);
             sidebar_labels.push(item_lbl);
 
@@ -335,6 +337,19 @@ impl MacosSettingsApp {
         let snap = store.lock().unwrap().snapshot();
         let mut tab_views = Vec::new();
 
+        // Helper: creates a scrollable tab host for smooth trackpad scrolling
+        let make_scrollable_tab = |content_h: f64| -> (*mut c_void, *mut c_void) {
+            let sv = msg_init_frame(msg_ptr(scroll_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w, win_h]);
+            msg_void_bool(sv, sel(b"setHasVerticalScroller:\0"), 1);
+            msg_void_bool(sv, sel(b"setHasHorizontalScroller:\0"), 0);
+            msg_void_bool(sv, sel(b"setAutohidesScrollers:\0"), 1);
+            msg_void_bool(sv, sel(b"setDrawsBackground:\0"), 0);
+
+            let doc = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w, content_h.max(win_h)]);
+            msg_void_ptr(sv, sel(b"setDocumentView:\0"), doc);
+            (sv, doc)
+        };
+
         // Helper closures for Inset Grouped Cards
         let create_card = |y_pos: f64, h: f64| -> *mut c_void {
             let card = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [24.0, y_pos, content_w - 48.0, h]);
@@ -357,19 +372,26 @@ impl MacosSettingsApp {
             msg_subview(host, sel(b"addSubview:\0"), lbl);
         };
 
-        let add_card_row = |card: *mut c_void, y_offset: f64, title: &str, subtitle: &str| {
+        // Two-line row: Optical vertical centering with height 48.0
+        let add_card_row_two_lines = |card: *mut c_void, y_offset: f64, title: &str, subtitle: &str| {
             let t_lbl = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring(title));
             msg_void_ptr(t_lbl, sel(b"setFont:\0"), msg_font(font_cls, sel(b"systemFontOfSize:\0"), 13.0));
-            set_frame(t_lbl, sel(b"setFrame:\0"), [16.0, y_offset + 5.0, 260.0, 18.0]);
+            set_frame(t_lbl, sel(b"setFrame:\0"), [16.0, y_offset + 8.0, 260.0, 18.0]);
             msg_subview(card, sel(b"addSubview:\0"), t_lbl);
 
-            if !subtitle.is_empty() {
-                let s_lbl = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring(subtitle));
-                msg_void_ptr(s_lbl, sel(b"setFont:\0"), small_font);
-                msg_void_ptr(s_lbl, sel(b"setTextColor:\0"), sec_color);
-                set_frame(s_lbl, sel(b"setFrame:\0"), [16.0, y_offset + 23.0, 260.0, 15.0]);
-                msg_subview(card, sel(b"addSubview:\0"), s_lbl);
-            }
+            let s_lbl = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring(subtitle));
+            msg_void_ptr(s_lbl, sel(b"setFont:\0"), small_font);
+            msg_void_ptr(s_lbl, sel(b"setTextColor:\0"), sec_color);
+            set_frame(s_lbl, sel(b"setFrame:\0"), [16.0, y_offset + 26.0, 260.0, 15.0]);
+            msg_subview(card, sel(b"addSubview:\0"), s_lbl);
+        };
+
+        // Single-line row: Optical vertical centering with height 44.0
+        let add_card_row_single_line = |card: *mut c_void, y_offset: f64, title: &str| {
+            let t_lbl = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring(title));
+            msg_void_ptr(t_lbl, sel(b"setFont:\0"), msg_font(font_cls, sel(b"systemFontOfSize:\0"), 13.0));
+            set_frame(t_lbl, sel(b"setFrame:\0"), [16.0, y_offset + 13.0, 260.0, 18.0]);
+            msg_subview(card, sel(b"addSubview:\0"), t_lbl);
         };
 
         let add_divider = |card: *mut c_void, y_offset: f64| {
@@ -381,34 +403,34 @@ impl MacosSettingsApp {
             msg_subview(card, sel(b"addSubview:\0"), div);
         };
 
-        // ================= TAB 0: 常规与显示 =================
+        // ================= TAB 0: 常规与显示 (Scrollable) =================
         let theme_popup;
         let scale_val_lbl;
         let floor_popup;
 
-        let tab0_view = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w, win_h]);
+        let (tab0_sv, tab0_doc) = make_scrollable_tab(640.0);
         {
             // Title Header
             let h_title = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("常规与显示"));
             msg_void_ptr(h_title, sel(b"setFont:\0"), msg_font_bold(font_cls, sel(b"boldSystemFontOfSize:\0"), 20.0));
-            set_frame(h_title, sel(b"setFrame:\0"), [24.0, 24.0, 300.0, 26.0]);
-            msg_subview(tab0_view, sel(b"addSubview:\0"), h_title);
+            set_frame(h_title, sel(b"setFrame:\0"), [24.0, 20.0, 300.0, 26.0]);
+            msg_subview(tab0_doc, sel(b"addSubview:\0"), h_title);
 
             let h_sub = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("调整大肥猫的桌面尺寸、物理重力下落与交互行为"));
             msg_void_ptr(h_sub, sel(b"setFont:\0"), small_font);
             msg_void_ptr(h_sub, sel(b"setTextColor:\0"), sec_color);
-            set_frame(h_sub, sel(b"setFrame:\0"), [24.0, 50.0, 420.0, 16.0]);
-            msg_subview(tab0_view, sel(b"addSubview:\0"), h_sub);
+            set_frame(h_sub, sel(b"setFrame:\0"), [24.0, 48.0, 420.0, 16.0]);
+            msg_subview(tab0_doc, sel(b"addSubview:\0"), h_sub);
 
             // Card 1: 外观与主题
-            add_section_header(tab0_view, "外观与主题", 76.0);
-            let card1 = create_card(94.0, 46.0);
-            add_card_row(card1, 0.0, "界面外观", "设置窗口明暗主题风格，默认跟随系统");
+            add_section_header(tab0_doc, "外观与主题", 78.0);
+            let card1 = create_card(98.0, 48.0);
+            add_card_row_two_lines(card1, 0.0, "界面外观", "设置窗口明暗主题风格，默认跟随系统");
 
-            // NSPopUpButton for Theme
+            // NSPopUpButton for Theme (vertically centered at y = 11.0)
             let msg_pop_init: unsafe extern "C" fn(*mut c_void, *mut c_void, [f64; 4], i8) -> *mut c_void =
                 std::mem::transmute(objc_msgSend as *const ());
-            theme_popup = msg_pop_init(msg_ptr(popup_cls, sel(b"alloc\0")), sel(b"initWithFrame:pullsDown:\0"), [content_w - 188.0, 10.0, 120.0, 26.0], 0);
+            theme_popup = msg_pop_init(msg_ptr(popup_cls, sel(b"alloc\0")), sel(b"initWithFrame:pullsDown:\0"), [content_w - 188.0, 11.0, 120.0, 26.0], 0);
             msg_void_ptr(theme_popup, sel(b"addItemWithTitle:\0"), nsstring("跟随系统"));
             msg_void_ptr(theme_popup, sel(b"addItemWithTitle:\0"), nsstring("浅色模式"));
             msg_void_ptr(theme_popup, sel(b"addItemWithTitle:\0"), nsstring("深色模式"));
@@ -422,29 +444,29 @@ impl MacosSettingsApp {
             msg_void_ptr(theme_popup, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(theme_popup, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card1, sel(b"addSubview:\0"), theme_popup);
-            msg_subview(tab0_view, sel(b"addSubview:\0"), card1);
+            msg_subview(tab0_doc, sel(b"addSubview:\0"), card1);
 
             // Card 2: 体型与物理
-            add_section_header(tab0_view, "体型与物理", 152.0);
-            let card2 = create_card(170.0, 184.0);
+            add_section_header(tab0_doc, "体型与物理", 162.0);
+            let card2 = create_card(182.0, 192.0);
 
             // Row 0: Scale Slider + Label
-            add_card_row(card2, 0.0, "缩放大小", "挂件在屏幕上的呈现比例 (50% - 200%)");
+            add_card_row_two_lines(card2, 0.0, "缩放大小", "挂件在屏幕上的呈现比例 (50% - 200%)");
             let slider = msg_slider(slider_cls, sel(b"sliderWithValue:minValue:maxValue:target:action:\0"), snap.temp_settings.scale as f64, 0.5, 2.0, action_target, sel(b"onAction:\0"));
-            set_frame(slider, sel(b"setFrame:\0"), [content_w - 238.0, 14.0, 120.0, 18.0]);
+            set_frame(slider, sel(b"setFrame:\0"), [content_w - 238.0, 15.0, 120.0, 18.0]);
             msg_void_isize(slider, sel(b"setTag:\0"), 202);
             msg_subview(card2, sel(b"addSubview:\0"), slider);
 
             let scale_str = format!("{}%", (snap.temp_settings.scale * 100.0).round() as i32);
             scale_val_lbl = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring(&scale_str));
             msg_void_ptr(scale_val_lbl, sel(b"setFont:\0"), regular_font);
-            set_frame(scale_val_lbl, sel(b"setFrame:\0"), [content_w - 110.0, 12.0, 48.0, 20.0]);
+            set_frame(scale_val_lbl, sel(b"setFrame:\0"), [content_w - 110.0, 15.0, 48.0, 18.0]);
             msg_subview(card2, sel(b"addSubview:\0"), scale_val_lbl);
-            add_divider(card2, 46.0);
+            add_divider(card2, 48.0);
 
             // Row 1: Floor Mode NSPopUpButton
-            add_card_row(card2, 46.0, "落地吸附基线", "松手后猫猫下落吸附的目标基准线");
-            floor_popup = msg_pop_init(msg_ptr(popup_cls, sel(b"alloc\0")), sel(b"initWithFrame:pullsDown:\0"), [content_w - 238.0, 56.0, 170.0, 26.0], 0);
+            add_card_row_two_lines(card2, 48.0, "落地吸附基线", "松手后猫猫下落吸附的目标基准线");
+            floor_popup = msg_pop_init(msg_ptr(popup_cls, sel(b"alloc\0")), sel(b"initWithFrame:pullsDown:\0"), [content_w - 238.0, 59.0, 170.0, 26.0], 0);
             msg_void_ptr(floor_popup, sel(b"addItemWithTitle:\0"), nsstring("贴合任务栏与 Dock 上沿"));
             msg_void_ptr(floor_popup, sel(b"addItemWithTitle:\0"), nsstring("屏幕绝对落底 (0px 极底)"));
             msg_void_ptr(floor_popup, sel(b"addItemWithTitle:\0"), nsstring("自由悬浮 (不吸附底边)"));
@@ -458,154 +480,235 @@ impl MacosSettingsApp {
             msg_void_ptr(floor_popup, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(floor_popup, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card2, sel(b"addSubview:\0"), floor_popup);
-            add_divider(card2, 92.0);
+            add_divider(card2, 96.0);
 
             // Row 2: Gravity Switch
-            add_card_row(card2, 92.0, "重力加速度模拟", "释放后遵循物理加速度下落与触底弹性回弹");
-            let sw_gravity = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 102.0, 48.0, 26.0]);
+            add_card_row_two_lines(card2, 96.0, "重力加速度模拟", "释放后遵循物理加速度下落与触底弹性回弹");
+            let sw_gravity = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 107.0, 48.0, 26.0]);
             msg_void_isize(sw_gravity, sel(b"setState:\0"), if snap.temp_settings.gravity_enabled { 1 } else { 0 });
             msg_void_isize(sw_gravity, sel(b"setTag:\0"), 205);
             msg_void_ptr(sw_gravity, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw_gravity, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card2, sel(b"addSubview:\0"), sw_gravity);
-            add_divider(card2, 138.0);
+            add_divider(card2, 144.0);
 
             // Row 3: Reset Position Button
-            add_card_row(card2, 138.0, "屏幕位置校准", "将桌宠一键拉回屏幕正中央安全区域");
+            add_card_row_two_lines(card2, 144.0, "屏幕位置校准", "将桌宠一键拉回屏幕正中央安全区域");
             let btn_reset = msg_btn(button_cls, sel(b"buttonWithTitle:target:action:\0"), nsstring("复位居中"), action_target, sel(b"onAction:\0"));
-            set_frame(btn_reset, sel(b"setFrame:\0"), [content_w - 156.0, 146.0, 88.0, 28.0]);
+            set_frame(btn_reset, sel(b"setFrame:\0"), [content_w - 156.0, 154.0, 88.0, 28.0]);
             msg_void_isize(btn_reset, sel(b"setTag:\0"), 204);
             msg_subview(card2, sel(b"addSubview:\0"), btn_reset);
-            msg_subview(tab0_view, sel(b"addSubview:\0"), card2);
+            msg_subview(tab0_doc, sel(b"addSubview:\0"), card2);
 
             // Card 3: 状态与交互
-            add_section_header(tab0_view, "状态与交互", 366.0);
-            let card3 = create_card(384.0, 115.0);
+            add_section_header(tab0_doc, "状态与交互", 390.0);
+            let card3 = create_card(410.0, 192.0);
 
-            // Quota
-            add_card_row(card3, 0.0, "气泡实时额度卡片", "气泡中展示 5小时与周额度进度条");
-            let sw_quota = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 10.0, 48.0, 26.0]);
+            // Row 0: Quota
+            add_card_row_two_lines(card3, 0.0, "气泡实时额度卡片", "气泡中展示 5小时与周额度进度条");
+            let sw_quota = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 11.0, 48.0, 26.0]);
             msg_void_isize(sw_quota, sel(b"setState:\0"), if snap.temp_settings.show_quota { 1 } else { 0 });
             msg_void_isize(sw_quota, sel(b"setTag:\0"), 206);
             msg_void_ptr(sw_quota, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw_quota, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card3, sel(b"addSubview:\0"), sw_quota);
-            add_divider(card3, 38.0);
+            add_divider(card3, 48.0);
 
-            // DND Passthrough
-            add_card_row(card3, 38.0, "完全穿透免打扰", "猫猫处于只读透明状态，点击穿透到底层");
-            let sw_dnd = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 46.0, 48.0, 26.0]);
+            // Row 1: IDE Only
+            add_card_row_two_lines(card3, 48.0, "仅在 IDE 活跃时显示", "前台为编辑器时呈现，切出隐匿");
+            let sw_ide = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 59.0, 48.0, 26.0]);
+            msg_void_isize(sw_ide, sel(b"setState:\0"), if snap.temp_settings.menu_config.ide_only { 1 } else { 0 });
+            msg_void_isize(sw_ide, sel(b"setTag:\0"), 209);
+            msg_void_ptr(sw_ide, sel(b"setTarget:\0"), action_target);
+            msg_void_ptr(sw_ide, sel(b"setAction:\0"), sel(b"onAction:\0"));
+            msg_subview(card3, sel(b"addSubview:\0"), sw_ide);
+            add_divider(card3, 96.0);
+
+            // Row 2: DND Passthrough
+            add_card_row_two_lines(card3, 96.0, "完全穿透免打扰", "猫猫处于只读透明状态，点击穿透到底层");
+            let sw_dnd = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 107.0, 48.0, 26.0]);
             msg_void_isize(sw_dnd, sel(b"setState:\0"), if snap.temp_settings.dnd_passthrough { 1 } else { 0 });
             msg_void_isize(sw_dnd, sel(b"setTag:\0"), 207);
             msg_void_ptr(sw_dnd, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw_dnd, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card3, sel(b"addSubview:\0"), sw_dnd);
-            add_divider(card3, 76.0);
+            add_divider(card3, 144.0);
 
-            // Sound
-            add_card_row(card3, 76.0, "动作互动音效", "点击、抚摸、成功与报错时的猫叫音频");
-            let sw_snd = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 84.0, 48.0, 26.0]);
+            // Row 3: Sound
+            add_card_row_two_lines(card3, 144.0, "动作互动音效", "点击、抚摸、成功与报错时的猫叫音频");
+            let sw_snd = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 155.0, 48.0, 26.0]);
             msg_void_isize(sw_snd, sel(b"setState:\0"), if snap.temp_settings.sound_enabled { 1 } else { 0 });
             msg_void_isize(sw_snd, sel(b"setTag:\0"), 208);
             msg_void_ptr(sw_snd, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw_snd, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card3, sel(b"addSubview:\0"), sw_snd);
-            msg_subview(tab0_view, sel(b"addSubview:\0"), card3);
+            msg_subview(tab0_doc, sel(b"addSubview:\0"), card3);
         }
-        tab_views.push(tab0_view);
-        msg_subview(content_container, sel(b"addSubview:\0"), tab0_view);
+        tab_views.push(tab0_sv);
+        msg_subview(content_container, sel(b"addSubview:\0"), tab0_sv);
 
-        // ================= TAB 1: 自启动与更新 =================
-        let tab1_view = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w, win_h]);
+        // ================= TAB 1: 自启动与更新 (Scrollable) =================
+        let (tab1_sv, tab1_doc) = make_scrollable_tab(520.0);
         {
             let h_title = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("自启动与更新"));
             msg_void_ptr(h_title, sel(b"setFont:\0"), msg_font_bold(font_cls, sel(b"boldSystemFontOfSize:\0"), 20.0));
-            set_frame(h_title, sel(b"setFrame:\0"), [24.0, 24.0, 300.0, 26.0]);
-            msg_subview(tab1_view, sel(b"addSubview:\0"), h_title);
+            set_frame(h_title, sel(b"setFrame:\0"), [24.0, 20.0, 300.0, 26.0]);
+            msg_subview(tab1_doc, sel(b"addSubview:\0"), h_title);
 
             let h_sub = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("管理开机自启动配置与挂件版本检测"));
             msg_void_ptr(h_sub, sel(b"setFont:\0"), small_font);
             msg_void_ptr(h_sub, sel(b"setTextColor:\0"), sec_color);
-            set_frame(h_sub, sel(b"setFrame:\0"), [24.0, 50.0, 420.0, 16.0]);
-            msg_subview(tab1_view, sel(b"addSubview:\0"), h_sub);
+            set_frame(h_sub, sel(b"setFrame:\0"), [24.0, 48.0, 420.0, 16.0]);
+            msg_subview(tab1_doc, sel(b"addSubview:\0"), h_sub);
 
             // Card 1: 系统集成
-            add_section_header(tab1_view, "系统集成", 76.0);
-            let card1 = create_card(94.0, 46.0);
-            add_card_row(card1, 0.0, "开机自动启动", "在系统登录完成后自动在后台静默挂载大肥猫");
-            let sw_auto = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 10.0, 48.0, 26.0]);
+            add_section_header(tab1_doc, "系统集成", 78.0);
+            let card1 = create_card(98.0, 48.0);
+            add_card_row_two_lines(card1, 0.0, "开机自动启动", "在系统登录完成后自动在后台静默挂载大肥猫");
+            let sw_auto = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 11.0, 48.0, 26.0]);
             msg_void_isize(sw_auto, sel(b"setState:\0"), if snap.autostart_enabled { 1 } else { 0 });
             msg_void_isize(sw_auto, sel(b"setTag:\0"), 301);
             msg_void_ptr(sw_auto, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw_auto, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card1, sel(b"addSubview:\0"), sw_auto);
-            msg_subview(tab1_view, sel(b"addSubview:\0"), card1);
+            msg_subview(tab1_doc, sel(b"addSubview:\0"), card1);
 
             // Card 2: 核心规范与架构
-            add_section_header(tab1_view, "核心规范与架构", 152.0);
-            let card2 = create_card(170.0, 138.0);
-            add_card_row(card2, 0.0, "核心引擎版本", "v0.5.0 (Pure CPU 2D NextGen Core)");
-            add_divider(card2, 46.0);
-            add_card_row(card2, 46.0, "UI 渲染前端", "macOS Native Cocoa AppKit (0 KB 额外依赖)");
-            add_divider(card2, 92.0);
-            add_card_row(card2, 92.0, "运行内存指标", "约 12MB RSS / 0% GPU 硬件占用");
-            msg_subview(tab1_view, sel(b"addSubview:\0"), card2);
+            add_section_header(tab1_doc, "核心规范与架构", 162.0);
+            let card2 = create_card(182.0, 144.0);
+            add_card_row_two_lines(card2, 0.0, "核心引擎版本", "v0.5.0 (Pure CPU 2D NextGen Core)");
+            add_divider(card2, 48.0);
+            add_card_row_two_lines(card2, 48.0, "UI 渲染前端", "macOS Native Cocoa AppKit (0 KB 额外依赖)");
+            add_divider(card2, 96.0);
+            add_card_row_two_lines(card2, 96.0, "运行内存指标", "约 12MB RSS / 0% GPU 硬件占用");
+            msg_subview(tab1_doc, sel(b"addSubview:\0"), card2);
 
             // Card 3: 版本更新
-            add_section_header(tab1_view, "版本检测", 320.0);
-            let card3 = create_card(338.0, 46.0);
-            add_card_row(card3, 0.0, "检查更新通道", "当前已是最新稳定版本 (v0.5.0)");
+            add_section_header(tab1_doc, "版本检测", 342.0);
+            let card3 = create_card(362.0, 48.0);
+            add_card_row_two_lines(card3, 0.0, "检查更新通道", "当前已是最新稳定版本 (v0.5.0)");
             let btn_update = msg_btn(button_cls, sel(b"buttonWithTitle:target:action:\0"), nsstring("检查更新"), action_target, sel(b"onAction:\0"));
-            set_frame(btn_update, sel(b"setFrame:\0"), [content_w - 156.0, 9.0, 88.0, 28.0]);
+            set_frame(btn_update, sel(b"setFrame:\0"), [content_w - 156.0, 10.0, 88.0, 28.0]);
             msg_void_isize(btn_update, sel(b"setTag:\0"), 302);
             msg_subview(card3, sel(b"addSubview:\0"), btn_update);
-            msg_subview(tab1_view, sel(b"addSubview:\0"), card3);
+            msg_subview(tab1_doc, sel(b"addSubview:\0"), card3);
         }
-        msg_void_bool(tab1_view, sel(b"setHidden:\0"), 1);
-        tab_views.push(tab1_view);
-        msg_subview(content_container, sel(b"addSubview:\0"), tab1_view);
+        msg_void_bool(tab1_sv, sel(b"setHidden:\0"), 1);
+        tab_views.push(tab1_sv);
+        msg_subview(content_container, sel(b"addSubview:\0"), tab1_sv);
 
-        // ================= TAB 2: 皮肤管理 =================
-        let tab2_view = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w, win_h]);
+        // ================= TAB 2: 皮肤管理 (Scrollable with Preview) =================
+        let (tab2_sv, tab2_doc) = make_scrollable_tab(580.0);
         {
             let h_title = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("皮肤管理"));
             msg_void_ptr(h_title, sel(b"setFont:\0"), msg_font_bold(font_cls, sel(b"boldSystemFontOfSize:\0"), 20.0));
-            set_frame(h_title, sel(b"setFrame:\0"), [24.0, 24.0, 300.0, 26.0]);
-            msg_subview(tab2_view, sel(b"addSubview:\0"), h_title);
+            set_frame(h_title, sel(b"setFrame:\0"), [24.0, 20.0, 300.0, 26.0]);
+            msg_subview(tab2_doc, sel(b"addSubview:\0"), h_title);
 
             let h_sub = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("管理已安装皮肤外观与本地动画资产"));
             msg_void_ptr(h_sub, sel(b"setFont:\0"), small_font);
             msg_void_ptr(h_sub, sel(b"setTextColor:\0"), sec_color);
-            set_frame(h_sub, sel(b"setFrame:\0"), [24.0, 50.0, 420.0, 16.0]);
-            msg_subview(tab2_view, sel(b"addSubview:\0"), h_sub);
+            set_frame(h_sub, sel(b"setFrame:\0"), [24.0, 48.0, 420.0, 16.0]);
+            msg_subview(tab2_doc, sel(b"addSubview:\0"), h_sub);
 
-            // Card 1: 当前皮肤资产
-            add_section_header(tab2_view, "当前激活皮肤", 76.0);
-            let card1 = create_card(94.0, 184.0);
-            add_card_row(card1, 0.0, "激活皮肤标识", "fat-cat (经典大肥猫)");
-            add_divider(card1, 46.0);
-            add_card_row(card1, 46.0, "资产创作者", "Antigravity Pet Studio");
-            add_divider(card1, 92.0);
-            add_card_row(card1, 92.0, "当前资产版本", "v1.3.0");
-            add_divider(card1, 138.0);
-            add_card_row(card1, 138.0, "动画状态帧", "idle, thinking, working, success, error, petting");
-            msg_subview(tab2_view, sel(b"addSubview:\0"), card1);
+            // Card 1: 激活皮肤视觉预览卡片 (160pt height)
+            add_section_header(tab2_doc, "当前激活皮肤与样式预览", 78.0);
+            let card1 = create_card(98.0, 160.0);
 
-            // Card 2: 本地资产管理
-            add_section_header(tab2_view, "本地资产目录扩展", 290.0);
-            let card2 = create_card(308.0, 92.0);
-            add_card_row(card2, 0.0, "资产存储路径", "skins/fat-cat/ (支持本地热重载与逐帧替换)");
-            add_divider(card2, 46.0);
-            add_card_row(card2, 46.0, "在 Finder 中管理", "直接在系统访达中定位并替换 PNG 帧序列");
+            // Left preview box (128x128)
+            let preview_box = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [16.0, 16.0, 128.0, 128.0]);
+            msg_void_bool(preview_box, sel(b"setWantsLayer:\0"), 1);
+            let p_layer = msg_ptr(preview_box, sel(b"layer\0"));
+            msg_void_f64(p_layer, sel(b"setCornerRadius:\0"), 8.0);
+            let box_bg = msg_color_rgba(color_cls, sel(b"colorWithRed:green:blue:alpha:\0"), 1.0, 1.0, 1.0, 0.05);
+            let box_border = msg_color_rgba(color_cls, sel(b"colorWithRed:green:blue:alpha:\0"), 1.0, 1.0, 1.0, 0.12);
+            msg_void_ptr(p_layer, sel(b"setBackgroundColor:\0"), msg_ptr(box_bg, sel(b"CGColor\0")));
+            msg_void_ptr(p_layer, sel(b"setBorderColor:\0"), msg_ptr(box_border, sel(b"CGColor\0")));
+            msg_void_f64(p_layer, sel(b"setBorderWidth:\0"), 1.0);
+            msg_subview(card1, sel(b"addSubview:\0"), preview_box);
+
+            // Load skin preview image from skins/fat-cat/frames/idle.png
+            let root_dir = store.lock().unwrap().root_dir.clone();
+            let idle_png_path = root_dir.join("skins").join("fat-cat").join("frames").join("idle.png");
+            let idle_path_str = idle_png_path.to_string_lossy();
+
+            let skin_iv = msg_init_frame(msg_ptr(imageview_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [4.0, 4.0, 120.0, 120.0]);
+            let msg_init_file: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) -> *mut c_void =
+                std::mem::transmute(objc_msgSend as *const ());
+            let skin_img = msg_init_file(msg_ptr(image_cls, sel(b"alloc\0")), sel(b"initWithContentsOfFile:\0"), nsstring(&idle_path_str));
+            if !skin_img.is_null() {
+                msg_void_ptr(skin_iv, sel(b"setImage:\0"), skin_img);
+                msg_void_usize(skin_iv, sel(b"setImageScaling:\0"), 3); // NSImageScaleProportionallyUpOrDown
+            }
+            msg_subview(preview_box, sel(b"addSubview:\0"), skin_iv);
+
+            // Right skin metadata
+            let s_name = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("大肥猫 (fat-cat)"));
+            msg_void_ptr(s_name, sel(b"setFont:\0"), msg_font_bold(font_cls, sel(b"boldSystemFontOfSize:\0"), 16.0));
+            set_frame(s_name, sel(b"setFrame:\0"), [160.0, 16.0, 280.0, 22.0]);
+            msg_subview(card1, sel(b"addSubview:\0"), s_name);
+
+            let s_author = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("创作者: Antigravity Pet Studio"));
+            msg_void_ptr(s_author, sel(b"setFont:\0"), regular_font);
+            msg_void_ptr(s_author, sel(b"setTextColor:\0"), sec_color);
+            set_frame(s_author, sel(b"setFrame:\0"), [160.0, 42.0, 280.0, 18.0]);
+            msg_subview(card1, sel(b"addSubview:\0"), s_author);
+
+            let s_ver = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("版本: v1.3.0 · 60fps 逐帧光栅化"));
+            msg_void_ptr(s_ver, sel(b"setFont:\0"), small_font);
+            msg_void_ptr(s_ver, sel(b"setTextColor:\0"), sec_color);
+            set_frame(s_ver, sel(b"setFrame:\0"), [160.0, 64.0, 280.0, 16.0]);
+            msg_subview(card1, sel(b"addSubview:\0"), s_ver);
+
+            let s_desc = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("简洁半身大肥猫桌宠，支持透明穿透、按压回弹、物理重力落底与实时用量监控。"));
+            msg_void_ptr(s_desc, sel(b"setFont:\0"), small_font);
+            set_frame(s_desc, sel(b"setFrame:\0"), [160.0, 84.0, 290.0, 32.0]);
+            msg_subview(card1, sel(b"addSubview:\0"), s_desc);
+
+            // Active Badge
+            let badge_box = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [160.0, 122.0, 96.0, 22.0]);
+            msg_void_bool(badge_box, sel(b"setWantsLayer:\0"), 1);
+            let b_layer = msg_ptr(badge_box, sel(b"layer\0"));
+            msg_void_f64(b_layer, sel(b"setCornerRadius:\0"), 4.0);
+            let badge_bg = msg_color_rgba(color_cls, sel(b"colorWithRed:green:blue:alpha:\0"), 0.18, 0.80, 0.44, 0.18);
+            let badge_border = msg_color_rgba(color_cls, sel(b"colorWithRed:green:blue:alpha:\0"), 0.18, 0.80, 0.44, 0.45);
+            msg_void_ptr(b_layer, sel(b"setBackgroundColor:\0"), msg_ptr(badge_bg, sel(b"CGColor\0")));
+            msg_void_ptr(b_layer, sel(b"setBorderColor:\0"), msg_ptr(badge_border, sel(b"CGColor\0")));
+            msg_void_f64(b_layer, sel(b"setBorderWidth:\0"), 1.0);
+
+            let badge_lbl = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("当前正在使用"));
+            msg_void_ptr(badge_lbl, sel(b"setFont:\0"), small_font);
+            let green_color = msg_color_rgba(color_cls, sel(b"colorWithRed:green:blue:alpha:\0"), 0.22, 0.88, 0.48, 1.0);
+            msg_void_ptr(badge_lbl, sel(b"setTextColor:\0"), green_color);
+            set_frame(badge_lbl, sel(b"setFrame:\0"), [10.0, 3.0, 80.0, 16.0]);
+            msg_subview(badge_box, sel(b"addSubview:\0"), badge_lbl);
+            msg_subview(card1, sel(b"addSubview:\0"), badge_box);
+
+            msg_subview(tab2_doc, sel(b"addSubview:\0"), card1);
+
+            // Card 2: 动画状态与规格
+            add_section_header(tab2_doc, "动画状态与规格", 274.0);
+            let card2 = create_card(294.0, 96.0);
+            add_card_row_two_lines(card2, 0.0, "包含动作状态", "idle, thinking, working, success, error, petting");
+            add_divider(card2, 48.0);
+            add_card_row_two_lines(card2, 48.0, "渲染引擎架构", "Pure CPU 2D Software Surface (<12MB RSS, 0% GPU)");
+            msg_subview(tab2_doc, sel(b"addSubview:\0"), card2);
+
+            // Card 3: 本地资产管理
+            add_section_header(tab2_doc, "本地资产管理与扩展", 406.0);
+            let card3 = create_card(426.0, 96.0);
+            add_card_row_two_lines(card3, 0.0, "资产存储路径", "skins/fat-cat/ (支持本地热重载与帧替换)");
+            add_divider(card3, 48.0);
+            add_card_row_two_lines(card3, 48.0, "在 Finder 中管理", "直接在访达中打开并替换 PNG 帧序列");
             let btn_finder = msg_btn(button_cls, sel(b"buttonWithTitle:target:action:\0"), nsstring("在 Finder 中打开"), action_target, sel(b"onAction:\0"));
-            set_frame(btn_finder, sel(b"setFrame:\0"), [content_w - 188.0, 55.0, 120.0, 28.0]);
+            set_frame(btn_finder, sel(b"setFrame:\0"), [content_w - 188.0, 58.0, 120.0, 28.0]);
             msg_void_isize(btn_finder, sel(b"setTag:\0"), 230);
-            msg_subview(card2, sel(b"addSubview:\0"), btn_finder);
-            msg_subview(tab2_view, sel(b"addSubview:\0"), card2);
+            msg_subview(card3, sel(b"addSubview:\0"), btn_finder);
+            msg_subview(tab2_doc, sel(b"addSubview:\0"), card3);
         }
-        msg_void_bool(tab2_view, sel(b"setHidden:\0"), 1);
-        tab_views.push(tab2_view);
-        msg_subview(content_container, sel(b"addSubview:\0"), tab2_view);
+        msg_void_bool(tab2_sv, sel(b"setHidden:\0"), 1);
+        tab_views.push(tab2_sv);
+        msg_subview(content_container, sel(b"addSubview:\0"), tab2_sv);
 
         // ================= TAB 3: 台词与问候 =================
         let tab3_view = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w, win_h]);
@@ -616,13 +719,13 @@ impl MacosSettingsApp {
         {
             let h_title = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("台词与问候"));
             msg_void_ptr(h_title, sel(b"setFont:\0"), msg_font_bold(font_cls, sel(b"boldSystemFontOfSize:\0"), 20.0));
-            set_frame(h_title, sel(b"setFrame:\0"), [24.0, 24.0, 300.0, 26.0]);
+            set_frame(h_title, sel(b"setFrame:\0"), [24.0, 20.0, 300.0, 26.0]);
             msg_subview(tab3_view, sel(b"addSubview:\0"), h_title);
 
             let h_sub = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("自定义不同工作状态下的气泡台词，修改即时自动保存"));
             msg_void_ptr(h_sub, sel(b"setFont:\0"), small_font);
             msg_void_ptr(h_sub, sel(b"setTextColor:\0"), sec_color);
-            set_frame(h_sub, sel(b"setFrame:\0"), [24.0, 50.0, 420.0, 16.0]);
+            set_frame(h_sub, sel(b"setFrame:\0"), [24.0, 48.0, 420.0, 16.0]);
             msg_subview(tab3_view, sel(b"addSubview:\0"), h_sub);
 
             // 5 Category Pills Segment
@@ -666,30 +769,30 @@ impl MacosSettingsApp {
                 msg_subview(tab3_view, sel(b"addSubview:\0"), pill_host);
             }
 
-            // Card 1: 添加新台词
-            add_section_header(tab3_view, "添加新语句", 112.0);
-            let card_add = create_card(130.0, 46.0);
-            let tf_input = msg_init_frame(msg_ptr(textfield_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [16.0, 10.0, content_w - 180.0, 26.0]);
-            msg_void_ptr(tf_input, sel(b"setPlaceholderString:\0"), nsstring("输入自定义台词内容并回车或点击添加..."));
+            // Card 1: 添加新台词 (H=48.0)
+            add_section_header(tab3_view, "添加新语句", 114.0);
+            let card_add = create_card(132.0, 48.0);
+            let tf_input = msg_init_frame(msg_ptr(textfield_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [16.0, 11.0, content_w - 180.0, 26.0]);
+            msg_void_ptr(tf_input, sel(b"setPlaceholderString:\0"), nsstring("输入自定义台词内容并点击添加..."));
             msg_subview(card_add, sel(b"addSubview:\0"), tf_input);
             dialogue_input = tf_input;
 
             let btn_add = msg_btn(button_cls, sel(b"buttonWithTitle:target:action:\0"), nsstring("添加条目"), action_target, sel(b"onAction:\0"));
-            set_frame(btn_add, sel(b"setFrame:\0"), [content_w - 156.0, 9.0, 88.0, 28.0]);
+            set_frame(btn_add, sel(b"setFrame:\0"), [content_w - 156.0, 10.0, 88.0, 28.0]);
             msg_void_isize(btn_add, sel(b"setTag:\0"), 450);
             msg_subview(card_add, sel(b"addSubview:\0"), btn_add);
             msg_subview(tab3_view, sel(b"addSubview:\0"), card_add);
 
             // Card 2: 滚动台词列表
-            add_section_header(tab3_view, "已收录台词列表", 188.0);
-            let card_list = create_card(206.0, 290.0);
+            add_section_header(tab3_view, "已收录台词列表", 192.0);
+            let card_list = create_card(210.0, 292.0);
 
-            // NSScrollView inside card
-            let sv = msg_init_frame(msg_ptr(scroll_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [8.0, 8.0, content_w - 64.0, 274.0]);
+            let sv = msg_init_frame(msg_ptr(scroll_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [8.0, 8.0, content_w - 64.0, 276.0]);
             msg_void_bool(sv, sel(b"setHasVerticalScroller:\0"), 1);
+            msg_void_bool(sv, sel(b"setAutohidesScrollers:\0"), 1);
             msg_void_bool(sv, sel(b"setDrawsBackground:\0"), 0);
 
-            let doc_view = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w - 64.0, 274.0]);
+            let doc_view = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w - 64.0, 276.0]);
             msg_void_ptr(sv, sel(b"setDocumentView:\0"), doc_view);
             dialogue_doc_view = doc_view;
 
@@ -700,113 +803,113 @@ impl MacosSettingsApp {
         tab_views.push(tab3_view);
         msg_subview(content_container, sel(b"addSubview:\0"), tab3_view);
 
-        // ================= TAB 4: 右键菜单配置 =================
-        let tab4_view = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w, win_h]);
+        // ================= TAB 4: 右键菜单配置 (Scrollable) =================
+        let (tab4_sv, tab4_doc) = make_scrollable_tab(610.0);
         {
             let h_title = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("右键菜单配置"));
             msg_void_ptr(h_title, sel(b"setFont:\0"), msg_font_bold(font_cls, sel(b"boldSystemFontOfSize:\0"), 20.0));
-            set_frame(h_title, sel(b"setFrame:\0"), [24.0, 24.0, 300.0, 26.0]);
-            msg_subview(tab4_view, sel(b"addSubview:\0"), h_title);
+            set_frame(h_title, sel(b"setFrame:\0"), [24.0, 20.0, 300.0, 26.0]);
+            msg_subview(tab4_doc, sel(b"addSubview:\0"), h_title);
 
             let h_sub = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("管理在桌面右键点击桌宠时出现的控制项"));
             msg_void_ptr(h_sub, sel(b"setFont:\0"), small_font);
             msg_void_ptr(h_sub, sel(b"setTextColor:\0"), sec_color);
-            set_frame(h_sub, sel(b"setFrame:\0"), [24.0, 50.0, 420.0, 16.0]);
-            msg_subview(tab4_view, sel(b"addSubview:\0"), h_sub);
+            set_frame(h_sub, sel(b"setFrame:\0"), [24.0, 48.0, 420.0, 16.0]);
+            msg_subview(tab4_doc, sel(b"addSubview:\0"), h_sub);
 
-            // Group 1: 核心控制项
-            add_section_header(tab4_view, "核心控制项", 76.0);
-            let card1 = create_card(94.0, 115.0);
-            add_card_row(card1, 0.0, "打开 Antigravity 控制台", "拉起编辑器主工作台");
-            let sw1 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 10.0, 48.0, 26.0]);
+            // Group 1: 核心控制项 (3 rows x 44.0 = 132.0)
+            add_section_header(tab4_doc, "核心控制项", 78.0);
+            let card1 = create_card(98.0, 132.0);
+            add_card_row_single_line(card1, 0.0, "打开 Antigravity 控制台");
+            let sw1 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 9.0, 48.0, 26.0]);
             msg_void_isize(sw1, sel(b"setState:\0"), if snap.temp_settings.menu_config.open_antigravity { 1 } else { 0 });
             msg_void_isize(sw1, sel(b"setTag:\0"), 501);
             msg_void_ptr(sw1, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw1, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card1, sel(b"addSubview:\0"), sw1);
-            add_divider(card1, 38.0);
+            add_divider(card1, 44.0);
 
-            add_card_row(card1, 38.0, "偏好设置...", "打开当前原生配置面板");
-            let sw2 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 46.0, 48.0, 26.0]);
+            add_card_row_single_line(card1, 44.0, "偏好设置...");
+            let sw2 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 53.0, 48.0, 26.0]);
             msg_void_isize(sw2, sel(b"setState:\0"), if snap.temp_settings.menu_config.settings { 1 } else { 0 });
             msg_void_isize(sw2, sel(b"setTag:\0"), 502);
             msg_void_ptr(sw2, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw2, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card1, sel(b"addSubview:\0"), sw2);
-            add_divider(card1, 76.0);
+            add_divider(card1, 88.0);
 
-            add_card_row(card1, 76.0, "切换额度卡片", "显示或关闭气泡用量窗口");
-            let sw3 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 84.0, 48.0, 26.0]);
+            add_card_row_single_line(card1, 88.0, "切换额度卡片");
+            let sw3 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 97.0, 48.0, 26.0]);
             msg_void_isize(sw3, sel(b"setState:\0"), if snap.temp_settings.menu_config.quota { 1 } else { 0 });
             msg_void_isize(sw3, sel(b"setTag:\0"), 505);
             msg_void_ptr(sw3, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw3, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card1, sel(b"addSubview:\0"), sw3);
-            msg_subview(tab4_view, sel(b"addSubview:\0"), card1);
+            msg_subview(tab4_doc, sel(b"addSubview:\0"), card1);
 
-            // Group 2: 交互与动作
-            add_section_header(tab4_view, "交互与动作", 221.0);
-            let card2 = create_card(239.0, 115.0);
-            add_card_row(card2, 0.0, "换一句台词", "随机刷新气泡文案");
-            let sw4 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 10.0, 48.0, 26.0]);
+            // Group 2: 交互与动作 (3 rows x 44.0 = 132.0)
+            add_section_header(tab4_doc, "交互与动作", 246.0);
+            let card2 = create_card(266.0, 132.0);
+            add_card_row_single_line(card2, 0.0, "换一句台词");
+            let sw4 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 9.0, 48.0, 26.0]);
             msg_void_isize(sw4, sel(b"setState:\0"), if snap.temp_settings.menu_config.random_dialogue { 1 } else { 0 });
             msg_void_isize(sw4, sel(b"setTag:\0"), 503);
             msg_void_ptr(sw4, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw4, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card2, sel(b"addSubview:\0"), sw4);
-            add_divider(card2, 38.0);
+            add_divider(card2, 44.0);
 
-            add_card_row(card2, 38.0, "互动抚摸 / 动作", "触发轻度抚摸回弹动作");
-            let sw5 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 46.0, 48.0, 26.0]);
+            add_card_row_single_line(card2, 44.0, "互动抚摸 / 动作");
+            let sw5 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 53.0, 48.0, 26.0]);
             msg_void_isize(sw5, sel(b"setState:\0"), if snap.temp_settings.menu_config.pet_action { 1 } else { 0 });
             msg_void_isize(sw5, sel(b"setTag:\0"), 504);
             msg_void_ptr(sw5, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw5, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card2, sel(b"addSubview:\0"), sw5);
-            add_divider(card2, 76.0);
+            add_divider(card2, 88.0);
 
-            add_card_row(card2, 76.0, "缩放大小 (滚轮微调)", "开启鼠标悬停滚轮平滑缩放");
-            let sw6 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 84.0, 48.0, 26.0]);
+            add_card_row_single_line(card2, 88.0, "缩放大小 (滚轮微调)");
+            let sw6 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 97.0, 48.0, 26.0]);
             msg_void_isize(sw6, sel(b"setState:\0"), if snap.temp_settings.menu_config.zoom { 1 } else { 0 });
             msg_void_isize(sw6, sel(b"setTag:\0"), 508);
             msg_void_ptr(sw6, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw6, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card2, sel(b"addSubview:\0"), sw6);
-            msg_subview(tab4_view, sel(b"addSubview:\0"), card2);
+            msg_subview(tab4_doc, sel(b"addSubview:\0"), card2);
 
-            // Group 3: 运行控制
-            add_section_header(tab4_view, "运行行为控制", 366.0);
-            let card3 = create_card(384.0, 115.0);
-            add_card_row(card3, 0.0, "免打扰鼠标穿透", "快速切换鼠标穿透状态");
-            let sw7 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 10.0, 48.0, 26.0]);
+            // Group 3: 运行控制 (3 rows x 44.0 = 132.0)
+            add_section_header(tab4_doc, "运行行为控制", 414.0);
+            let card3 = create_card(434.0, 132.0);
+            add_card_row_single_line(card3, 0.0, "免打扰鼠标穿透");
+            let sw7 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 9.0, 48.0, 26.0]);
             msg_void_isize(sw7, sel(b"setState:\0"), if snap.temp_settings.menu_config.dnd { 1 } else { 0 });
             msg_void_isize(sw7, sel(b"setTag:\0"), 506);
             msg_void_ptr(sw7, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw7, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card3, sel(b"addSubview:\0"), sw7);
-            add_divider(card3, 38.0);
+            add_divider(card3, 44.0);
 
-            add_card_row(card3, 38.0, "动作音效开关", "快速静音或启用伴侣音频");
-            let sw8 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 46.0, 48.0, 26.0]);
+            add_card_row_single_line(card3, 44.0, "动作音效开关");
+            let sw8 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 53.0, 48.0, 26.0]);
             msg_void_isize(sw8, sel(b"setState:\0"), if snap.temp_settings.menu_config.sound { 1 } else { 0 });
             msg_void_isize(sw8, sel(b"setTag:\0"), 507);
             msg_void_ptr(sw8, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw8, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card3, sel(b"addSubview:\0"), sw8);
-            add_divider(card3, 76.0);
+            add_divider(card3, 88.0);
 
-            add_card_row(card3, 76.0, "重力加速度下落", "开关下落与物理落底");
-            let sw9 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 84.0, 48.0, 26.0]);
+            add_card_row_single_line(card3, 88.0, "重力加速度下落");
+            let sw9 = msg_init_frame(msg_ptr(sw_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [content_w - 116.0, 97.0, 48.0, 26.0]);
             msg_void_isize(sw9, sel(b"setState:\0"), if snap.temp_settings.menu_config.gravity { 1 } else { 0 });
             msg_void_isize(sw9, sel(b"setTag:\0"), 509);
             msg_void_ptr(sw9, sel(b"setTarget:\0"), action_target);
             msg_void_ptr(sw9, sel(b"setAction:\0"), sel(b"onAction:\0"));
             msg_subview(card3, sel(b"addSubview:\0"), sw9);
-            msg_subview(tab4_view, sel(b"addSubview:\0"), card3);
+            msg_subview(tab4_doc, sel(b"addSubview:\0"), card3);
         }
-        msg_void_bool(tab4_view, sel(b"setHidden:\0"), 1);
-        tab_views.push(tab4_view);
-        msg_subview(content_container, sel(b"addSubview:\0"), tab4_view);
+        msg_void_bool(tab4_sv, sel(b"setHidden:\0"), 1);
+        tab_views.push(tab4_sv);
+        msg_subview(content_container, sel(b"addSubview:\0"), tab4_sv);
 
         msg_ptr(win, sel(b"center\0"));
 
@@ -911,6 +1014,11 @@ impl MacosSettingsApp {
                     self.store.lock().unwrap().dispatch(SettingsAction::ToggleSound);
                     self.store.lock().unwrap().commit_to_disk();
                     self.update_status("音效开关已保存");
+                }
+                209 => {
+                    self.store.lock().unwrap().dispatch(SettingsAction::ToggleIdeOnly);
+                    self.store.lock().unwrap().commit_to_disk();
+                    self.update_status("IDE 聚焦模式已保存");
                 }
                 // Tab 1 Actions
                 301 => {
@@ -1079,8 +1187,8 @@ impl MacosSettingsApp {
             let lines = store.active_dialogues().clone();
             drop(store);
 
-            let row_h = 36.0f64;
-            let total_h = (lines.len() as f64 * row_h).max(270.0);
+            let row_h = 38.0f64;
+            let total_h = (lines.len() as f64 * row_h).max(276.0);
             set_frame(self.dialogue_doc_view, sel(b"setFrame:\0"), [0.0, 0.0, 440.0, total_h]);
 
             let textfield_cls = objc_getClass(b"NSTextField\0".as_ptr());
@@ -1096,11 +1204,12 @@ impl MacosSettingsApp {
                 let display_text = format!("{}. {}", i + 1, line);
                 let lbl = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring(&display_text));
                 msg_void_ptr(lbl, sel(b"setFont:\0"), regular_font);
-                set_frame(lbl, sel(b"setFrame:\0"), [10.0, y + 8.0, 350.0, 18.0]);
+                // Optical vertical alignment: y + 10.0 centers text with button at y + 6.0
+                set_frame(lbl, sel(b"setFrame:\0"), [10.0, y + 10.0, 350.0, 18.0]);
                 msg_subview(self.dialogue_doc_view, sel(b"addSubview:\0"), lbl);
 
                 let del_btn = msg_btn(button_cls, sel(b"buttonWithTitle:target:action:\0"), nsstring("删除"), self.action_target, sel(b"onAction:\0"));
-                set_frame(del_btn, sel(b"setFrame:\0"), [370.0, y + 4.0, 58.0, 24.0]);
+                set_frame(del_btn, sel(b"setFrame:\0"), [370.0, y + 6.0, 58.0, 26.0]);
                 msg_void_isize(del_btn, sel(b"setTag:\0"), 2000 + i as isize);
                 msg_subview(self.dialogue_doc_view, sel(b"addSubview:\0"), del_btn);
             }
