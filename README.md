@@ -68,7 +68,24 @@
 
 ## 二、快速开始
 
-### 1. 桌面端启动 (macOS / Windows / Linux)
+### 1. 桌面端快速安装与启动
+
+#### 方式 A：macOS Homebrew Cask 一键安装 (推荐)
+
+```bash
+# 添加官方 Tap 并一键安装
+brew tap TianYaYou/tap
+brew install --cask anti-pet
+
+# 或者直接通过仓库 Cask 文件安装
+brew install --cask Casks/anti-pet.rb
+```
+
+#### 方式 B：macOS DMG 拖拽安装
+
+前往 [Releases 页面](https://github.com/TianYaYou/Anti-pet-indesktop/releases) 下载最新 `Anti-Pet-vX.Y.Z-macOS-arm64.dmg`，双击打开后将 `Anti-Pet.app` 拖入 `Applications` 文件夹即可完成安装。
+
+#### 方式 C：源码编译与一键脚本 (macOS / Windows / Linux)
 
 确保本机已安装 [Rust / Cargo](https://rustup.rs/)（如需 Web 预览或 Hook 辅助服务可同时安装 [Node.js](https://nodejs.org/) v18+）。
 
@@ -89,10 +106,13 @@ start.cmd
 cargo run --release --bin anti-pet-desktop --manifest-path desktop/Cargo.toml
 ```
 
-打包 macOS 原生独立应用包 (`dist/Anti-Pet.app`)：
+本地打包 macOS 原生应用包 (`.app`) 与安装镜像 (`.dmg`)：
 ```bash
+# 构建 dist/Anti-Pet.app
 ./scripts/build_macos_app.sh
-open dist/Anti-Pet.app
+
+# 构建标准拖拽安装镜像 dist/Anti-Pet-macOS.dmg
+./scripts/build_macos_dmg.sh
 ```
 
 ### 2. 偏好设置与调试启动模式

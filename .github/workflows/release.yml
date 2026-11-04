@@ -81,11 +81,12 @@ jobs:
           [ -f plugin.json ] && cp plugin.json "bundle/$PKG/" || true
           cp README.md LICENSE "bundle/$PKG/"
 
-          # Assemble native macOS Anti-Pet.app bundle
+          # Assemble native macOS Anti-Pet.app bundle and Drag-and-Drop DMG installer
           if [ "${{ matrix.os }}" = "macos-latest" ]; then
-            chmod +x scripts/build_macos_app.sh
-            ./scripts/build_macos_app.sh "desktop/target/${{ matrix.target }}/release/anti-pet-desktop"
+            chmod +x scripts/build_macos_app.sh scripts/build_macos_dmg.sh
+            ./scripts/build_macos_dmg.sh "desktop/target/${{ matrix.target }}/release/anti-pet-desktop" "$PKG.dmg"
             cp -r dist/Anti-Pet.app "bundle/$PKG/"
+            shasum -a 256 "$PKG.dmg" > "$PKG.dmg.sha256"
           fi
 
           tar -czf "$PKG.tar.gz" -C bundle "$PKG"
@@ -110,5 +111,7 @@ jobs:
         with:
           files: |
             Anti-Pet-${{ github.ref_name }}-${{ matrix.arch_name }}.${{ matrix.archive_type }}
+            *.dmg
+            *.dmg.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
