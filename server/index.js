@@ -116,7 +116,10 @@ function recordLocalLedger(evt) {
     fs.renameSync(tmpFile, LEDGER_FILE);
   } catch (e) {
     try {
-      if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
+      if (fs.existsSync(tmpFile)) {
+        try { fs.copyFileSync(tmpFile, LEDGER_FILE); } catch (_) {}
+        fs.unlinkSync(tmpFile);
+      }
     } catch (_) {}
   }
 }

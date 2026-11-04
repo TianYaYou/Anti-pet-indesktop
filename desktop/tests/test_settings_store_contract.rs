@@ -87,7 +87,10 @@ fn test_settings_store_parity_dialogue_crud_and_rollback() {
 
 #[test]
 fn test_settings_store_parity_save_commit() {
-    let mut store = SettingsStore::new(PathBuf::from("."), PetSettings::default());
+    let temp_dir = std::env::temp_dir().join(format!("pet_contract_test_{}", fastrand::u64(..)));
+    let _ = std::fs::create_dir_all(&temp_dir);
+
+    let mut store = SettingsStore::new(temp_dir.clone(), PetSettings::default());
 
     store.dispatch(SettingsAction::SetScale(1.5));
     store.dispatch(SettingsAction::ToggleSound);
@@ -102,4 +105,6 @@ fn test_settings_store_parity_save_commit() {
     } else {
         panic!("Expected StoreEvent::SettingsSaved");
     }
+
+    let _ = std::fs::remove_dir_all(&temp_dir);
 }

@@ -238,14 +238,20 @@ impl NativeStateWatcher {
         if let Ok(json_str) = serde_json::to_string_pretty(&val) {
             let tmp_path = format!("{}.tmp", self.settings_file.display());
             if std::fs::write(&tmp_path, &json_str).is_ok() {
-                let _ = std::fs::rename(&tmp_path, &self.settings_file);
+                if std::fs::rename(&tmp_path, &self.settings_file).is_err() {
+                    let _ = std::fs::copy(&tmp_path, &self.settings_file);
+                    let _ = std::fs::remove_file(&tmp_path);
+                }
             }
             if let Some(home) = dirs::home_dir() {
                 let home_settings = home.join(".antigravity-pet-settings.json");
                 if home_settings != self.settings_file {
                     let home_tmp = home.join(".antigravity-pet-settings.json.tmp");
                     if std::fs::write(&home_tmp, &json_str).is_ok() {
-                        let _ = std::fs::rename(&home_tmp, &home_settings);
+                        if std::fs::rename(&home_tmp, &home_settings).is_err() {
+                            let _ = std::fs::copy(&home_tmp, &home_settings);
+                            let _ = std::fs::remove_file(&home_tmp);
+                        }
                     }
                 }
             }

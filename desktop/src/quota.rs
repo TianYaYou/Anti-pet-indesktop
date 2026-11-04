@@ -744,12 +744,13 @@ pub fn parse_ledger_quota_json(content: &str, now_ms: u64) -> Option<QuotaSnapsh
     for item in entries {
         let ts = item
             .get("ts")
-            .and_then(|v| v.as_u64().or_else(|| v.as_i64().map(|i| i as u64)))
+            .and_then(|v| v.as_u64().or_else(|| v.as_i64().filter(|&i| i >= 0).map(|i| i as u64)))
             .unwrap_or(0);
         let weight = item
             .get("weight")
             .and_then(|v| v.as_f64().or_else(|| v.as_u64().map(|u| u as f64)))
             .unwrap_or(0.5);
+        let weight = if weight.is_finite() && weight >= 0.0 { weight } else { 0.5 };
         if now_ms >= ts && (now_ms - ts) < ONE_WEEK_MS {
             used_week += weight;
             if (now_ms - ts) <= FIVE_HOURS_MS {
@@ -901,5 +902,26 @@ mod tests {
         let snap = parse_ledger_quota_json("{}", 1_000_000_000_000).expect("empty json should produce 100%");
         assert_eq!(snap.five_hour, 100.0);
         assert_eq!(snap.weekly, 100.0);
+    }
+
+    #[test]
+    fn test_parse_ledger_quota_edge_cases() {
+        let now_ms = 1_000_000_000_000u64;
+        // Invalid JSON produces None
+        assert!(parse_ledger_quota_json("invalid json", now_ms).is_none());
+
+        // Array at root instead of object
+        let array_json = format!(r#"[{{"ts": {}, "weight": 1.0}}]"#, now_ms - 500);
+        let snap = parse_ledger_quota_json(&array_json, now_ms).expect("should support array at root");
+        assert!(snap.five_hour < 100.0);
+
+        // Negative ts and invalid weight
+        let bad_json = format!(
+            r#"{{"entries": [{{"ts": -50, "weight": "bad"}}, {{"ts": {}, "weight": -10.0}}]}}"#,
+            now_ms - 1000
+        );
+        let snap2 = parse_ledger_quota_json(&bad_json, now_ms).expect("should handle bad values gracefully");
+        assert!(snap2.five_hour <= 100.0);
+        assert!(snap2.five_hour >= 5.0);
     }
 }

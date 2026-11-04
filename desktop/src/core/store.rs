@@ -102,12 +102,27 @@ impl SettingsStore {
         let tmp_file = self.root_dir.join(".antigravity-pet-settings.json.tmp");
         if let Ok(json_str) = serde_json::to_string_pretty(&self.temp_settings.to_json_value()) {
             if std::fs::write(&tmp_file, &json_str).is_ok() {
-                let _ = std::fs::rename(&tmp_file, &settings_file);
+                if std::fs::rename(&tmp_file, &settings_file).is_err() {
+                    let _ = std::fs::copy(&tmp_file, &settings_file);
+                    let _ = std::fs::remove_file(&tmp_file);
+                }
+            }
+            if self.root_dir.join("skins").exists() {
+                if let Some(home) = dirs::home_dir() {
+                    let home_settings = home.join(".antigravity-pet-settings.json");
+                    if home_settings != settings_file {
+                        let home_tmp = home.join(".antigravity-pet-settings.json.tmp");
+                        if std::fs::write(&home_tmp, &json_str).is_ok() {
+                            if std::fs::rename(&home_tmp, &home_settings).is_err() {
+                                let _ = std::fs::copy(&home_tmp, &home_settings);
+                                let _ = std::fs::remove_file(&home_tmp);
+                            }
+                        }
+                    }
+                }
             }
         }
 
-        let watcher = crate::state_watcher::NativeStateWatcher::new();
-        watcher.save_settings(&self.temp_settings);
         let _ = self.dialogue_bank.save_to_root(&self.root_dir, "fat-cat");
         self.original_settings = self.temp_settings.clone();
         self.original_dialogue_bank = self.dialogue_bank.clone();
