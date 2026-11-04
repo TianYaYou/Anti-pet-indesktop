@@ -1,16 +1,16 @@
-# Anti-Pet In Desktop (v0.5.0) 架构设计与开发者指南
+# Anti-Pet In Desktop (v0.5.1) 架构设计与开发者指南
 
-本文档面向参与 `Anti-pet-indesktop` 研发与维护的工程师，详细阐述 `v0.5.0 (Pure CPU 2D + NextGen Dual-Native UI)` 的系统架构、核心模块职责、跨平台一致性契约、数据持久化规范以及 CI/CD 质量门禁。
+本文档面向参与 `Anti-pet-indesktop` 研发与维护的工程师，详细阐述 `v0.5.1 (Pure CPU 2D + NextGen Dual-Native UI)` 的系统架构、核心模块职责、跨平台一致性契约、数据持久化规范以及 CI/CD 质量门禁。
 
 ---
 
 ## 一、系统总体架构
 
-自 `v0.3.0` ~ `v0.5.0` 重构以来，项目从早期的 `WebKit (wry) + Node.js` 双进程重型架构全面演进为 **纯 CPU 2D 软光栅主引擎 + 无头领域状态机 (`SettingsStore`) + 平台原生双前端设置中心** 的极简架构：
+自 `v0.3.0` ~ `v0.5.1` 重构以来，项目从早期的 `WebKit (wry) + Node.js` 双进程重型架构全面演进为 **纯 CPU 2D 软光栅主引擎 + 无头领域状态机 (`SettingsStore`) + 平台原生双前端设置中心** 的极简架构：
 
 ```text
 Anti-pet-indesktop/
-├── desktop/                          # Rust 原生桌面客户端主工程 (Crate: anti-pet-desktop v0.5.0)
+├── desktop/                          # Rust 原生桌面客户端主工程 (Crate: anti-pet-desktop v0.5.1)
 │   ├── Cargo.toml                    # 编译特性 (default = ["cpu-2d"], 可选 "legacy-webkit")
 │   ├── build.rs                      # Slint 编译脚本与 Windows 资源图标嵌入
 │   ├── src/
@@ -47,7 +47,7 @@ Anti-pet-indesktop/
 └── scripts/                          # 自动化质量门禁与打包脚本
     ├── audit_memory_leak.js          # 500 轮连续软光栅内存占用与零泄漏 CI 审计脚本
     ├── audit_zero_emojis.js          # 源码零 Emoji 规范静态扫描脚本
-    ├── build_macos_app.sh            # macOS 原生 Anti-Pet.app (v0.5.0) 独立应用包构建脚本
+    ├── build_macos_app.sh            # macOS 原生 Anti-Pet.app (v0.5.1) 独立应用包构建脚本
     ├── start.sh                      # 转发至根目录 ./start.sh
     └── start.bat                     # 转发至根目录 .\start.cmd
 ```
@@ -72,7 +72,7 @@ Anti-pet-indesktop/
 
 ### 2. 无头状态机与双原生设置前端 (`core/store.rs` & `ui/`)
 
-在 `v0.5.0` 中，设置窗口被解耦为**一套核心领域状态机 + 两套平台原生视图层**：
+在 `v0.5.1` 中，设置窗口被解耦为**一套核心领域状态机 + 两套平台原生视图层**：
 
 - **领域状态机 (`SettingsStore`)**：
   - 统一管理 `temp_settings`、`original_settings`、`dialogue_bank` 与选中标签页 `active_tab`。
@@ -86,7 +86,7 @@ Anti-pet-indesktop/
 
 ### 3. 原子文件持久化与有界账本机制
 
-为解决多进程（主程序、独立设置子进程、Node Hook 进程）并发读写配置文件与账本膨胀问题，`v0.5.0` 实施了三项存储加固：
+为解决多进程（主程序、独立设置子进程、Node Hook 进程）并发读写配置文件与账本膨胀问题，`v0.5.1` 实施了三项存储加固：
 
 1. **设置文件原子写入 (`Write-to-Temp & Atomic Rename`)**：
    - `SettingsStore::commit_to_disk`、`NativeStateWatcher::save_settings` 与 `server/index.js` 的 `saveSettings` 均先将完整 JSON 写入临时文件 (`.antigravity-pet-settings.json.tmp`)，随后调用 `fs::rename` 原子替换目标文件。

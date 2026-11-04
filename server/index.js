@@ -322,7 +322,7 @@ function setAutostartStatus(enable) {
 
 function checkGitHubUpdates() {
   return new Promise((resolve) => {
-    let currentVersion = 'v0.5.0';
+    let currentVersion = 'v0.5.1';
     try {
       const pkg = JSON.parse(fs.readFileSync(path.join(ROOT_DIR, 'package.json'), 'utf-8'));
       if (pkg.version) currentVersion = 'v' + pkg.version.replace(/^v/, '');

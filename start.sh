@@ -36,7 +36,7 @@ else
   SERVER_PID=$!
   trap 'echo ""; echo "正在关闭 Anti-Pet 服务..."; kill $SERVER_PID 2>/dev/null; exit 0' INT TERM
   sleep 1
-  echo "正在启动大肥猫桌宠 v0.5.0 (Pure CPU 2D + NextGen UI)..."
+  echo "正在启动大肥猫桌宠 v0.5.1 (Pure CPU 2D + NextGen UI)..."
   cargo run --release --bin anti-pet-desktop --manifest-path desktop/Cargo.toml
   kill $SERVER_PID 2>/dev/null
 fi

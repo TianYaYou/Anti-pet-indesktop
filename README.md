@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/TianYaYou/Anti-pet-indesktop/releases"><img alt="版本" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v0.5.0-blue?style=flat-square"></a>
+  <a href="https://github.com/TianYaYou/Anti-pet-indesktop/releases"><img alt="版本" src="https://img.shields.io/badge/%E7%89%88%E6%9C%AC-v0.5.1-blue?style=flat-square"></a>
   <a href="https://github.com/TianYaYou/Anti-pet-indesktop/blob/main/LICENSE"><img alt="开源许可证" src="https://img.shields.io/badge/License-MIT-orange?style=flat-square"></a>
   <img alt="平台支持" src="https://img.shields.io/badge/%E5%B9%B3%E5%8F%B0-macOS%20%7C%20Windows%20%7C%20Linux-8A2BE2?style=flat-square">
   <img alt="内存占用" src="https://img.shields.io/badge/%E5%86%85%E5%AD%98%E5%8D%A0%E7%94%A8-~12MB%20RSS-brightgreen?style=flat-square">
@@ -20,7 +20,7 @@
 
 ---
 
-> ### v0.5.0 (NextGen UI & Pure CPU 2D Core) 里程碑升级说明
+> ### v0.5.1 (NextGen UI & Pure CPU 2D Core) 里程碑升级说明
 >
 > - **纯 CPU 2D 软光栅渲染引擎 (Zero WebKit / 0% GPU)**：彻底摆脱重型 WebView 运行时，基于预乘 RGBA8888 帧缓冲 (`Pixmap`)、Box-Filtered Mipmap 双线性插值与 SDF 抗锯齿矢量卡片绘制，运行态常驻内存仅 **~12 MB RSS**；
 > - **下一代双原生偏好设置架构 (NextGen Dual-Native UI)**：
@@ -161,7 +161,7 @@ npm start
 - `猫咪体型缩放` (`80%` / `100%` / `125%` / `150%`)
 - `启用 Q 弹互动音效`
 - `显示 / 隐藏 大肥猫` / `唤起 Antigravity IDE`（当检测到 Antigravity 已在运行时自动隐藏重复唤起项）
-- `大肥猫桌宠 v0.5.0 (Pure CPU 2D)` / `退出`
+- `大肥猫桌宠 v0.5.1 (Pure CPU 2D)` / `退出`
 
 ---
 
@@ -185,7 +185,7 @@ skins/fat-cat/
 
 ## 六、架构设计与开发文档
 
-关于 `v0.5.0` 的模块分层、无头 `SettingsStore` 状态机契约、双原生 UI 桥接机制、跨平台编译构建与自动化测试规范，请查阅项目内置的开发者文档：
+关于 `v0.5.1` 的模块分层、无头 `SettingsStore` 状态机契约、双原生 UI 桥接机制、跨平台编译构建与自动化测试规范，请查阅项目内置的开发者文档：
 
 - **[DEVELOPMENT.md — 架构设计与开发指南](DEVELOPMENT.md)**
 

@@ -236,7 +236,7 @@ impl MacosSettingsApp {
         set_frame(title_lbl, sel(b"setFrame:\0"), [18.0, 42.0, 160.0, 22.0]);
         msg_subview(sidebar_view, sel(b"addSubview:\0"), title_lbl);
 
-        let ver_lbl = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("Anti-Pet v0.5.0"));
+        let ver_lbl = msg_label(textfield_cls, sel(b"labelWithString:\0"), nsstring("Anti-Pet v0.5.1"));
         let sec_color = msg_ptr(color_cls, sel(b"secondaryLabelColor\0"));
         msg_void_ptr(ver_lbl, sel(b"setTextColor:\0"), sec_color);
         let msg_font: unsafe extern "C" fn(*mut c_void, *mut c_void, f64) -> *mut c_void =
@@ -576,7 +576,7 @@ impl MacosSettingsApp {
             // Card 2: 核心规范与架构
             add_section_header(tab1_doc, "核心规范与架构", 162.0);
             let card2 = create_card(182.0, 144.0);
-            add_card_row_two_lines(card2, 0.0, "核心引擎版本", "v0.5.0 (Pure CPU 2D NextGen Core)");
+            add_card_row_two_lines(card2, 0.0, "核心引擎版本", "v0.5.1 (Pure CPU 2D NextGen Core)");
             add_divider(card2, 48.0);
             add_card_row_two_lines(card2, 48.0, "UI 渲染前端", "macOS Native Cocoa AppKit (0 KB 额外依赖)");
             add_divider(card2, 96.0);
@@ -586,7 +586,7 @@ impl MacosSettingsApp {
             // Card 3: 版本更新
             add_section_header(tab1_doc, "版本检测", 342.0);
             let card3 = create_card(362.0, 48.0);
-            add_card_row_two_lines(card3, 0.0, "检查更新通道", "当前已是最新稳定版本 (v0.5.0)");
+            add_card_row_two_lines(card3, 0.0, "检查更新通道", "当前已是最新稳定版本 (v0.5.1)");
             let btn_update = msg_btn(button_cls, sel(b"buttonWithTitle:target:action:\0"), nsstring("检查更新"), action_target, sel(b"onAction:\0"));
             set_frame(btn_update, sel(b"setFrame:\0"), [content_w - 156.0, 10.0, 88.0, 28.0]);
             msg_void_isize(btn_update, sel(b"setTag:\0"), 302);
@@ -1027,7 +1027,7 @@ impl MacosSettingsApp {
                     self.update_status("自启动状态已保存");
                 }
                 302 => {
-                    self.update_status("已是最新稳定版本 (v0.5.0)");
+                    self.update_status("已是最新稳定版本 (v0.5.1)");
                 }
                 // Tab 2 Action: Open in Finder
                 230 => {

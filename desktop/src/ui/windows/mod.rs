@@ -266,7 +266,7 @@ impl SlintSettingsApp {
             let win = win.clone();
             self.window.on_check_update(move || {
                 if let Some(w) = win.upgrade() {
-                    w.set_toast_message(SharedString::from("当前已是最新稳定版本 (v0.5.0)"));
+                    w.set_toast_message(SharedString::from("当前已是最新稳定版本 (v0.5.1)"));
                 }
             });
         }

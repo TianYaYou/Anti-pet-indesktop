@@ -867,7 +867,7 @@ impl SettingsUi {
 
         // Version badge at the bottom of the sidebar
         let version_y = (SETTINGS_WIN_H as f32 - 68.0) * s;
-        draw_text_into_pixmap(pixmap, "Anti-Pet v0.5.0", 22.0 * s, version_y, (SIDEBAR_W - 44.0) * s, 16.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "Anti-Pet v0.5.1", 22.0 * s, version_y, (SIDEBAR_W - 44.0) * s, 16.0 * s, 10.5 * s, 0.0, text_sec, 0.85, TextAlignment::Left, VerticalAlignment::Middle);
 
         // 5. Render Right Content Area
         let cx = (SIDEBAR_W + 28.0) * s;
@@ -1102,7 +1102,7 @@ impl SettingsUi {
         // Row 2: 检查更新
         let r2_y = r1_y + 44.0 * s;
         draw_text_into_pixmap(pixmap, "软件版本检查", cx + 14.0 * s, r2_y + 4.0 * s, 200.0 * s, 18.0 * s, 13.0 * s, 0.0, text_pri, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
-        draw_text_into_pixmap(pixmap, "当前版本：v0.5.0", cx + 14.0 * s, r2_y + 22.0 * s, 260.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
+        draw_text_into_pixmap(pixmap, "当前版本：v0.5.1", cx + 14.0 * s, r2_y + 22.0 * s, 260.0 * s, 16.0 * s, 11.0 * s, 0.0, text_sec, 1.0, TextAlignment::Left, VerticalAlignment::Middle);
         let btn_x = cx + cw - 88.0 * s;
         self.render_button(pixmap, btn_x, r2_y + 10.0 * s, 76.0 * s, 24.0 * s, "检查更新", s, is_win, is_dark, border_card, text_pri, "check_update");
     }
