@@ -207,6 +207,7 @@ impl MacosSettingsApp {
         }
 
         let content_view = msg_ptr(win, sel(b"contentView\0"));
+        msg_void_bool(content_view, sel(b"setWantsLayer:\0"), 1);
 
         // 2. Full-Window NSVisualEffectView (Genuine Apple frosted glass blur)
         let effect_alloc = msg_ptr(effect_cls, sel(b"alloc\0"));
@@ -221,6 +222,7 @@ impl MacosSettingsApp {
 
         // 3. Flipped Main Host
         let main_host = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, win_w, win_h]);
+        msg_void_bool(main_host, sel(b"setWantsLayer:\0"), 1);
         msg_subview(content_view, sel(b"addSubview:\0"), main_host);
 
         // 4. Left Sidebar (w = 200, h = 520)
@@ -332,6 +334,7 @@ impl MacosSettingsApp {
 
         // 5. Right Content Area (x = 200, w = 520, h = 520)
         let content_container = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [sidebar_w, 0.0, content_w, win_h]);
+        msg_void_bool(content_container, sel(b"setWantsLayer:\0"), 1);
         msg_subview(main_host, sel(b"addSubview:\0"), content_container);
 
         let snap = store.lock().unwrap().snapshot();
@@ -340,12 +343,14 @@ impl MacosSettingsApp {
         // Helper: creates a scrollable tab host for smooth trackpad scrolling
         let make_scrollable_tab = |content_h: f64| -> (*mut c_void, *mut c_void) {
             let sv = msg_init_frame(msg_ptr(scroll_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w, win_h]);
+            msg_void_bool(sv, sel(b"setWantsLayer:\0"), 1);
             msg_void_bool(sv, sel(b"setHasVerticalScroller:\0"), 1);
             msg_void_bool(sv, sel(b"setHasHorizontalScroller:\0"), 0);
             msg_void_bool(sv, sel(b"setAutohidesScrollers:\0"), 1);
             msg_void_bool(sv, sel(b"setDrawsBackground:\0"), 0);
 
             let doc = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w, content_h.max(win_h)]);
+            msg_void_bool(doc, sel(b"setWantsLayer:\0"), 1);
             msg_void_ptr(sv, sel(b"setDocumentView:\0"), doc);
             (sv, doc)
         };
@@ -544,6 +549,7 @@ impl MacosSettingsApp {
             msg_subview(card3, sel(b"addSubview:\0"), sw_snd);
             msg_subview(tab0_doc, sel(b"addSubview:\0"), card3);
         }
+        msg_ptr(tab0_sv, sel(b"retain\0"));
         tab_views.push(tab0_sv);
         msg_subview(content_container, sel(b"addSubview:\0"), tab0_sv);
 
@@ -593,9 +599,9 @@ impl MacosSettingsApp {
             msg_subview(card3, sel(b"addSubview:\0"), btn_update);
             msg_subview(tab1_doc, sel(b"addSubview:\0"), card3);
         }
+        msg_ptr(tab1_sv, sel(b"retain\0"));
         msg_void_bool(tab1_sv, sel(b"setHidden:\0"), 1);
         tab_views.push(tab1_sv);
-        msg_subview(content_container, sel(b"addSubview:\0"), tab1_sv);
 
         // ================= TAB 2: 皮肤管理 (Scrollable with Preview) =================
         let (tab2_sv, tab2_doc) = make_scrollable_tab(580.0);
@@ -706,12 +712,13 @@ impl MacosSettingsApp {
             msg_subview(card3, sel(b"addSubview:\0"), btn_finder);
             msg_subview(tab2_doc, sel(b"addSubview:\0"), card3);
         }
+        msg_ptr(tab2_sv, sel(b"retain\0"));
         msg_void_bool(tab2_sv, sel(b"setHidden:\0"), 1);
         tab_views.push(tab2_sv);
-        msg_subview(content_container, sel(b"addSubview:\0"), tab2_sv);
 
         // ================= TAB 3: 台词与问候 =================
         let tab3_view = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w, win_h]);
+        msg_void_bool(tab3_view, sel(b"setWantsLayer:\0"), 1);
         let mut dialogue_pills = Vec::new();
         let mut dialogue_pill_labels = Vec::new();
         let dialogue_input;
@@ -788,20 +795,22 @@ impl MacosSettingsApp {
             let card_list = create_card(210.0, 292.0);
 
             let sv = msg_init_frame(msg_ptr(scroll_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [8.0, 8.0, content_w - 64.0, 276.0]);
+            msg_void_bool(sv, sel(b"setWantsLayer:\0"), 1);
             msg_void_bool(sv, sel(b"setHasVerticalScroller:\0"), 1);
             msg_void_bool(sv, sel(b"setAutohidesScrollers:\0"), 1);
             msg_void_bool(sv, sel(b"setDrawsBackground:\0"), 0);
 
             let doc_view = msg_init_frame(msg_ptr(flipped_cls, sel(b"alloc\0")), sel(b"initWithFrame:\0"), [0.0, 0.0, content_w - 64.0, 276.0]);
+            msg_void_bool(doc_view, sel(b"setWantsLayer:\0"), 1);
             msg_void_ptr(sv, sel(b"setDocumentView:\0"), doc_view);
             dialogue_doc_view = doc_view;
 
             msg_subview(card_list, sel(b"addSubview:\0"), sv);
             msg_subview(tab3_view, sel(b"addSubview:\0"), card_list);
         }
+        msg_ptr(tab3_view, sel(b"retain\0"));
         msg_void_bool(tab3_view, sel(b"setHidden:\0"), 1);
         tab_views.push(tab3_view);
-        msg_subview(content_container, sel(b"addSubview:\0"), tab3_view);
 
         // ================= TAB 4: 右键菜单配置 (Scrollable) =================
         let (tab4_sv, tab4_doc) = make_scrollable_tab(610.0);
@@ -907,9 +916,9 @@ impl MacosSettingsApp {
             msg_subview(card3, sel(b"addSubview:\0"), sw9);
             msg_subview(tab4_doc, sel(b"addSubview:\0"), card3);
         }
+        msg_ptr(tab4_sv, sel(b"retain\0"));
         msg_void_bool(tab4_sv, sel(b"setHidden:\0"), 1);
         tab_views.push(tab4_sv);
-        msg_subview(content_container, sel(b"addSubview:\0"), tab4_sv);
 
         msg_ptr(win, sel(b"center\0"));
 
@@ -1082,11 +1091,17 @@ impl MacosSettingsApp {
         }
         self.current_tab = new_tab;
         unsafe {
+            let msg_void: unsafe extern "C" fn(*mut c_void, *mut c_void) =
+                std::mem::transmute(objc_msgSend as *const ());
             let msg_void_bool: unsafe extern "C" fn(*mut c_void, *mut c_void, i8) =
                 std::mem::transmute(objc_msgSend as *const ());
             let msg_void_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) =
                 std::mem::transmute(objc_msgSend as *const ());
             let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
+                std::mem::transmute(objc_msgSend as *const ());
+            let msg_subview: unsafe extern "C" fn(*mut c_void, *mut c_void, *mut c_void) =
+                std::mem::transmute(objc_msgSend as *const ());
+            let set_frame: unsafe extern "C" fn(*mut c_void, *mut c_void, [f64; 4]) =
                 std::mem::transmute(objc_msgSend as *const ());
             let msg_color_rgba: unsafe extern "C" fn(*mut c_void, *mut c_void, f64, f64, f64, f64) -> *mut c_void =
                 std::mem::transmute(objc_msgSend as *const ());
@@ -1100,10 +1115,26 @@ impl MacosSettingsApp {
             let white_color = msg_ptr(color_cls, sel(b"whiteColor\0"));
             let label_color = msg_ptr(color_cls, sel(b"labelColor\0"));
 
-            // Update views visibility
+            // Switch views: unmount inactive tabs and mount ONLY the active tab
             for (i, view) in self.tab_views.iter().enumerate() {
-                msg_void_bool(*view, sel(b"setHidden:\0"), if i == new_tab { 0 } else { 1 });
+                if i == new_tab {
+                    let superview = msg_ptr(*view, sel(b"superview\0"));
+                    if superview.is_null() {
+                        msg_subview(self.content_container, sel(b"addSubview:\0"), *view);
+                    }
+                    set_frame(*view, sel(b"setFrame:\0"), [0.0, 0.0, 520.0, 520.0]);
+                    msg_void_bool(*view, sel(b"setHidden:\0"), 0);
+                    msg_void_bool(*view, sel(b"setNeedsDisplay:\0"), 1);
+                } else {
+                    msg_void_bool(*view, sel(b"setHidden:\0"), 1);
+                    let superview = msg_ptr(*view, sel(b"superview\0"));
+                    if !superview.is_null() {
+                        msg_void(*view, sel(b"removeFromSuperview\0"));
+                    }
+                }
             }
+
+            msg_void_bool(self.content_container, sel(b"setNeedsDisplay:\0"), 1);
 
             // Update sidebar capsules and labels
             for (i, capsule) in self.sidebar_capsules.iter().enumerate() {
@@ -1247,6 +1278,20 @@ impl MacosSettingsApp {
             let msg_ptr: unsafe extern "C" fn(*mut c_void, *mut c_void) -> *mut c_void =
                 std::mem::transmute(objc_msgSend as *const ());
             msg_ptr(self.ns_window, sel(b"orderOut:\0"));
+        }
+    }
+}
+
+impl Drop for MacosSettingsApp {
+    fn drop(&mut self) {
+        unsafe {
+            let msg_void: unsafe extern "C" fn(*mut c_void, *mut c_void) =
+                std::mem::transmute(objc_msgSend as *const ());
+            for view in &self.tab_views {
+                if !view.is_null() {
+                    msg_void(*view, sel(b"release\0"));
+                }
+            }
         }
     }
 }
