@@ -40,6 +40,12 @@ impl SlintSettingsApp {
         self.window.set_sound_enabled(snap.temp_settings.sound_enabled);
         self.window.set_autostart_enabled(snap.autostart_enabled);
 
+        // Load skin preview from skins/fat-cat/frames/idle.png
+        let idle_png = store.root_dir.join("skins").join("fat-cat").join("frames").join("idle.png");
+        if let Ok(img) = slint::Image::load_from_path(&idle_png) {
+            self.window.set_skin_preview(img);
+        }
+
         // Menu items
         self.window.set_menu_open_antigravity(snap.temp_settings.menu_config.open_antigravity);
         self.window.set_menu_settings(snap.temp_settings.menu_config.settings);
@@ -89,54 +95,69 @@ impl SlintSettingsApp {
             });
         }
 
-        // 2. Cycle Theme
+        // 2. Cycle Theme (Auto-save)
         {
             let store = store.clone();
             let win = win.clone();
             self.window.on_cycle_theme(move || {
-                store.lock().unwrap().dispatch(SettingsAction::CycleTheme);
-                let theme = store.lock().unwrap().temp_settings.theme.clone();
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::CycleTheme);
+                st.commit_to_disk();
+                let theme = st.temp_settings.theme.clone();
+                drop(st);
                 if let Some(w) = win.upgrade() {
                     w.set_theme_mode(SharedString::from(theme));
+                    w.set_toast_message(SharedString::from("外观主题已保存"));
                 }
             });
         }
 
-        // 3. Scale Changed
+        // 3. Scale Changed (Auto-save)
         {
             let store = store.clone();
             let win = win.clone();
             self.window.on_scale_changed(move |scale| {
-                store.lock().unwrap().dispatch(SettingsAction::SetScale(scale));
-                let cur = store.lock().unwrap().temp_settings.scale;
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::SetScale(scale));
+                st.commit_to_disk();
+                let cur = st.temp_settings.scale;
+                drop(st);
                 if let Some(w) = win.upgrade() {
                     w.set_pet_scale(cur);
                 }
             });
         }
 
-        // 4. Cycle Floor Mode
+        // 4. Cycle Floor Mode (Auto-save)
         {
             let store = store.clone();
             let win = win.clone();
             self.window.on_cycle_floor_mode(move || {
-                store.lock().unwrap().dispatch(SettingsAction::CycleFloorMode);
-                let mode = store.lock().unwrap().temp_settings.floor_mode.clone();
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::CycleFloorMode);
+                st.commit_to_disk();
+                let mode = st.temp_settings.floor_mode.clone();
+                drop(st);
                 if let Some(w) = win.upgrade() {
                     w.set_floor_mode(SharedString::from(mode));
+                    w.set_toast_message(SharedString::from("吸附基线已保存"));
                 }
             });
         }
 
-        // 5. Toggle Gravity
+        // 5. Toggle Gravity (Auto-save)
         {
             let store = store.clone();
             let win = win.clone();
             self.window.on_toggle_gravity(move || {
-                store.lock().unwrap().dispatch(SettingsAction::ToggleGravity);
-                let val = store.lock().unwrap().temp_settings.gravity_enabled;
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::ToggleGravity);
+                st.commit_to_disk();
+                let val = st.temp_settings.gravity_enabled;
+                drop(st);
                 if let Some(w) = win.upgrade() {
                     w.set_gravity_enabled(val);
+                    w.set_toast_message(SharedString::from("重力模拟已更新"));
                 }
             });
         }
@@ -153,65 +174,84 @@ impl SlintSettingsApp {
             });
         }
 
-        // 7. Toggle Quota
+        // 7. Toggle Quota (Auto-save)
         {
             let store = store.clone();
             let win = win.clone();
             self.window.on_toggle_quota(move || {
-                store.lock().unwrap().dispatch(SettingsAction::ToggleShowQuota);
-                let val = store.lock().unwrap().temp_settings.show_quota;
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::ToggleShowQuota);
+                st.commit_to_disk();
+                let val = st.temp_settings.show_quota;
+                drop(st);
                 if let Some(w) = win.upgrade() {
                     w.set_show_quota(val);
+                    w.set_toast_message(SharedString::from("额度卡片配置已保存"));
                 }
             });
         }
 
-        // 8. Toggle IDE Only
+        // 8. Toggle IDE Only (Auto-save)
         {
             let store = store.clone();
             let win = win.clone();
             self.window.on_toggle_ide_only(move || {
-                store.lock().unwrap().dispatch(SettingsAction::ToggleIdeOnly);
-                let val = store.lock().unwrap().temp_settings.menu_config.ide_only;
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::ToggleIdeOnly);
+                st.commit_to_disk();
+                let val = st.temp_settings.menu_config.ide_only;
+                drop(st);
                 if let Some(w) = win.upgrade() {
                     w.set_ide_only(val);
+                    w.set_toast_message(SharedString::from("IDE 聚焦模式已保存"));
                 }
             });
         }
 
-        // 9. Toggle DND
+        // 9. Toggle DND (Auto-save)
         {
             let store = store.clone();
             let win = win.clone();
             self.window.on_toggle_dnd(move || {
-                store.lock().unwrap().dispatch(SettingsAction::ToggleDndPassthrough);
-                let val = store.lock().unwrap().temp_settings.dnd_passthrough;
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::ToggleDndPassthrough);
+                st.commit_to_disk();
+                let val = st.temp_settings.dnd_passthrough;
+                drop(st);
                 if let Some(w) = win.upgrade() {
                     w.set_dnd_mode(val);
+                    w.set_toast_message(SharedString::from("免打扰状态已保存"));
                 }
             });
         }
 
-        // 10. Toggle Sound
+        // 10. Toggle Sound (Auto-save)
         {
             let store = store.clone();
             let win = win.clone();
             self.window.on_toggle_sound(move || {
-                store.lock().unwrap().dispatch(SettingsAction::ToggleSound);
-                let val = store.lock().unwrap().temp_settings.sound_enabled;
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::ToggleSound);
+                st.commit_to_disk();
+                let val = st.temp_settings.sound_enabled;
+                drop(st);
                 if let Some(w) = win.upgrade() {
                     w.set_sound_enabled(val);
+                    w.set_toast_message(SharedString::from("动作音效已保存"));
                 }
             });
         }
 
-        // 11. Toggle Autostart
+        // 11. Toggle Autostart (Auto-save)
         {
             let store = store.clone();
             let win = win.clone();
             self.window.on_toggle_autostart(move || {
-                let ev = store.lock().unwrap().dispatch(SettingsAction::ToggleAutostart);
-                let enabled = store.lock().unwrap().autostart_enabled;
+                let mut st = store.lock().unwrap();
+                let ev = st.dispatch(SettingsAction::ToggleAutostart);
+                st.commit_to_disk();
+                let enabled = st.autostart_enabled;
+                drop(st);
                 if let Some(w) = win.upgrade() {
                     w.set_autostart_enabled(enabled);
                     if let StoreEvent::Toast(msg) = ev {
@@ -226,20 +266,46 @@ impl SlintSettingsApp {
             let win = win.clone();
             self.window.on_check_update(move || {
                 if let Some(w) = win.upgrade() {
-                    w.set_toast_message(SharedString::from("当前已是最新版本 (v0.5.0)"));
+                    w.set_toast_message(SharedString::from("当前已是最新稳定版本 (v0.5.0)"));
                 }
             });
         }
 
-        // 13. Menu Options
+        // 13. Open Skins Directory
         {
             let store = store.clone();
-            self.window.on_toggle_menu_option(move |idx| {
-                store.lock().unwrap().dispatch(SettingsAction::ToggleMenuOption(idx as usize));
+            let win = win.clone();
+            self.window.on_open_skins_dir(move || {
+                let root_dir = store.lock().unwrap().root_dir.clone();
+                let skins_path = root_dir.join("skins").join("fat-cat");
+                #[cfg(target_os = "macos")]
+                let _ = std::process::Command::new("open").arg(&skins_path).spawn();
+                #[cfg(target_os = "windows")]
+                let _ = std::process::Command::new("explorer").arg(&skins_path).spawn();
+                #[cfg(target_os = "linux")]
+                let _ = std::process::Command::new("xdg-open").arg(&skins_path).spawn();
+                if let Some(w) = win.upgrade() {
+                    w.set_toast_message(SharedString::from("已打开本地 skins 目录"));
+                }
             });
         }
 
-        // 14. Dialogue Category
+        // 14. Menu Options (Auto-save)
+        {
+            let store = store.clone();
+            let win = win.clone();
+            self.window.on_toggle_menu_option(move |idx| {
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::ToggleMenuOption(idx as usize));
+                st.commit_to_disk();
+                drop(st);
+                if let Some(w) = win.upgrade() {
+                    w.set_toast_message(SharedString::from("右键菜单项配置已更新"));
+                }
+            });
+        }
+
+        // 15. Dialogue Category
         {
             let store = store.clone();
             let win = win.clone();
@@ -262,15 +328,17 @@ impl SlintSettingsApp {
             });
         }
 
-        // 15. Add Dialogue
+        // 16. Add Dialogue (Auto-save)
         {
             let store = store.clone();
             let win = win.clone();
             self.window.on_add_dialogue(move |text| {
-                store.lock().unwrap().dispatch(SettingsAction::AddDialogue(text.to_string()));
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::AddDialogue(text.to_string()));
+                st.commit_to_disk();
+                let lines = st.active_dialogues().clone();
+                drop(st);
                 if let Some(w) = win.upgrade() {
-                    let st = store.lock().unwrap();
-                    let lines = st.active_dialogues();
                     let items: Vec<DialogueItem> = lines
                         .iter()
                         .enumerate()
@@ -280,20 +348,22 @@ impl SlintSettingsApp {
                         })
                         .collect();
                     w.set_dialogue_list(ModelRc::from(Rc::new(VecModel::from(items))));
-                    w.set_toast_message(SharedString::from("已添加新台词"));
+                    w.set_toast_message(SharedString::from("已添加新台词并保存"));
                 }
             });
         }
 
-        // 16. Delete Dialogue
+        // 17. Delete Dialogue (Auto-save)
         {
             let store = store.clone();
             let win = win.clone();
             self.window.on_delete_dialogue(move |id| {
-                store.lock().unwrap().dispatch(SettingsAction::DeleteDialogue(id as usize));
+                let mut st = store.lock().unwrap();
+                st.dispatch(SettingsAction::DeleteDialogue(id as usize));
+                st.commit_to_disk();
+                let lines = st.active_dialogues().clone();
+                drop(st);
                 if let Some(w) = win.upgrade() {
-                    let st = store.lock().unwrap();
-                    let lines = st.active_dialogues();
                     let items: Vec<DialogueItem> = lines
                         .iter()
                         .enumerate()
@@ -303,32 +373,7 @@ impl SlintSettingsApp {
                         })
                         .collect();
                     w.set_dialogue_list(ModelRc::from(Rc::new(VecModel::from(items))));
-                    w.set_toast_message(SharedString::from("已删除台词"));
-                }
-            });
-        }
-
-        // 17. Save Settings
-        {
-            let store = store.clone();
-            let win = win.clone();
-            self.window.on_save_settings(move || {
-                store.lock().unwrap().dispatch(SettingsAction::Save);
-                if let Some(w) = win.upgrade() {
-                    w.set_toast_message(SharedString::from("设置已成功保存"));
-                    let _ = w.hide();
-                }
-            });
-        }
-
-        // 18. Cancel Settings
-        {
-            let store = store.clone();
-            let win = win.clone();
-            self.window.on_cancel_settings(move || {
-                store.lock().unwrap().dispatch(SettingsAction::Cancel);
-                if let Some(w) = win.upgrade() {
-                    let _ = w.hide();
+                    w.set_toast_message(SharedString::from("已删除台词并保存"));
                 }
             });
         }

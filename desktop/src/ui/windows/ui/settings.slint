@@ -5,14 +5,25 @@ export struct DialogueItem {
     text: string,
 }
 
+component SectionTitle inherits Text {
+    font-size: 11px;
+    font-weight: 700;
+    color: #8e8e98;
+}
+
+component CardDivider inherits Rectangle {
+    height: 1px;
+    background: #ffffff0d;
+}
+
 export component SettingsWindow inherits Window {
     title: "Anti-Pet 偏好设置";
-    preferred-width: 700px;
-    preferred-height: 520px;
-    min-width: 660px;
+    preferred-width: 720px;
+    preferred-height: 540px;
+    min-width: 680px;
     min-height: 480px;
-    background: #1e1e20;
-    default-font-family: "PingFang SC";
+    background: #1c1c1f;
+    default-font-family: "Segoe UI, Microsoft YaHei, PingFang SC, sans-serif";
 
     // Domain Properties (bound to SettingsStore)
     in-out property <int> active-tab: 0;
@@ -25,6 +36,7 @@ export component SettingsWindow inherits Window {
     in-out property <bool> dnd-mode: false;
     in-out property <bool> sound-enabled: true;
     in-out property <bool> autostart-enabled: false;
+    in-out property <image> skin-preview;
 
     // Menu config items (9 toggles)
     in-out property <bool> menu-open-antigravity: true;
@@ -58,56 +70,70 @@ export component SettingsWindow inherits Window {
     callback toggle-sound();
     callback toggle-autostart();
     callback check-update();
+    callback open-skins-dir();
     callback toggle-menu-option(int);
     callback select-dialogue-cat(int);
     callback add-dialogue(string);
     callback delete-dialogue(int);
-    callback save-settings();
-    callback cancel-settings();
 
     HorizontalLayout {
         padding: 0px;
         spacing: 0px;
 
-        // Left Navigation Sidebar
+        // ================= Left Navigation Sidebar (NavigationView) =================
         Rectangle {
-            width: 180px;
-            background: #18181a;
+            width: 200px;
+            background: #161618;
 
             VerticalLayout {
-                padding-top: 18px;
-                padding-bottom: 18px;
+                padding-top: 24px;
+                padding-bottom: 20px;
                 padding-left: 12px;
                 padding-right: 12px;
                 spacing: 6px;
 
-                Text {
-                    text: "偏好设置";
-                    font-size: 17px;
-                    font-weight: 700;
-                    color: #ffffff;
-                }
-                Text {
-                    text: "Anti-Pet v0.5.0";
-                    font-size: 11px;
-                    color: #888892;
+                // Header branding
+                VerticalLayout {
+                    padding-left: 8px;
+                    spacing: 2px;
+                    Text {
+                        text: "偏好设置";
+                        font-size: 16px;
+                        font-weight: 700;
+                        color: #ffffff;
+                    }
+                    Text {
+                        text: "Anti-Pet v0.5.0";
+                        font-size: 11px;
+                        color: #888892;
+                    }
                 }
 
-                Rectangle { height: 12px; }
+                Rectangle { height: 14px; }
 
                 // Tab 0: 常规与显示
                 Rectangle {
-                    height: 38px;
-                    border-radius: 8px;
-                    background: root.active-tab == 0 ? #0a84ff : (touch-tab0.has-hover ? #28282c : transparent);
+                    height: 36px;
+                    border-radius: 6px;
+                    background: root.active-tab == 0 ? #0a84ff : (touch-tab0.has-hover ? #ffffff0d : transparent);
                     HorizontalLayout {
-                        padding-left: 12px;
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 10px;
                         alignment: start;
+                        Image {
+                            source: @image-url("icons/general.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: root.active-tab == 0 ? #ffffff : #8e8e98;
+                            y: (parent.height - self.height) / 2;
+                        }
                         Text {
                             text: "常规与显示";
                             font-size: 13px;
                             font-weight: root.active-tab == 0 ? 600 : 400;
-                            color: #ffffff;
+                            color: root.active-tab == 0 ? #ffffff : #d0d0d8;
+                            vertical-alignment: center;
                         }
                     }
                     touch-tab0 := TouchArea {
@@ -120,17 +146,27 @@ export component SettingsWindow inherits Window {
 
                 // Tab 1: 自启动与更新
                 Rectangle {
-                    height: 38px;
-                    border-radius: 8px;
-                    background: root.active-tab == 1 ? #0a84ff : (touch-tab1.has-hover ? #28282c : transparent);
+                    height: 36px;
+                    border-radius: 6px;
+                    background: root.active-tab == 1 ? #0a84ff : (touch-tab1.has-hover ? #ffffff0d : transparent);
                     HorizontalLayout {
-                        padding-left: 12px;
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 10px;
                         alignment: start;
+                        Image {
+                            source: @image-url("icons/autostart.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: root.active-tab == 1 ? #ffffff : #8e8e98;
+                            y: (parent.height - self.height) / 2;
+                        }
                         Text {
                             text: "自启动与更新";
                             font-size: 13px;
                             font-weight: root.active-tab == 1 ? 600 : 400;
-                            color: #ffffff;
+                            color: root.active-tab == 1 ? #ffffff : #d0d0d8;
+                            vertical-alignment: center;
                         }
                     }
                     touch-tab1 := TouchArea {
@@ -143,17 +179,27 @@ export component SettingsWindow inherits Window {
 
                 // Tab 2: 皮肤管理
                 Rectangle {
-                    height: 38px;
-                    border-radius: 8px;
-                    background: root.active-tab == 2 ? #0a84ff : (touch-tab2.has-hover ? #28282c : transparent);
+                    height: 36px;
+                    border-radius: 6px;
+                    background: root.active-tab == 2 ? #0a84ff : (touch-tab2.has-hover ? #ffffff0d : transparent);
                     HorizontalLayout {
-                        padding-left: 12px;
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 10px;
                         alignment: start;
+                        Image {
+                            source: @image-url("icons/skin.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: root.active-tab == 2 ? #ffffff : #8e8e98;
+                            y: (parent.height - self.height) / 2;
+                        }
                         Text {
                             text: "皮肤管理";
                             font-size: 13px;
                             font-weight: root.active-tab == 2 ? 600 : 400;
-                            color: #ffffff;
+                            color: root.active-tab == 2 ? #ffffff : #d0d0d8;
+                            vertical-alignment: center;
                         }
                     }
                     touch-tab2 := TouchArea {
@@ -166,17 +212,27 @@ export component SettingsWindow inherits Window {
 
                 // Tab 3: 台词与问候
                 Rectangle {
-                    height: 38px;
-                    border-radius: 8px;
-                    background: root.active-tab == 3 ? #0a84ff : (touch-tab3.has-hover ? #28282c : transparent);
+                    height: 36px;
+                    border-radius: 6px;
+                    background: root.active-tab == 3 ? #0a84ff : (touch-tab3.has-hover ? #ffffff0d : transparent);
                     HorizontalLayout {
-                        padding-left: 12px;
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 10px;
                         alignment: start;
+                        Image {
+                            source: @image-url("icons/dialogue.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: root.active-tab == 3 ? #ffffff : #8e8e98;
+                            y: (parent.height - self.height) / 2;
+                        }
                         Text {
                             text: "台词与问候";
                             font-size: 13px;
                             font-weight: root.active-tab == 3 ? 600 : 400;
-                            color: #ffffff;
+                            color: root.active-tab == 3 ? #ffffff : #d0d0d8;
+                            vertical-alignment: center;
                         }
                     }
                     touch-tab3 := TouchArea {
@@ -187,19 +243,29 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                // Tab 4: 右键菜单
+                // Tab 4: 右键菜单配置
                 Rectangle {
-                    height: 38px;
-                    border-radius: 8px;
-                    background: root.active-tab == 4 ? #0a84ff : (touch-tab4.has-hover ? #28282c : transparent);
+                    height: 36px;
+                    border-radius: 6px;
+                    background: root.active-tab == 4 ? #0a84ff : (touch-tab4.has-hover ? #ffffff0d : transparent);
                     HorizontalLayout {
-                        padding-left: 12px;
+                        padding-left: 10px;
+                        padding-right: 10px;
+                        spacing: 10px;
                         alignment: start;
+                        Image {
+                            source: @image-url("icons/menu.svg");
+                            width: 16px;
+                            height: 16px;
+                            colorize: root.active-tab == 4 ? #ffffff : #8e8e98;
+                            y: (parent.height - self.height) / 2;
+                        }
                         Text {
                             text: "右键菜单配置";
                             font-size: 13px;
                             font-weight: root.active-tab == 4 ? 600 : 400;
-                            color: #ffffff;
+                            color: root.active-tab == 4 ? #ffffff : #d0d0d8;
+                            vertical-alignment: center;
                         }
                     }
                     touch-tab4 := TouchArea {
@@ -210,235 +276,479 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                // Spacer
-                Rectangle { }
+                // Spring spacer
+                Rectangle { vertical-stretch: 1; }
 
-                // Toast status line
-                if root.toast-message != "": Text {
-                    text: root.toast-message;
-                    font-size: 11px;
-                    color: #34c759;
-                    wrap: word-wrap;
+                // Toast status line (if present)
+                if root.toast-message != "": HorizontalLayout {
+                    padding-left: 8px;
+                    padding-bottom: 4px;
+                    Text {
+                        text: root.toast-message;
+                        font-size: 11px;
+                        color: #34c759;
+                        wrap: word-wrap;
+                    }
+                }
+
+                // Bottom Auto-Save Status
+                VerticalLayout {
+                    padding-left: 8px;
+                    spacing: 2px;
+                    Text {
+                        text: "已自动保存到本地配置";
+                        font-size: 11px;
+                        color: #6e6e76;
+                    }
                 }
             }
         }
 
-        // Right Content View Area
+        // Vertical divider between sidebar and content
+        Rectangle {
+            width: 1px;
+            background: #ffffff0d;
+        }
+
+        // ================= Right Content Area =================
         VerticalLayout {
             padding-top: 20px;
             padding-bottom: 20px;
             padding-left: 24px;
             padding-right: 24px;
-            spacing: 12px;
+            spacing: 14px;
 
-            // Header Title
-            HorizontalLayout {
-                alignment: space-between;
+            // Page Header Title & Subtitle
+            VerticalLayout {
+                spacing: 3px;
                 Text {
                     text: root.active-tab == 0 ? "常规与显示" :
                           root.active-tab == 1 ? "自启动与更新" :
                           root.active-tab == 2 ? "皮肤管理" :
                           root.active-tab == 3 ? "台词与问候" : "右键菜单配置";
-                    font-size: 18px;
+                    font-size: 20px;
                     font-weight: 700;
                     color: #ffffff;
                 }
+                Text {
+                    text: root.active-tab == 0 ? "调整大肥猫的桌面尺寸、物理重力下落与交互行为" :
+                          root.active-tab == 1 ? "管理开机自启动配置与挂件版本检测" :
+                          root.active-tab == 2 ? "管理已安装皮肤外观与本地动画资产" :
+                          root.active-tab == 3 ? "自定义不同工作状态下的气泡台词，修改即时自动保存" : "管理在桌面右键点击桌宠时出现的控制项";
+                    font-size: 11px;
+                    color: #8e8e98;
+                }
             }
 
-            // Scrollable Content
+            // Scrollable Content View
             ScrollView {
                 vertical-stretch: 1;
 
-                // TAB 0: General
+                // ================= TAB 0: 常规与显示 =================
                 if root.active-tab == 0: VerticalLayout {
-                    spacing: 14px;
-                    padding-bottom: 20px;
+                    spacing: 16px;
+                    padding-bottom: 24px;
 
-                    // Card 1: Appearance & Scale
-                    Rectangle {
-                        background: #242428;
-                        border-radius: 10px;
-                        border-width: 1px;
-                        border-color: #323238;
-                        VerticalLayout {
-                            padding: 14px;
-                            spacing: 12px;
-
+                    // Section 1: 外观与主题
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "外观与主题"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
                             HorizontalLayout {
+                                padding-top: 10px;
+                                padding-bottom: 10px;
+                                padding-left: 14px;
+                                padding-right: 14px;
                                 alignment: space-between;
                                 VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
                                     Text { text: "界面外观"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
-                                    Text { text: "窗口明暗主题风格，默认自动跟随系统"; font-size: 11px; color: #8e8e98; }
+                                    Text { text: "设置窗口明暗主题风格，默认跟随系统"; font-size: 11px; color: #8e8e98; }
                                 }
-                                Button {
-                                    text: root.theme-mode == "dark" ? "深色" : (root.theme-mode == "light" ? "浅色" : "跟随系统");
-                                    clicked => { root.cycle-theme(); }
-                                }
-                            }
-
-                            Rectangle { height: 1px; background: #323238; }
-
-                            HorizontalLayout {
-                                alignment: space-between;
-                                VerticalLayout {
-                                    Text { text: "缩放大小: " + Math.round(root.pet-scale * 100) + "%"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
-                                    Text { text: "桌宠在屏幕上的呈现比例 (50% ~ 200%)"; font-size: 11px; color: #8e8e98; }
-                                }
-                                Slider {
-                                    width: 140px;
-                                    minimum: 0.5;
-                                    maximum: 2.0;
-                                    value: root.pet-scale;
-                                    changed(val) => { root.scale-changed(val); }
-                                }
-                            }
-
-                            Rectangle { height: 1px; background: #323238; }
-
-                            HorizontalLayout {
-                                alignment: space-between;
-                                VerticalLayout {
-                                    Text { text: "落地吸附基线"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
-                                    Text { text: "拖拽松手后猫猫下落吸附的目标基准线"; font-size: 11px; color: #8e8e98; }
-                                }
-                                Button {
-                                    text: root.floor-mode == "taskbar" ? "任务栏基线 (48px)" : "屏幕绝对落底 (0px)";
-                                    clicked => { root.cycle-floor-mode(); }
-                                }
-                            }
-
-                            Rectangle { height: 1px; background: #323238; }
-
-                            HorizontalLayout {
-                                alignment: space-between;
-                                VerticalLayout {
-                                    Text { text: "重力加速度模拟"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
-                                    Text { text: "释放后遵循弹性重力加速度下落，触底自然回弹"; font-size: 11px; color: #8e8e98; }
-                                }
-                                Switch {
-                                    checked: root.gravity-enabled;
-                                    toggled => { root.toggle-gravity(); }
-                                }
-                            }
-
-                            Rectangle { height: 1px; background: #323238; }
-
-                            HorizontalLayout {
-                                alignment: space-between;
-                                VerticalLayout {
-                                    Text { text: "屏幕位置校准"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
-                                    Text { text: "将桌宠一键拉回屏幕安全正中央，避免逃出屏幕"; font-size: 11px; color: #8e8e98; }
-                                }
-                                Button {
-                                    text: "复位居中";
-                                    clicked => { root.reset-position(); }
+                                // WinUI Dropdown button
+                                Rectangle {
+                                    width: 120px;
+                                    height: 28px;
+                                    border-radius: 5px;
+                                    background: theme-touch.has-hover ? #ffffff1c : #ffffff10;
+                                    border-width: 1px;
+                                    border-color: #ffffff18;
+                                    y: (parent.height - self.height) / 2;
+                                    HorizontalLayout {
+                                        padding-left: 10px;
+                                        padding-right: 8px;
+                                        alignment: space-between;
+                                        Text {
+                                            text: root.theme-mode == "dark" ? "深色模式" : (root.theme-mode == "light" ? "浅色模式" : "跟随系统");
+                                            font-size: 12px;
+                                            color: #f0f0f4;
+                                            vertical-alignment: center;
+                                        }
+                                        Image {
+                                            source: @image-url("icons/chevron-down.svg");
+                                            width: 10px;
+                                            height: 10px;
+                                            colorize: #8e8e98;
+                                            y: (parent.height - self.height) / 2;
+                                        }
+                                    }
+                                    theme-touch := TouchArea {
+                                        clicked => { root.cycle-theme(); }
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // Card 2: Interactivity Toggles
-                    Rectangle {
-                        background: #242428;
-                        border-radius: 10px;
-                        border-width: 1px;
-                        border-color: #323238;
-                        VerticalLayout {
-                            padding: 14px;
-                            spacing: 12px;
+                    // Section 2: 体型与物理
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "体型与物理"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
+                            VerticalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
 
-                            HorizontalLayout {
-                                alignment: space-between;
-                                VerticalLayout {
-                                    Text { text: "实时额度卡片"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
-                                    Text { text: "在对话气泡中同步展示 Antigravity 5小时与周额度进度"; font-size: 11px; color: #8e8e98; }
+                                // Row 1: Scale
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "缩放大小"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "挂件在屏幕上的呈现比例 (50% ~ 200%)"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                    HorizontalLayout {
+                                        spacing: 10px;
+                                        alignment: end;
+                                        y: (parent.height - self.height) / 2;
+                                        Slider {
+                                            width: 130px;
+                                            minimum: 0.5;
+                                            maximum: 2.0;
+                                            value: root.pet-scale;
+                                            changed(val) => { root.scale-changed(val); }
+                                        }
+                                        Text {
+                                            text: Math.round(root.pet-scale * 100) + "%";
+                                            font-size: 12.5px;
+                                            color: #f0f0f4;
+                                            width: 42px;
+                                            horizontal-alignment: right;
+                                            vertical-alignment: center;
+                                        }
+                                    }
                                 }
-                                Switch {
-                                    checked: root.show-quota;
-                                    toggled => { root.toggle-quota(); }
+
+                                CardDivider {}
+
+                                // Row 2: Floor Mode
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "落地吸附基线"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "松手后猫猫下落吸附的目标基准线"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                    Rectangle {
+                                        width: 160px;
+                                        height: 28px;
+                                        border-radius: 5px;
+                                        background: floor-touch.has-hover ? #ffffff1c : #ffffff10;
+                                        border-width: 1px;
+                                        border-color: #ffffff18;
+                                        y: (parent.height - self.height) / 2;
+                                        HorizontalLayout {
+                                            padding-left: 10px;
+                                            padding-right: 8px;
+                                            alignment: space-between;
+                                            Text {
+                                                text: root.floor-mode == "bottom" ? "屏幕绝对落底 (0px)" : (root.floor-mode == "free" ? "自由悬浮 (不吸附)" : "贴合任务栏与 Dock 上沿");
+                                                font-size: 11.5px;
+                                                color: #f0f0f4;
+                                                vertical-alignment: center;
+                                            }
+                                            Image {
+                                                source: @image-url("icons/chevron-down.svg");
+                                                width: 10px;
+                                                height: 10px;
+                                                colorize: #8e8e98;
+                                                y: (parent.height - self.height) / 2;
+                                            }
+                                        }
+                                        floor-touch := TouchArea {
+                                            clicked => { root.cycle-floor-mode(); }
+                                        }
+                                    }
+                                }
+
+                                CardDivider {}
+
+                                // Row 3: Gravity
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "重力加速度模拟"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "释放后遵循物理加速度下落与触底弹性回弹"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                    Switch {
+                                        checked: root.gravity-enabled;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-gravity(); }
+                                    }
+                                }
+
+                                CardDivider {}
+
+                                // Row 4: Reset Position
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "屏幕位置校准"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "将桌宠一键拉回屏幕正中央安全区域"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                    Button {
+                                        text: "复位居中";
+                                        y: (parent.height - self.height) / 2;
+                                        clicked => { root.reset-position(); }
+                                    }
                                 }
                             }
+                        }
+                    }
 
-                            Rectangle { height: 1px; background: #323238; }
+                    // Section 3: 状态与交互
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "状态与交互"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
+                            VerticalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
 
-                            HorizontalLayout {
-                                alignment: space-between;
-                                VerticalLayout {
-                                    Text { text: "仅在 IDE 活跃时显示"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
-                                    Text { text: "前台为 Antigravity / VS Code / Cursor 时呈现，切出时隐藏"; font-size: 11px; color: #8e8e98; }
+                                // Row 1: Quota
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "气泡实时额度卡片"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "气泡中展示 5小时与周额度进度条"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                    Switch {
+                                        checked: root.show-quota;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-quota(); }
+                                    }
                                 }
-                                Switch {
-                                    checked: root.ide-only;
-                                    toggled => { root.toggle-ide-only(); }
-                                }
-                            }
 
-                            Rectangle { height: 1px; background: #323238; }
+                                CardDivider {}
 
-                            HorizontalLayout {
-                                alignment: space-between;
-                                VerticalLayout {
-                                    Text { text: "完全穿透免打扰"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
-                                    Text { text: "猫猫处于只读透明状态，鼠标点击直接透传到底层应用"; font-size: 11px; color: #8e8e98; }
+                                // Row 2: IDE Only
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "仅在 IDE 活跃时显示"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "前台为 Antigravity / VS Code / Cursor 时呈现，切出隐匿"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                    Switch {
+                                        checked: root.ide-only;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-ide-only(); }
+                                    }
                                 }
-                                Switch {
-                                    checked: root.dnd-mode;
-                                    toggled => { root.toggle-dnd(); }
-                                }
-                            }
 
-                            Rectangle { height: 1px; background: #323238; }
+                                CardDivider {}
 
-                            HorizontalLayout {
-                                alignment: space-between;
-                                VerticalLayout {
-                                    Text { text: "动作音效"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
-                                    Text { text: "播放挂件拖拽释放、抚摸互动与提示音效"; font-size: 11px; color: #8e8e98; }
+                                // Row 3: DND Passthrough
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "完全穿透免打扰"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "猫猫处于只读透明状态，点击穿透到底层"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                    Switch {
+                                        checked: root.dnd-mode;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-dnd(); }
+                                    }
                                 }
-                                Switch {
-                                    checked: root.sound-enabled;
-                                    toggled => { root.toggle-sound(); }
+
+                                CardDivider {}
+
+                                // Row 4: Sound
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "动作互动音效"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "点击、抚摸、成功与报错时的猫叫音频"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                    Switch {
+                                        checked: root.sound-enabled;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-sound(); }
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                // TAB 1: Autostart & Update
+                // ================= TAB 1: 自启动与更新 =================
                 if root.active-tab == 1: VerticalLayout {
-                    spacing: 14px;
+                    spacing: 16px;
+                    padding-bottom: 24px;
 
-                    Rectangle {
-                        background: #242428;
-                        border-radius: 10px;
-                        border-width: 1px;
-                        border-color: #323238;
-                        VerticalLayout {
-                            padding: 14px;
-                            spacing: 12px;
-
+                    // Section 1: 系统集成
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "系统集成"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
                             HorizontalLayout {
+                                padding-top: 10px;
+                                padding-bottom: 10px;
+                                padding-left: 14px;
+                                padding-right: 14px;
                                 alignment: space-between;
                                 VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
                                     Text { text: "开机自动启动"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
-                                    Text { text: "系统登录后静默后台启动大肥猫桌宠伴侣"; font-size: 11px; color: #8e8e98; }
+                                    Text { text: "在系统登录完成后自动在后台静默挂载大肥猫"; font-size: 11px; color: #8e8e98; }
                                 }
                                 Switch {
                                     checked: root.autostart-enabled;
+                                    y: (parent.height - self.height) / 2;
                                     toggled => { root.toggle-autostart(); }
                                 }
                             }
+                        }
+                    }
 
-                            Rectangle { height: 1px; background: #323238; }
+                    // Section 2: 核心规范与架构
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "核心规范与架构"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
+                            VerticalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
 
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "核心引擎版本"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "v0.5.0 (Pure CPU 2D NextGen Core)"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                }
+
+                                CardDivider {}
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "UI 渲染前端"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "Windows Slint Fluent UI (120Hz GPU 硬件加速)"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                }
+
+                                CardDivider {}
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "运行内存指标"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "约 15MB RSS / 0% CPU 待机占用"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Section 3: 版本检测
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "版本检测"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
                             HorizontalLayout {
+                                padding-top: 10px;
+                                padding-bottom: 10px;
+                                padding-left: 14px;
+                                padding-right: 14px;
                                 alignment: space-between;
                                 VerticalLayout {
-                                    Text { text: "检查软件更新"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
-                                    Text { text: "当前运行版本: Anti-Pet v0.5.0 (NextGen Core)"; font-size: 11px; color: #8e8e98; }
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text { text: "检查更新通道"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "当前已是最新稳定版本 (v0.5.0)"; font-size: 11px; color: #8e8e98; }
                                 }
                                 Button {
                                     text: "检查更新";
+                                    y: (parent.height - self.height) / 2;
                                     clicked => { root.check-update(); }
                                 }
                             }
@@ -446,130 +756,508 @@ export component SettingsWindow inherits Window {
                     }
                 }
 
-                // TAB 2: Skins
+                // ================= TAB 2: 皮肤管理 =================
                 if root.active-tab == 2: VerticalLayout {
-                    spacing: 14px;
-                    Rectangle {
-                        background: #242428;
-                        border-radius: 10px;
-                        border-width: 1px;
-                        border-color: #0a84ff;
-                        VerticalLayout {
-                            padding: 18px;
-                            spacing: 8px;
-                            Text { text: "经典紫毛猫 (fat-cat)"; font-size: 15px; font-weight: 700; color: #ffffff; }
-                            Text { text: "默认常驻星语猫娘皮肤，纯 CPU 2D 软光栅化绘制，内存占用 <15MB。"; font-size: 12px; color: #8e8e98; }
-                            Text { text: "状态：当前已生效"; font-size: 12px; font-weight: 600; color: #34c759; }
-                        }
-                    }
-                }
+                    spacing: 16px;
+                    padding-bottom: 24px;
 
-                // TAB 3: Dialogue
-                if root.active-tab == 3: VerticalLayout {
-                    spacing: 12px;
+                    // Section 1: 当前激活皮肤与样式预览
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "当前激活皮肤与样式预览"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
+                            HorizontalLayout {
+                                padding: 14px;
+                                spacing: 16px;
+                                alignment: start;
 
-                    // Category Pill Bar
-                    HorizontalLayout {
-                        spacing: 8px;
-                        Button { text: "待机日常"; clicked => { root.select-dialogue-cat(0); } }
-                        Button { text: "互动抚摸"; clicked => { root.select-dialogue-cat(1); } }
-                        Button { text: "深度思考"; clicked => { root.select-dialogue-cat(2); } }
-                        Button { text: "任务成功"; clicked => { root.select-dialogue-cat(3); } }
-                        Button { text: "任务遇阻"; clicked => { root.select-dialogue-cat(4); } }
-                    }
+                                // Preview Image Container (110x110)
+                                Rectangle {
+                                    width: 110px;
+                                    height: 110px;
+                                    border-radius: 6px;
+                                    background: #ffffff08;
+                                    border-width: 1px;
+                                    border-color: #ffffff18;
+                                    Image {
+                                        source: root.skin-preview;
+                                        width: 100px;
+                                        height: 100px;
+                                        image-fit: contain;
+                                        x: (parent.width - self.width) / 2;
+                                        y: (parent.height - self.height) / 2;
+                                    }
+                                }
 
-                    // Input & Add Button
-                    HorizontalLayout {
-                        spacing: 8px;
-                        input-box := LineEdit {
-                            placeholder-text: "输入新的傲娇台词...";
-                            text: root.new-dialogue-text;
-                            edited(val) => { root.new-dialogue-text = val; }
-                        }
-                        Button {
-                            text: "+ 添加台词";
-                            clicked => {
-                                if root.new-dialogue-text != "" {
-                                    root.add-dialogue(root.new-dialogue-text);
-                                    root.new-dialogue-text = "";
+                                // Skin Metadata
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    alignment: center;
+                                    Text {
+                                        text: "大肥猫 (fat-cat)";
+                                        font-size: 16px;
+                                        font-weight: 700;
+                                        color: #ffffff;
+                                    }
+                                    Text {
+                                        text: "作者: Antigravity Community · 版本: v1.0.0";
+                                        font-size: 11px;
+                                        color: #8e8e98;
+                                    }
+                                    Text {
+                                        text: "默认常驻星语猫娘皮肤，纯 CPU 2D 软光栅化绘制，内存占用 <15MB。";
+                                        font-size: 11px;
+                                        color: #8e8e98;
+                                        wrap: word-wrap;
+                                    }
+                                    Rectangle { height: 4px; }
+                                    // Status Badge Pill
+                                    Rectangle {
+                                        width: 100px;
+                                        height: 22px;
+                                        border-radius: 11px;
+                                        background: #34c75924;
+                                        border-width: 1px;
+                                        border-color: #34c7594d;
+                                        Text {
+                                            text: "当前正在使用";
+                                            font-size: 11px;
+                                            font-weight: 600;
+                                            color: #34c759;
+                                            x: (parent.width - self.width) / 2;
+                                            y: (parent.height - self.height) / 2;
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // Dialogue Items List
-                    for item in root.dialogue-list: Rectangle {
-                        background: #242428;
-                        border-radius: 8px;
-                        border-width: 1px;
-                        border-color: #323238;
-                        HorizontalLayout {
-                            padding: 8px;
-                            alignment: space-between;
+                    // Section 2: 皮肤特性与支持状态
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "皮肤特性与支持状态"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
+                            VerticalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "动画状态支持"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "6 组状态 (idle, thinking, working, success, error, petting)"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                }
+
+                                CardDivider {}
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "自适应渲染"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "60FPS CPU 软光栅化 / 像素对齐"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                }
+
+                                CardDivider {}
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 2px;
+                                        Text { text: "热重载支持"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                        Text { text: "支持本地 JSON 与 PNG 实时热重载"; font-size: 11px; color: #8e8e98; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Section 3: 本地资产目录
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "本地资产目录"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
+                            HorizontalLayout {
+                                padding-top: 10px;
+                                padding-bottom: 10px;
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                alignment: space-between;
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 2px;
+                                    Text { text: "资产根目录"; font-size: 13.5px; font-weight: 600; color: #f0f0f4; }
+                                    Text { text: "skins/fat-cat/ (支持本地热重载与实时帧替换)"; font-size: 11px; color: #8e8e98; }
+                                }
+                                Button {
+                                    text: "打开 skins 目录";
+                                    y: (parent.height - self.height) / 2;
+                                    clicked => { root.open-skins-dir(); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ================= TAB 3: 台词与问候 =================
+                if root.active-tab == 3: VerticalLayout {
+                    spacing: 16px;
+                    padding-bottom: 24px;
+
+                    // 5 Category Pills Bar
+                    HorizontalLayout {
+                        spacing: 8px;
+
+                        // Pill 0
+                        Rectangle {
+                            width: 88px;
+                            height: 28px;
+                            border-radius: 6px;
+                            background: root.dialogue-cat == 0 ? #0a84ff : #ffffff0f;
                             Text {
-                                text: item.text;
-                                font-size: 12.5px;
-                                color: #f0f0f4;
-                                wrap: word-wrap;
+                                text: "待机日常";
+                                font-size: 12px;
+                                font-weight: root.dialogue-cat == 0 ? 600 : 400;
+                                color: root.dialogue-cat == 0 ? #ffffff : #d0d0d8;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
                             }
-                            Button {
-                                text: "删除";
-                                clicked => { root.delete-dialogue(item.id); }
+                            TouchArea { clicked => { root.select-dialogue-cat(0); } }
+                        }
+
+                        // Pill 1
+                        Rectangle {
+                            width: 88px;
+                            height: 28px;
+                            border-radius: 6px;
+                            background: root.dialogue-cat == 1 ? #0a84ff : #ffffff0f;
+                            Text {
+                                text: "互动抚摸";
+                                font-size: 12px;
+                                font-weight: root.dialogue-cat == 1 ? 600 : 400;
+                                color: root.dialogue-cat == 1 ? #ffffff : #d0d0d8;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                            }
+                            TouchArea { clicked => { root.select-dialogue-cat(1); } }
+                        }
+
+                        // Pill 2
+                        Rectangle {
+                            width: 88px;
+                            height: 28px;
+                            border-radius: 6px;
+                            background: root.dialogue-cat == 2 ? #0a84ff : #ffffff0f;
+                            Text {
+                                text: "深度思考";
+                                font-size: 12px;
+                                font-weight: root.dialogue-cat == 2 ? 600 : 400;
+                                color: root.dialogue-cat == 2 ? #ffffff : #d0d0d8;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                            }
+                            TouchArea { clicked => { root.select-dialogue-cat(2); } }
+                        }
+
+                        // Pill 3
+                        Rectangle {
+                            width: 88px;
+                            height: 28px;
+                            border-radius: 6px;
+                            background: root.dialogue-cat == 3 ? #0a84ff : #ffffff0f;
+                            Text {
+                                text: "任务成功";
+                                font-size: 12px;
+                                font-weight: root.dialogue-cat == 3 ? 600 : 400;
+                                color: root.dialogue-cat == 3 ? #ffffff : #d0d0d8;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                            }
+                            TouchArea { clicked => { root.select-dialogue-cat(3); } }
+                        }
+
+                        // Pill 4
+                        Rectangle {
+                            width: 88px;
+                            height: 28px;
+                            border-radius: 6px;
+                            background: root.dialogue-cat == 4 ? #0a84ff : #ffffff0f;
+                            Text {
+                                text: "任务遇阻";
+                                font-size: 12px;
+                                font-weight: root.dialogue-cat == 4 ? 600 : 400;
+                                color: root.dialogue-cat == 4 ? #ffffff : #d0d0d8;
+                                x: (parent.width - self.width) / 2;
+                                y: (parent.height - self.height) / 2;
+                            }
+                            TouchArea { clicked => { root.select-dialogue-cat(4); } }
+                        }
+                    }
+
+                    // Section 1: 添加新语句
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "添加新语句"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
+                            HorizontalLayout {
+                                padding: 10px;
+                                spacing: 10px;
+                                LineEdit {
+                                    placeholder-text: "输入自定义台词内容并点击添加...";
+                                    text: root.new-dialogue-text;
+                                    edited(val) => { root.new-dialogue-text = val; }
+                                }
+                                Button {
+                                    text: "+ 添加条目";
+                                    clicked => {
+                                        if root.new-dialogue-text != "" {
+                                            root.add-dialogue(root.new-dialogue-text);
+                                            root.new-dialogue-text = "";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Section 2: 已收录台词列表
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "已收录台词列表"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
+                            VerticalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+                                for item[idx] in root.dialogue-list: VerticalLayout {
+                                    if idx > 0: CardDivider {}
+                                    HorizontalLayout {
+                                        padding-top: 8px;
+                                        padding-bottom: 8px;
+                                        alignment: space-between;
+                                        Text {
+                                            text: (idx + 1) + ". " + item.text;
+                                            font-size: 12.5px;
+                                            color: #f0f0f4;
+                                            wrap: word-wrap;
+                                            vertical-alignment: center;
+                                            horizontal-stretch: 1;
+                                        }
+                                        Button {
+                                            text: "删除";
+                                            y: (parent.height - self.height) / 2;
+                                            clicked => { root.delete-dialogue(item.id); }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
-                // TAB 4: Context Menu Config
+                // ================= TAB 4: 右键菜单配置 =================
                 if root.active-tab == 4: VerticalLayout {
-                    spacing: 14px;
-                    Rectangle {
-                        background: #242428;
-                        border-radius: 10px;
-                        border-width: 1px;
-                        border-color: #323238;
-                        VerticalLayout {
-                            padding: 14px;
-                            spacing: 10px;
+                    spacing: 16px;
+                    padding-bottom: 24px;
 
-                            Text { text: "勾选或隐藏桌宠右键控制面板中的快捷功能项："; font-size: 12px; color: #8e8e98; }
+                    // Section 1: 核心控制项
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "核心控制项"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
+                            VerticalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
 
-                            CheckBox { text: "打开 Antigravity"; checked: root.menu-open-antigravity; toggled => { root.toggle-menu-option(0); } }
-                            CheckBox { text: "偏好设置..."; checked: root.menu-settings; toggled => { root.toggle-menu-option(1); } }
-                            CheckBox { text: "换一句傲娇台词"; checked: root.menu-random-dialogue; toggled => { root.toggle-menu-option(2); } }
-                            CheckBox { text: "互动抚摸"; checked: root.menu-pet-action; toggled => { root.toggle-menu-option(3); } }
-                            CheckBox { text: "切换额度卡片"; checked: root.menu-quota; toggled => { root.toggle-menu-option(4); } }
-                            CheckBox { text: "完全穿透 (免打扰)"; checked: root.menu-dnd; toggled => { root.toggle-menu-option(5); } }
-                            CheckBox { text: "动作音效"; checked: root.menu-sound; toggled => { root.toggle-menu-option(6); } }
-                            CheckBox { text: "缩放大小 (滚轮微调)"; checked: root.menu-zoom; toggled => { root.toggle-menu-option(7); } }
-                            CheckBox { text: "重力下落吸附"; checked: root.menu-gravity; toggled => { root.toggle-menu-option(8); } }
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    Text { text: "打开 Antigravity 控制台"; font-size: 13.5px; color: #f0f0f4; vertical-alignment: center; }
+                                    Switch {
+                                        checked: root.menu-open-antigravity;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-menu-option(0); }
+                                    }
+                                }
+
+                                CardDivider {}
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    Text { text: "偏好设置..."; font-size: 13.5px; color: #f0f0f4; vertical-alignment: center; }
+                                    Switch {
+                                        checked: root.menu-settings;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-menu-option(1); }
+                                    }
+                                }
+
+                                CardDivider {}
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    Text { text: "切换额度卡片"; font-size: 13.5px; color: #f0f0f4; vertical-alignment: center; }
+                                    Switch {
+                                        checked: root.menu-quota;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-menu-option(4); }
+                                    }
+                                }
+                            }
                         }
                     }
-                }
-            }
 
-            // Bottom Action Footer Bar
-            Rectangle {
-                height: 1px;
-                background: #323238;
-            }
-            HorizontalLayout {
-                alignment: space-between;
-                Text {
-                    text: "配置与台词变更将在点击确定后立即保存生效";
-                    font-size: 11px;
-                    color: #888892;
-                }
-                HorizontalLayout {
-                    spacing: 10px;
-                    Button {
-                        text: "取消";
-                        clicked => { root.cancel-settings(); }
+                    // Section 2: 交互与动作
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "交互与动作"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
+                            VerticalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    Text { text: "换一句台词"; font-size: 13.5px; color: #f0f0f4; vertical-alignment: center; }
+                                    Switch {
+                                        checked: root.menu-random-dialogue;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-menu-option(2); }
+                                    }
+                                }
+
+                                CardDivider {}
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    Text { text: "互动抚摸 / 动作"; font-size: 13.5px; color: #f0f0f4; vertical-alignment: center; }
+                                    Switch {
+                                        checked: root.menu-pet-action;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-menu-option(3); }
+                                    }
+                                }
+
+                                CardDivider {}
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    Text { text: "缩放大小 (滚轮微调)"; font-size: 13.5px; color: #f0f0f4; vertical-alignment: center; }
+                                    Switch {
+                                        checked: root.menu-zoom;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-menu-option(7); }
+                                    }
+                                }
+                            }
+                        }
                     }
-                    Button {
-                        text: "确定";
-                        primary: true;
-                        clicked => { root.save-settings(); }
+
+                    // Section 3: 运行行为控制
+                    VerticalLayout {
+                        spacing: 6px;
+                        SectionTitle { text: "运行行为控制"; }
+                        Rectangle {
+                            background: #ffffff0a;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: #ffffff14;
+                            VerticalLayout {
+                                padding-left: 14px;
+                                padding-right: 14px;
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    Text { text: "免打扰鼠标穿透"; font-size: 13.5px; color: #f0f0f4; vertical-alignment: center; }
+                                    Switch {
+                                        checked: root.menu-dnd;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-menu-option(5); }
+                                    }
+                                }
+
+                                CardDivider {}
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    Text { text: "动作音效开关"; font-size: 13.5px; color: #f0f0f4; vertical-alignment: center; }
+                                    Switch {
+                                        checked: root.menu-sound;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-menu-option(6); }
+                                    }
+                                }
+
+                                CardDivider {}
+
+                                HorizontalLayout {
+                                    padding-top: 10px;
+                                    padding-bottom: 10px;
+                                    alignment: space-between;
+                                    Text { text: "重力加速度下落"; font-size: 13.5px; color: #f0f0f4; vertical-alignment: center; }
+                                    Switch {
+                                        checked: root.menu-gravity;
+                                        y: (parent.height - self.height) / 2;
+                                        toggled => { root.toggle-menu-option(8); }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
